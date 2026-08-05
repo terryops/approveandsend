@@ -38,7 +38,7 @@ export function htmlToText(input: string): string {
     .trim();
 }
 
-function clip(text: string, max: number): string {
+export function clip(text: string, max: number): string {
   if (text.length <= max) return text;
   // Keep the tail: in a quoted email the newest content sits at the end.
   const omitted = text.length - max;

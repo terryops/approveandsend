@@ -156,6 +156,86 @@ is not transient: that is a revoked refresh token, and retrying makes it worse.
 A 401 from the API *is* worth exactly one retry with a fresh token, because
 tokens can be revoked mid-session.
 
+## The learning loop
+
+The part that makes this worth self-hosting. A human approves a reply; if they
+edited it first, that edit is a correction, and the difference between the two
+versions says what the model got wrong more precisely than any prompt tuning
+would have found.
+
+**Show the model both versions and the diff.** The original only ever saw the
+final text plus whatever the reviewer typed in a notes box. That learns well
+from reviewers who write good notes and learns nothing from the far more common
+case — someone silently fixing a sentence and hitting send. `rules/diff.ts`
+does a sentence-level LCS and feeds the model the changes alone; unchanged
+sentences are already in the prompt as the sent reply, and repeating them
+buries the signal. Sentence granularity, not word: a word diff of reflowed
+prose is mostly noise about where the newlines moved.
+
+**An unedited draft is usually not a lesson.** The prompt says so explicitly.
+Otherwise every approval manufactures a rule and the rulebook fills with
+restatements of things the model already does correctly.
+
+**Every id the model returns is checked against what it was shown.** The
+predecessor ran a bare `UPDATE … WHERE id = ?` on whatever the extractor
+returned, so a hallucinated-but-real id silently overwrote an unrelated rule
+with no record of the previous text. Here an unknown id is discarded, a `skip`
+naming an unknown rule is downgraded to `add` (honouring it would throw away a
+learned rule), and every content change writes a `rule_revisions` row.
+
+### Deduplication
+
+Rules are natural language, so "is this a duplicate?" is a semantic question
+and a model answers it better than any distance metric. Two things constrain
+it:
+
+- **A local shortlist first.** The original put all 135 enabled rules into the
+  dedup prompt for every candidate — an O(all rules) prompt that grows
+  precisely because the system is working. `rules/similarity.ts` scores by
+  IDF-weighted token overlap and sends the top twelve. It never decides
+  anything; it only chooses whom the model considers. An empty shortlist means
+  the candidate is genuinely novel and no call is made at all.
+- **Scope partitions the comparison.** The same sentence about response times
+  is not redundant across two different kinds of mail.
+
+**Fail open.** A dedup call that times out adds the rule anyway. It was learned
+from a real human correction; losing it costs more than a near-duplicate, which
+a consolidation pass collapses later.
+
+**The candidate pool is mutated in place** during a batch, so two rules
+proposed from the same conversation dedupe against each other and not only
+against what was in the database when the batch started.
+
+### What the rule block does about growth
+
+Every enabled rule goes into every generation, so an unbounded rulebook
+eventually becomes the prompt. `selectRules` caps it at ~6k characters and
+drops by category when it bites — policy first, tone last, on the grounds that
+a dropped tone rule reads slightly wrong while a dropped policy rule promises a
+refund that does not exist. Drops are returned, not swallowed, so the caller
+can log them.
+
+Selection is by priority; *emission* is by insertion order. A rule block whose
+order shifts between two runs makes their outputs impossible to compare.
+
+**Ordering is by SQLite's rowid, not by `created_at` or id.** Ids are UUIDs and
+timestamps have millisecond resolution, so neither orders two rules written in
+the same tick. A test caught this immediately.
+
+### Schema choices the original could not make later
+
+`source_task_id`, `rationale`, `applied_count`, `last_applied_at` and `scope`
+are all cheap at schema-design time and impossible to backfill. Without
+provenance you cannot answer "why does the drafter believe this?", which is the
+first question asked when a rule produces a bad reply. Without usage counts
+there is no basis on which a rule could ever be retired. Without scope, a rule
+learned handling one kind of mail steers every other kind.
+
+Migrations are numbered against `PRAGMA user_version`, each in its own
+transaction. The original ran `ALTER TABLE … ADD COLUMN` inside a try/catch on
+every request and swallowed the error, which works until a change needs a
+backfill or an ordering.
+
 ## JSON
 
 Models fence their output in markdown and forget to escape quotes inside string

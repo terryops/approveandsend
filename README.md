@@ -12,9 +12,9 @@ The instance this was extracted from has processed **929 emails**, of which
 active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
-> Status: v0.1 in progress. The AI layer, the mail layer, thread trimming and
-> JSON recovery are done and tested. The review UI and the rules engine are
-> still being ported from the private original. Not yet usable end to end.
+> Status: v0.1 in progress. The AI layer, the mail layer, the rules engine and
+> the learning loop are done and tested. The review UI and the job queue that
+> wires them together are still being ported. Not yet usable end to end.
 
 ## Why it exists
 
@@ -80,6 +80,27 @@ GOOGLE_REFRESH_TOKEN=...
 For Workspace, a service account with domain-wide delegation works too — set
 `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_IMPERSONATE_USER`
 instead. Which mode you get is inferred from the variables you set.
+
+## How it learns
+
+When you edit a draft before sending it, that edit is the lesson. ReplyLoop
+diffs the two versions, asks a model what principle the change implies, and
+stores it as a rule that goes into every future draft:
+
+```
+draft:  "I'm so sorry. Your refund will arrive within 3 days."
+sent:   "We've escalated this and will update you shortly."
+learned: "Never commit to a refund date that has not been confirmed."  [policy]
+```
+
+Rules are inspectable, editable and switch-off-able. Each one records which
+conversation taught it, why, and how often it has been used — so when a rule
+starts producing bad replies you can find out where it came from instead of
+guessing. Near-duplicates are merged rather than accumulated, and every change
+to a rule's text keeps the previous version.
+
+Approving a draft unchanged usually teaches nothing, and the extractor is told
+so. The rulebook is meant to stay small enough to read.
 
 ## Design notes worth knowing
 
