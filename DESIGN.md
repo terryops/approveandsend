@@ -90,7 +90,8 @@ is at the bottom; truncating from the end throws away the part that matters.
 the self-hosted ones that the people most interested in self-hosting this
 already run. Gmail/Zoho/Outlook APIs are nicer to consume but each is a
 separate OAuth setup, and shipping one of them first would bias the interface
-toward whatever that one happens to do.
+toward whatever that one happens to do. (Gmail came second, deliberately — see
+below.)
 
 **The interface is shaped by what IMAP lacks, not by what an API provides.**
 Hosted APIs hand you a `threadId`; IMAP does not. So `threadId` is optional,
@@ -114,6 +115,46 @@ Without the explicit `APPEND`, our own replies never appear in threads and the
 model happily re-answers questions we already answered. A failed append is
 logged rather than thrown: the mail is already delivered at that point, and
 raising would invite a duplicate send.
+
+## Gmail, and what a second backend proved
+
+Added straight after IMAP, on purpose: an abstraction with one implementation
+is a guess. This one held — `MailProvider` needed no reshaping, and only two
+optional fields were added (`OutgoingMail.threadId`, `SendResult.threadId`),
+both of which IMAP correctly ignores.
+
+Where the two genuinely differ:
+
+- **Threads are one request.** Gmail knows its own conversations, so
+  `getThread` is `GET /threads/{id}?format=raw` and the result is complete.
+  The IMAP path fetches a bounded window and reconstructs from headers, which
+  can miss an old message. This is the single best argument for the API.
+- **Sent files itself.** `messages.send` puts the copy in Sent, so there is no
+  `APPEND` and none of the "delivered but not filed" failure mode.
+- **Gmail rewrites Message-ID on send.** We read it back from the stored
+  message rather than trusting what we composed; a stale id silently breaks
+  the threading of the *next* reply, which is the kind of bug that surfaces
+  weeks later.
+- **`threadId` on send is not optional in practice.** Correct
+  `In-Reply-To`/`References` thread properly in every other client, but Gmail
+  will still sometimes split the reply into its own conversation without it.
+
+Bodies are fetched as `format=raw` and handed to the same mailparser path IMAP
+uses, rather than walking Gmail's MIME-tree JSON. One parser means one set of
+edge cases, and attachment ids stay index-based across both backends.
+
+**Two auth modes, inferred not declared.** A refresh token is one mailbox
+consented by its owner; a service account with domain-wide delegation can act
+as any mailbox in a Workspace domain. A service-account key and a refresh token
+look nothing alike, so making the user *also* declare which one they pasted
+just adds a field that can disagree with reality. Setting both is an error
+rather than a silent precedence rule.
+
+No `googleapis` dependency — tens of megabytes for three endpoints, and the
+token exchange is forty lines of `node:crypto`. A 400 from the token endpoint
+is not transient: that is a revoked refresh token, and retrying makes it worse.
+A 401 from the API *is* worth exactly one retry with a fresh token, because
+tokens can be revoked mid-session.
 
 ## JSON
 

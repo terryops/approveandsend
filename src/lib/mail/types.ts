@@ -77,11 +77,19 @@ export interface OutgoingMail {
   inReplyTo?: string;
   references?: string[];
   attachments?: OutgoingAttachment[];
+  /**
+   * Server-side thread to file the reply under. Ignored by backends without
+   * threads — those rely on In-Reply-To/References alone, which Gmail honours
+   * for other clients but not reliably for its own conversation grouping.
+   */
+  threadId?: string;
 }
 
 export interface SendResult {
   /** Message-ID of what we sent, so the reply can be threaded later. */
   messageId: string;
+  /** Present when the backend has server-side threads. */
+  threadId?: string;
 }
 
 export interface ListOptions {

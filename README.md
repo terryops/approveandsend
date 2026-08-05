@@ -66,6 +66,21 @@ switches to STARTTLS on its own. The Sent mailbox is discovered from the
 server's `\Sent` flag rather than guessing between "Sent", "Sent Items" and
 "[Gmail]/Sent Mail".
 
+Gmail and Google Workspace can go through the Gmail API instead, which gets you
+real threads and no app password:
+
+```bash
+MAIL_PROVIDER=gmail
+MAIL_USER=support@yourcompany.com
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+```
+
+For Workspace, a service account with domain-wide delegation works too — set
+`GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_IMPERSONATE_USER`
+instead. Which mode you get is inferred from the variables you set.
+
 ## Design notes worth knowing
 
 Three things in here were learned the expensive way:

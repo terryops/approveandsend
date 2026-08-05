@@ -1,4 +1,6 @@
 import { parseAddress } from './address';
+import { normalizePrivateKey, type GoogleAuthConfig } from './providers/google/auth';
+import { GmailProvider, type GmailConfig } from './providers/google/gmail';
 import { ImapSmtpProvider, type ImapSmtpConfig } from './providers/imap-smtp';
 import type { MailProvider } from './types';
 
@@ -73,6 +75,62 @@ export function loadImapSmtpConfig(): ImapSmtpConfig {
   };
 }
 
+/**
+ * Gmail / Google Workspace.
+ *
+ * Which auth mode you get is decided by which variables are present, not by a
+ * mode switch: a service-account key and a refresh token look nothing alike,
+ * so asking the user to also declare which one they pasted is a needless step
+ * that can disagree with reality.
+ */
+export function loadGmailConfig(): GmailConfig {
+  const serviceAccountKey = env('GOOGLE_PRIVATE_KEY');
+  const refreshToken = env('GOOGLE_REFRESH_TOKEN');
+
+  if (serviceAccountKey && refreshToken) {
+    throw new Error(
+      'Set either GOOGLE_REFRESH_TOKEN or GOOGLE_PRIVATE_KEY, not both — ' +
+        'they are two different ways in and only one can be used.',
+    );
+  }
+
+  let auth: GoogleAuthConfig;
+  let mailbox: string;
+
+  if (serviceAccountKey) {
+    // Domain-wide delegation. The service account has no mailbox of its own,
+    // so it must be told whose mail to act on.
+    mailbox = required('GOOGLE_IMPERSONATE_USER');
+    auth = {
+      kind: 'service-account',
+      clientEmail: required('GOOGLE_CLIENT_EMAIL'),
+      privateKey: normalizePrivateKey(serviceAccountKey),
+      impersonate: mailbox,
+    };
+  } else if (refreshToken) {
+    mailbox = required('MAIL_USER');
+    auth = {
+      kind: 'refresh-token',
+      clientId: required('GOOGLE_CLIENT_ID'),
+      clientSecret: required('GOOGLE_CLIENT_SECRET'),
+      refreshToken,
+    };
+  } else {
+    throw new Error(
+      'MAIL_PROVIDER=gmail needs either GOOGLE_REFRESH_TOKEN (one mailbox) ' +
+        'or GOOGLE_PRIVATE_KEY (Workspace domain-wide delegation). See .env.example.',
+    );
+  }
+
+  const fromRaw = env('MAIL_FROM') ?? mailbox;
+  const from = parseAddress(fromRaw);
+  if (!from) {
+    throw new Error(`MAIL_FROM is not a usable address: ${JSON.stringify(fromRaw)}`);
+  }
+
+  return { auth, from };
+}
+
 export function buildMailProvider(): MailProvider {
   const kind = (env('MAIL_PROVIDER') ?? 'imap-smtp').toLowerCase();
 
@@ -80,7 +138,15 @@ export function buildMailProvider(): MailProvider {
     return new ImapSmtpProvider(loadImapSmtpConfig());
   }
 
-  throw new Error(`Unknown MAIL_PROVIDER ${JSON.stringify(kind)}. Supported: imap-smtp.`);
+  // "google-workspace" is the same API; the difference is only how you
+  // authenticate, and that is inferred from the credentials.
+  if (kind === 'gmail' || kind === 'google' || kind === 'google-workspace') {
+    return new GmailProvider(loadGmailConfig());
+  }
+
+  throw new Error(
+    `Unknown MAIL_PROVIDER ${JSON.stringify(kind)}. Supported: imap-smtp, gmail.`,
+  );
 }
 
 let cached: MailProvider | null = null;
