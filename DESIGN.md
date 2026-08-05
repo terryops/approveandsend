@@ -84,6 +84,37 @@ generation completed in 30s. Worst case across the whole database: 1237 KB →
 `clip()` keeps the **tail**, not the head. In quoted email the newest content
 is at the bottom; truncating from the end throws away the part that matters.
 
+## Mail layer
+
+**IMAP + SMTP first, not a hosted API.** It works with every mailbox, including
+the self-hosted ones that the people most interested in self-hosting this
+already run. Gmail/Zoho/Outlook APIs are nicer to consume but each is a
+separate OAuth setup, and shipping one of them first would bias the interface
+toward whatever that one happens to do.
+
+**The interface is shaped by what IMAP lacks, not by what an API provides.**
+Hosted APIs hand you a `threadId`; IMAP does not. So `threadId` is optional,
+every message carries `messageIdHeader` / `inReplyTo` / `references`, and
+`threading.ts` rebuilds conversations from those when the server won't.
+
+**The subject fallback is the dangerous part.** Matching on subject alone
+merges two customers who both wrote "Invoice" into one thread — and one
+customer's mail then ends up in a prompt about the other. Two guards: the
+messages must share a participant, and a server-side `threadId` always wins
+over a subject guess. The second guard was added after a test caught months of
+separate tickets with one recurring subject collapsing into a single thread.
+
+**IDs encode UIDVALIDITY.** An IMAP UID is unique only within a mailbox, and
+the server may renumber a mailbox at any time. `mailbox:uidvalidity:uid` means
+a stale id throws "re-sync required" instead of quietly fetching a different
+customer's email.
+
+**SMTP does not file a copy in Sent** — that has always been the client's job.
+Without the explicit `APPEND`, our own replies never appear in threads and the
+model happily re-answers questions we already answered. A failed append is
+logged rather than thrown: the mail is already delivered at that point, and
+raising would invite a duplicate send.
+
 ## JSON
 
 Models fence their output in markdown and forget to escape quotes inside string

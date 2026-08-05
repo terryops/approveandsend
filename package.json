@@ -19,15 +19,22 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
+    "imapflow": "^1.6.5",
+    "mailparser": "^3.9.14",
     "next": "^16.1.6",
+    "nodemailer": "^9.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/smtp-server": "^3.5.13",
+    "smtp-server": "^3.19.2",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

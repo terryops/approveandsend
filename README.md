@@ -12,9 +12,9 @@ The instance this was extracted from has processed **929 emails**, of which
 active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
-> Status: v0.1 in progress. The AI layer, thread trimming and JSON recovery are
-> done and tested. The mail layer, the review UI and the rules engine are being
-> ported from the private original. Not yet usable end to end.
+> Status: v0.1 in progress. The AI layer, the mail layer, thread trimming and
+> JSON recovery are done and tested. The review UI and the rules engine are
+> still being ported from the private original. Not yet usable end to end.
 
 ## Why it exists
 
@@ -49,6 +49,22 @@ AI_MODEL_DRAFTER=claude-sonnet-5
 ```
 
 See [`.env.example`](.env.example) for every variable the code actually reads.
+
+## Bring your own mailbox
+
+IMAP and SMTP, so any mailbox works — Gmail, Zoho, Fastmail, your own Dovecot:
+
+```bash
+MAIL_USER=support@yourcompany.com
+MAIL_PASSWORD=an-app-password
+IMAP_HOST=imap.yourcompany.com
+SMTP_HOST=smtp.yourcompany.com
+```
+
+Ports default to 993/465 with implicit TLS, and setting `SMTP_PORT=587`
+switches to STARTTLS on its own. The Sent mailbox is discovered from the
+server's `\Sent` flag rather than guessing between "Sent", "Sent Items" and
+"[Gmail]/Sent Mail".
 
 ## Design notes worth knowing
 
