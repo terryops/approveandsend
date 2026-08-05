@@ -236,6 +236,52 @@ transaction. The original ran `ALTER TABLE … ADD COLUMN` inside a try/catch on
 every request and swallowed the error, which works until a change needs a
 backfill or an ordering.
 
+## The job queue
+
+Learning is two or three LLM calls, which on a self-hosted model is a minute.
+Nobody should watch a spinner after clicking Send — the mail has already gone,
+and whether we learn from it is not the reviewer's problem. So approval
+enqueues, and a worker does the rest.
+
+The whole queue is one SQLite table. Adding Redis to run a handful of
+background jobs would be the largest operational cost in the project, and this
+is software people are expected to self-host. Everything below exists so that
+one file is enough.
+
+**Claiming is one statement.** `UPDATE … WHERE id = (SELECT … LIMIT 1)
+RETURNING *`. The original selected a job and then claimed it separately; that
+is safe, because the second query re-checks the status, but the worker that
+loses the race gets nothing back and concludes the queue is empty while work is
+sitting in it.
+
+**A claim is a lease, not a flag.** If a worker dies mid-job the lease expires
+and the job is claimable again, with no sweeper anyone has to remember to run.
+
+**`attempts` increments at claim time, not on failure.** This is the bug worth
+naming: the original reset stuck jobs to pending *without* touching the
+counter, so a job that reliably hung the worker was an infinite loop with an
+LLM call inside it. Charging the attempt up front means a job that never
+reports back still runs out of attempts.
+
+**Failures are classified, not counted.** A handler throwing `PermanentJobError`
+— a malformed payload, an unregistered job type — fails immediately. Retrying a
+payload with a missing field burns three LLM calls to reach the same verdict.
+
+**Dedupe is a unique index, not a check-then-insert**, which two workers can
+both pass. The key for learning is the task id plus a hash of the sent text: a
+double-clicked Approve learns once, while a reviewer who revises and sends
+again has produced a genuinely different lesson.
+
+**The payload is frozen at enqueue time.** The original stored a task id and
+re-read the row when the job ran, so a job's meaning depended on how long the
+queue was — a learning job running after a second edit compared the wrong pair
+of drafts.
+
+**Handlers are registered, not switched on.** The original had one 700-line
+route with a `switch` over six job types, half of them specific to one
+company's internal tooling. A registry is what makes the rest of it publishable
+at all.
+
 ## JSON
 
 Models fence their output in markdown and forget to escape quotes inside string

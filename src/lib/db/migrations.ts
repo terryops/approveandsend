@@ -67,6 +67,52 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: 'jobs',
+    up: db => {
+      db.exec(`
+        CREATE TABLE jobs (
+          id          TEXT PRIMARY KEY,
+          type        TEXT NOT NULL,
+          -- The job's arguments, frozen at enqueue time. The predecessor
+          -- stored only a task id and re-read the row when the job ran, so a
+          -- job's meaning changed depending on how long the queue was — a
+          -- learning job that ran after a second edit learned from the wrong
+          -- pair of drafts.
+          payload     TEXT NOT NULL DEFAULT '{}',
+          -- Optional. While a job with this key is unfinished, enqueuing the
+          -- same key is a no-op, so a double-clicked Approve learns once.
+          dedupe_key  TEXT,
+          status      TEXT NOT NULL DEFAULT 'pending',
+          priority    INTEGER NOT NULL DEFAULT 5,
+          attempts    INTEGER NOT NULL DEFAULT 0,
+          max_attempts INTEGER NOT NULL DEFAULT 3,
+          -- Both the scheduled start and the retry backoff. One column,
+          -- because "not before" is the same question in both cases.
+          run_after   TEXT NOT NULL,
+          -- A claim is a lease, not a flag. If the worker dies mid-job the
+          -- lease expires and the job is claimable again, with no separate
+          -- sweeper to remember to run.
+          lease_expires_at TEXT,
+          result      TEXT,
+          error       TEXT,
+          created_at  TEXT NOT NULL,
+          started_at  TEXT,
+          finished_at TEXT
+        );
+
+        CREATE INDEX idx_jobs_claim ON jobs(status, priority, run_after);
+        CREATE INDEX idx_jobs_type ON jobs(type, status);
+
+        -- Enforced by the database rather than by a check-then-insert, which
+        -- two workers can both pass.
+        CREATE UNIQUE INDEX idx_jobs_dedupe ON jobs(dedupe_key)
+          WHERE dedupe_key IS NOT NULL
+            AND (status = 'pending' OR status = 'processing');
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

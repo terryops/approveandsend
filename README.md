@@ -12,9 +12,9 @@ The instance this was extracted from has processed **929 emails**, of which
 active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
-> Status: v0.1 in progress. The AI layer, the mail layer, the rules engine and
-> the learning loop are done and tested. The review UI and the job queue that
-> wires them together are still being ported. Not yet usable end to end.
+> Status: v0.1 in progress. The AI layer, the mail layer, the rules engine, the
+> learning loop and the job queue are done and tested. The review UI is still
+> being ported, so it is not yet usable end to end.
 
 ## Why it exists
 
@@ -101,6 +101,10 @@ to a rule's text keeps the previous version.
 
 Approving a draft unchanged usually teaches nothing, and the extractor is told
 so. The rulebook is meant to stay small enough to read.
+
+Extraction runs in the background — clicking Send never waits on a model — on a
+job queue that is one SQLite table, because "self-hosted" should not mean
+"also run Redis".
 
 ## Design notes worth knowing
 
