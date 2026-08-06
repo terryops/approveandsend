@@ -29,6 +29,8 @@ class FakeMailbox implements MailProvider {
   readonly label = 'Fake';
 
   sent: OutgoingMail[] = [];
+  /** What a test wants the Sent folder to already contain. */
+  sentFolder: MailMessage[] = [];
   detailFetches: string[] = [];
   marked: string[] = [];
   failNextSend: string | null = null;
@@ -41,7 +43,7 @@ class FakeMailbox implements MailProvider {
   }
 
   async listSent(): Promise<MailMessage[]> {
-    return [];
+    return this.sentFolder;
   }
 
   async getMessage(id: string): Promise<MailMessageDetail> {
@@ -130,6 +132,95 @@ describe('syncInbox', () => {
     // Enrichment, not drafting: looking the sender up comes first, and that
     // job is what enqueues the draft.
     expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(2);
+  });
+
+  it('does not queue a draft for mail somebody already answered', async () => {
+    const asked = message('q', {
+      threadId: 'T1',
+      receivedAt: '2026-08-01T09:00:00.000Z',
+    });
+    const provider = new FakeMailbox([asked]);
+    provider.sentFolder = [
+      message('r', {
+        threadId: 'T1',
+        from: { address: 'support@acme.test' },
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      }),
+    ];
+
+    const result = await syncInbox({ provider, db });
+
+    expect(result).toMatchObject({ scanned: 1, created: 0, answered: 1 });
+    // Not a dismissed row either: the point is that nobody has to look at it.
+    expect(db.prepare('SELECT COUNT(*) AS n FROM tasks').get()).toEqual({ n: 0 });
+    expect(provider.detailFetches).toEqual([]);
+  });
+
+  it('still drafts when the customer wrote back after our reply', async () => {
+    // The case that makes "has this thread been replied to?" the wrong
+    // question. There is a reply in this conversation; it does not answer the
+    // message that arrived after it.
+    const provider = new FakeMailbox([
+      message('followup', { threadId: 'T1', receivedAt: '2026-08-02T09:00:00.000Z' }),
+    ]);
+    provider.sentFolder = [
+      message('r', {
+        threadId: 'T1',
+        from: { address: 'support@acme.test' },
+        receivedAt: '2026-08-01T10:00:00.000Z',
+      }),
+    ];
+
+    const result = await syncInbox({ provider, db });
+
+    expect(result).toMatchObject({ created: 1, answered: 0 });
+  });
+
+  it('keeps a second question with a reused subject apart from the first', async () => {
+    // Same subject, same customer, different Zoho thread. Merging them would
+    // read the reply to Monday's ticket as an answer to Tuesday's.
+    const provider = new FakeMailbox([
+      message('tue', { threadId: 'T2', subject: 'Help', receivedAt: '2026-08-02T09:00:00.000Z' }),
+    ]);
+    provider.sentFolder = [
+      message('mon-reply', {
+        threadId: 'T1',
+        subject: 'Re: Help',
+        from: { address: 'support@acme.test' },
+        to: [{ address: 'tue@example.com' }],
+        receivedAt: '2026-08-03T10:00:00.000Z',
+      }),
+    ];
+
+    const result = await syncInbox({ provider, db });
+
+    expect(result).toMatchObject({ created: 1, answered: 0 });
+  });
+
+  it('drafts answered mail anyway when asked to', async () => {
+    const provider = new FakeMailbox([
+      message('q', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' }),
+    ]);
+    provider.sentFolder = [
+      message('r', { threadId: 'T1', receivedAt: '2026-08-01T10:00:00.000Z' }),
+    ];
+
+    const result = await syncInbox({ provider, db, skipAnswered: false });
+
+    expect(result).toMatchObject({ created: 1, answered: 0 });
+  });
+
+  it('drafts everything when the mailbox will not list sent mail', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    provider.listSent = async () => {
+      throw new Error('no sent folder here');
+    };
+
+    const result = await syncInbox({ provider, db });
+
+    // A nuisance beats an outage: some already-handled mail in the queue is
+    // recoverable, a sync that returns nothing is not.
+    expect(result).toMatchObject({ created: 1, answered: 0, failures: [] });
   });
 
   it('records the rest of the conversation, and which side said what', async () => {

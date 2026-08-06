@@ -6,6 +6,7 @@ import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { addMessage } from '../tasks/messages';
 import { createTask, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
+import { answeredMessageIds } from './answered';
 
 /**
  * Pulling the inbox into tasks.
@@ -37,6 +38,13 @@ export interface SyncOptions {
   thread?: boolean;
   /** Our own address, for deciding which messages in a thread are ours. */
   self?: string;
+  /**
+   * Off to draft a reply to mail that has already been answered.
+   *
+   * On by default. Leaving it off on an established mailbox means the first
+   * sync queues a draft for every message a human already dealt with.
+   */
+  skipAnswered?: boolean;
 }
 
 export interface SyncResult {
@@ -44,6 +52,12 @@ export interface SyncResult {
   created: number;
   /** Already had a task. The normal case on every sync after the first. */
   skipped: number;
+  /**
+   * Somebody had already replied, so no task was made. Reported rather than
+   * folded into `skipped`: on a first sync this number is most of the mailbox,
+   * and "we ignored 300 emails" needs to be visible instead of inferred.
+   */
+  answered: number;
   /** Message ids we could not turn into a task, with the reason. */
   failures: { messageId: string; error: string }[];
 }
@@ -150,17 +164,49 @@ export async function syncInbox(options: SyncOptions = {}): Promise<SyncResult> 
   const thread = options.thread !== false;
   const self = options.self?.toLowerCase() ?? mailboxAddress();
 
+  const limit = options.limit ?? 50;
   const messages = await provider.listInbox({
-    limit: options.limit ?? 50,
+    limit,
     ...(options.since ? { since: options.since } : {}),
   });
 
-  const result: SyncResult = { scanned: messages.length, created: 0, skipped: 0, failures: [] };
+  // One list for the whole run, not one per message. Deliberately not bounded
+  // by `since`: the reply that answers the oldest mail in this window was
+  // itself sent after it, but a reply to a mail from just before the window
+  // can be older than every message we are looking at.
+  let sent: MailMessage[] = [];
+  if (options.skipAnswered !== false && messages.length > 0) {
+    try {
+      sent = await provider.listSent({ limit: Math.max(limit, 100) });
+    } catch (error) {
+      // A mailbox that will not list sent mail costs us the filter, not the
+      // sync. The reviewer sees some already-handled mail, which is a nuisance;
+      // failing here would mean no mail at all, which is an outage.
+      console.warn('[ingest] could not list sent mail; drafting everything:', error);
+    }
+  }
+  const answered = answeredMessageIds(messages, sent);
+
+  const result: SyncResult = {
+    scanned: messages.length,
+    created: 0,
+    skipped: 0,
+    answered: 0,
+    failures: [],
+  };
 
   // Sequential on purpose. Concurrency here buys nothing — the provider is the
   // bottleneck and IMAP connections are single-flight anyway — and it would
   // turn one bad message into a burst of retries.
   for (const message of messages) {
+    // Checked before `createTask`, so an answered mail leaves no row at all.
+    // A dismissed task would say the same thing and would also have to be
+    // scrolled past, once per message, by everyone who ever opens the inbox.
+    if (answered.has(message.id)) {
+      result.answered += 1;
+      continue;
+    }
+
     try {
       if ((await ingest(message, provider, db, draft, thread, self)) === 'created') result.created += 1;
       else result.skipped += 1;
