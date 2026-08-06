@@ -39,6 +39,14 @@ export interface DeclarativeField {
    */
   map?: Record<string, string>;
   /**
+   * Put in front of the mapped value. `Lv.`, `$`, `¥`.
+   *
+   * `map` covers a small closed set of codes, but a plan level or a balance is
+   * a number with a unit in front of it, and enumerating every level you might
+   * ever have is not a mapping — it is the absence of a prefix.
+   */
+  prefix?: string;
+  /**
    * Appended to the mapped value. "credits", "days left".
    *
    * A suffix that starts with punctuation is joined without a space, because
@@ -249,13 +257,25 @@ async function runCommand(spec: DeclarativeSpec, subject: LookupSubject): Promis
   return JSON.parse(stdout.slice(start, end + 1));
 }
 
+/**
+ * Units around a value, spaced the way a person would write them.
+ *
+ * The rule is the same at both ends: a word gets a space, punctuation does
+ * not. `95%` and `$40` and `Lv.2`, but `40 credits` and `Plan Pro`.
+ */
+function decorate(field: DeclarativeField, value: string): string {
+  const before = field.prefix ? `${field.prefix}${/[A-Za-z0-9]$/.test(field.prefix) ? ' ' : ''}` : '';
+  const after = field.suffix ? `${/^[A-Za-z0-9]/.test(field.suffix) ? ' ' : ''}${field.suffix}` : '';
+  return `${before}${value}${after}`;
+}
+
 function buildFields(spec: DeclarativeSpec, data: unknown, subject: LookupSubject): ContextField[] {
   return (spec.fields ?? []).flatMap((field): ContextField[] => {
     const raw = scalar(readPath(data, field.path));
     if (raw === null) return [];
 
     const mapped = field.map?.[raw] ?? raw;
-    const value = field.suffix ? `${mapped}${/^[A-Za-z0-9]/.test(field.suffix) ? ' ' : ''}${field.suffix}` : mapped;
+    const value = decorate(field, mapped);
     const href = field.href ? fill(field.href, data, subject) : null;
 
     return [{ label: field.label, value, ...(href?.complete && href.text ? { href: href.text } : {}) }];

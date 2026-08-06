@@ -203,6 +203,28 @@ describe('a lookup declared against an HTTP endpoint', () => {
     ]);
   });
 
+  it('puts the unit in front where that is where the unit goes', async () => {
+    // The alternative is a `map` enumerating every level the product will ever
+    // have, which is not a mapping — it is the absence of a prefix.
+    respond = () => ({ status: 200, body: { level: 2, balance: 40, plan: 'Pro' } });
+
+    const block = await buildDeclarativeSource(
+      spec({
+        fields: [
+          { label: 'Level', path: 'level', prefix: 'Lv.' },
+          { label: 'Balance', path: 'balance', prefix: '$' },
+          { label: 'On', path: 'plan', prefix: 'Plan' },
+        ],
+      }),
+    ).lookup(SUBJECT);
+
+    expect(block!.fields).toEqual([
+      { label: 'Level', value: 'Lv.2' },
+      { label: 'Balance', value: '$40' },
+      { label: 'On', value: 'Plan Pro' },
+    ]);
+  });
+
   it('drops a sentence whose facts are missing instead of leaving a hole in it', async () => {
     respond = () => ({ status: 200, body: { plan: 'pro' } });
 
@@ -331,6 +353,32 @@ describe('a lookup declared against a command', () => {
 
     expect(block!.fields[0]!.value).toBe(`a@b.c"; touch ${marker}; echo "`);
     expect(() => rmSync(marker)).toThrow();
+  });
+
+  it('reads pretty-printed JSON with objects nested inside it', async () => {
+    // The scripts worth pointing at print `JSON.stringify(stats, null, 2)`.
+    // The system this replaced scanned for the first line that was exactly
+    // `}`, which is the close of the first nested object, so a stats blob with
+    // a languages map in it was truncated into a parse error.
+    const path = script(
+      'stats.js',
+      `console.log(JSON.stringify({ totalFiles: 12, languages: { en: 9, ja: 3 }, successRate: 95 }, null, 2));`,
+    );
+
+    const block = await buildDeclarativeSource({
+      id: 'usage',
+      label: 'Usage',
+      command: ['node', path, '{email}', '--json'],
+      title: 'Usage',
+      requires: 'totalFiles',
+      fields: [{ label: 'Success rate', path: 'successRate', suffix: '%' }],
+      prompt: 'They have run {totalFiles} files, mostly in {languages.en}.',
+    }).lookup(SUBJECT);
+
+    expect(block).toMatchObject({
+      fields: [{ label: 'Success rate', value: '95%' }],
+      prompt: 'They have run 12 files, mostly in 9.',
+    });
   });
 
   it('says nothing when the command prints no JSON', async () => {

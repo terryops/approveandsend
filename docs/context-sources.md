@@ -108,6 +108,10 @@ A few of those keys are load-bearing:
   error; see the next two points.
 - **`map`** is how a declared source obeys the second rule. `level: 2` becomes
   `Unlimited` on the card, so nobody — human or model — has to know the code.
+- **`prefix`** and **`suffix`** put the unit where a person would write it, and
+  both space themselves the same way: a word gets a space, punctuation does
+  not. `Lv.2`, `$40`, `95%`, but `40 credits`. Reach for `prefix` rather than a
+  `map` enumerating every plan level you might ever have.
 - **`prompt`** is a list of sentences, and **a sentence with a missing value is
   dropped whole**. That is why there is no `if` in this format: the sentence
   about expiring credits simply is not there for someone who has none, and you
@@ -153,6 +157,84 @@ The command is **argv, never a shell string**. The system this was extracted
 from built it by concatenation — `execSync('node lookup.js "' + email + '"')` —
 so an address containing a quote ran whatever came after it. An array of
 arguments cannot do that and costs nothing.
+
+Pretty-printed output is fine, including objects nested inside it. The first
+`{` to the last `}` is what gets parsed, so a script that prints a banner, or a
+stats blob with a map in the middle of it, needs no cooperation.
+
+### The two lookups this replaced
+
+Worth reading as a pair, because they are the whole argument for this format.
+Both were job handlers in the system this came from — a hundred lines of
+`execSync`, JSON hunting, and a bespoke card component each. Neither needed to
+be code.
+
+An admin-panel scraper that answers with an account:
+
+```json
+{
+  "id": "product",
+  "label": "Product account",
+  "command": ["node", "/srv/lookups/account.js", "{email}"],
+  "requires": "found",
+
+  "title": "Product account",
+  "fields": [
+    { "label": "Plan", "path": "plan" },
+    { "label": "Level", "path": "level", "prefix": "Lv." },
+    { "label": "AppSumo", "path": "isAppSumo" },
+    { "label": "Credits", "path": "credits" },
+    { "label": "Files", "path": "totalFiles" },
+    { "label": "Joined", "path": "createdAt" }
+  ],
+  "prompt": [
+    "They are on the {plan} plan with {credits} credits and have run {totalFiles} files since {createdAt}.",
+    "{?isAppSumo}They came in on a lifetime deal, so never quote them a renewal price.",
+    "Their credits start expiring {creditNextExpiry}."
+  ]
+}
+```
+
+Three things in there are doing real work. `requires: "found"` is what stops an
+unknown address producing a card of dashes. `{?isAppSumo}` is a sentence that
+exists only for the people it is true of, and the `AppSumo` row disappears for
+everyone else rather than reading `no`. And the last sentence is absent for an
+account with nothing expiring, which is the reason there is no `if` in this
+format.
+
+And a usage scraper, which is the same shape with none of the credentials:
+
+```json
+{
+  "id": "usage",
+  "label": "Usage",
+  "command": ["node", "/srv/lookups/usage.js", "{email}", "--json"],
+  "requires": "lastUsedAt",
+  "timeoutMs": 60000,
+
+  "title": "Usage",
+  "fields": [
+    { "label": "Transcribed", "path": "transcription" },
+    { "label": "Translated", "path": "translation" },
+    { "label": "Minutes", "path": "totalMinutes" },
+    { "label": "Success rate", "path": "successRate", "suffix": "%" },
+    { "label": "Last used", "path": "lastUsedAt" }
+  ],
+  "prompt": [
+    "They have processed {totalFiles} files ({totalMinutes} minutes), most recently {lastUsedAt}, mostly in {primaryLanguage}.",
+    "Their success rate is {successRate}% — anything much below 100 means they have hit real failures."
+  ]
+}
+```
+
+It requires `lastUsedAt` rather than `totalFiles`, and that is the only subtle
+line in either spec: a zero is a fact, so `totalFiles: 0` passes `requires` and
+produces a card of zeros for somebody who has never used the product. The date
+they last did something is absent for exactly those people.
+
+A slow scraper gets `timeoutMs` and nothing else. It is one of several lookups
+running in parallel, it cannot delay a mail past its own timeout, and if it
+gives up it is a red row on the queue page rather than a failed draft.
 
 ## Writing your own
 
