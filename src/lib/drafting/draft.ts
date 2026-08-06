@@ -14,6 +14,7 @@ import { extractJson } from '../json-repair';
 import { selectRules } from '../rules/prompt';
 import { formatRetrieved, retrieveRules } from '../rules/retrieve';
 import { listRules, recordApplied } from '../rules/store';
+import { attachmentSummary, listAttachments } from '../tasks/attachments';
 import { threadContextFor } from '../tasks/messages';
 import type { Analysis, Task } from '../tasks/types';
 import { isSentiment } from '../tasks/types';
@@ -81,6 +82,14 @@ export interface DraftOptions {
    * themselves, and the second one is the product not working.
    */
   steer?: string;
+  /**
+   * Override the attached filenames. '' says they attached nothing.
+   *
+   * Set by the backfill, which learns rules from archived replies: the files
+   * those customers sent are long gone from the mailbox, and listing today's
+   * would be inventing them.
+   */
+  files?: string;
   db?: Db;
 }
 
@@ -116,6 +125,26 @@ note honoured:
 ${clip(trimmed, 2000)}`;
 }
 
+/**
+ * What they attached, named.
+ *
+ * The drafter cannot open any of it, and is told so — a model given a filename
+ * and no warning will happily summarise a log it has never read. It is told at
+ * all because asking a customer for the screenshot they attached is the single
+ * most irritating reply a support desk can send, and it is what happens by
+ * default when the model has no idea the file is there.
+ */
+function buildFiles(names: string): string {
+  if (!names) return '';
+  return `
+
+## What they attached
+${names}
+
+You cannot open these and have not read them. Do not describe or quote their
+contents, and do not ask for a file that is already in this list.`;
+}
+
 function buildPrompt(
   task: Task,
   workspace: WorkspaceConfig,
@@ -127,6 +156,8 @@ function buildPrompt(
   threadBlock: string,
   /** What the reviewer asked for on the retry; '' on a first generation. */
   steerBlock: string,
+  /** Filenames the customer attached; '' when they attached nothing. */
+  filesBlock: string,
 ): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
@@ -148,7 +179,7 @@ function buildPrompt(
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
 Subject: ${task.subject}
 
-${body}
+${body}${filesBlock}
 
 ## What to return
 JSON only, no prose around it:
@@ -263,8 +294,15 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   // instruction, and a payload would have lost it on the first retry.
   const steerBlock = buildSteer(options.steer ?? task.reviewerNotes ?? '');
 
+  // Names only, and only of the files a person meant to send — see
+  // `attachmentSummary`.
+  const filesBlock = buildFiles(options.files ?? attachmentSummary(listAttachments(task.id, db)));
+
   const raw = await callAI(
-    buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined, threadBlock, steerBlock),
+    buildPrompt(
+      task, workspace, rulesBlock, contextBlock, topic || undefined,
+      threadBlock, steerBlock, filesBlock,
+    ),
     { role: 'drafter' },
   );
   const parsed = parseDraft(raw, workspace, topic || undefined);
@@ -290,7 +328,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
 
   if (options.critic) {
     const critique = await criticise(
-      task, signed, workspace, rulesBlock, contextBlock, threadBlock, steerBlock,
+      task, signed, workspace, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
     );
     if (critique) {
       result.critique = critique;
@@ -329,6 +367,9 @@ async function criticise(
   // "Did it do what it was asked?" is the whole point of a redraft, and it is
   // a question only something holding both the note and the new draft can ask.
   steerBlock: string,
+  // Given for one check only: whether the reply asks for something the customer
+  // already sent.
+  filesBlock: string,
 ): Promise<Critique | undefined> {
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
@@ -337,14 +378,14 @@ ${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}${steer
 ## The customer's ${threadBlock ? 'latest message' : 'email'}
 Subject: ${task.subject}
 
-${clip(htmlToText(task.body), MAX_BODY_CHARS)}
+${clip(htmlToText(task.body), MAX_BODY_CHARS)}${filesBlock}
 
 ## The proposed reply
 ${draft}
 
 Check it for: claims that are not supported by the facts above, anything on the
 never-promise list, breaches of the rules, the wrong language, tone that does
-not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}. Ignore matters of taste — a reply you would have phrased
+not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}${filesBlock ? ', and whether it asks for a file they already attached' : ''}. Ignore matters of taste — a reply you would have phrased
 differently is not a problem.
 
 JSON only:

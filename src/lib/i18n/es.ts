@@ -54,6 +54,8 @@ export const es: Dictionary = {
   "task.status.dismissed": "descartado",
   "task.status.failed": "fallido",
   "task.emptyBody": "(cuerpo vacío)",
+  "task.attachments": "Adjuntos",
+  "task.unnamedAttachment": "(sin nombre)",
   "task.conversation": "Antes en esta conversación ({n})",
   "task.threadCustomer": "Cliente",
   "task.threadUs": "Nosotros",

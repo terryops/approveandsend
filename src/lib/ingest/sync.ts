@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { mailboxAddress, mailProvider } from '../mail/config';
 import type { MailMessage, MailMessageDetail, MailProvider } from '../mail/types';
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
+import { addAttachment } from '../tasks/attachments';
 import { addMessage } from '../tasks/messages';
 import { createTask, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
@@ -75,6 +76,38 @@ function detailBody(detail: MailMessageDetail): string {
 }
 
 /**
+ * Record what came attached to a message.
+ *
+ * Best-effort like the thread capture, and for the same reason: a customer
+ * whose reply is held up because we could not write down the name of their
+ * screenshot is worse off than one whose reviewer does not see it listed.
+ */
+function captureAttachments(
+  taskId: string,
+  detail: MailMessageDetail,
+  db: Db,
+): void {
+  for (const attachment of detail.attachments ?? []) {
+    try {
+      addAttachment(
+        taskId,
+        {
+          messageId: detail.id,
+          attachmentId: attachment.id,
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          size: attachment.size,
+          inline: attachment.inline,
+        },
+        db,
+      );
+    } catch (error) {
+      console.warn(`[ingest] could not record attachment ${attachment.id}:`, error);
+    }
+  }
+}
+
+/**
  * Record the rest of the conversation against the task.
  *
  * Best-effort on purpose. A thread fetch that fails should cost the drafter its
@@ -117,6 +150,8 @@ async function captureThread(
       },
       db,
     );
+
+    captureAttachments(taskId, item, db);
   }
 }
 
@@ -148,6 +183,7 @@ async function ingest(
 
   const detail = await provider.getMessage(message.id);
   updateTask(task.id, { body: bodyOf(detail) }, db);
+  captureAttachments(task.id, detail, db);
 
   // Before drafting is queued, not after: the drafting job reads the thread,
   // and a worker that claims the job first would build its prompt without one.

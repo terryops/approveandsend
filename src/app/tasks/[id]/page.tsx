@@ -4,6 +4,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
+import { listAttachments } from '@/lib/tasks/attachments';
 import { listMessages } from '@/lib/tasks/messages';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
@@ -41,6 +42,7 @@ export default async function TaskPage({
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
   const thread = listMessages(task.id);
+  const files = listAttachments(task.id).filter(file => !file.inline);
 
   // Only ever the translation of exactly what is rendered below it. A draft
   // regenerated since its translation was written shows none, because a
@@ -105,6 +107,22 @@ export default async function TaskPage({
             </summary>
             <pre className="email">{incoming.content}</pre>
           </details>
+        )}
+        {/* Inline images are left out for the same reason the drafter is not
+            told about them: a signature logo is not a file anyone sent. */}
+        {files.length > 0 && (
+          <p className="meta" style={{ marginTop: 12 }}>
+            {t('task.attachments')}:{' '}
+            {files.map((file, i) => (
+              <span key={file.id}>
+                {i > 0 ? ', ' : ''}
+                <a href={`/api/attachments/${task.id}/${file.id}`}>
+                  {file.filename || t('task.unnamedAttachment')}
+                </a>
+                {file.size > 0 ? ` (${Math.max(1, Math.round(file.size / 1024))} KB)` : ''}
+              </span>
+            ))}
+          </p>
         )}
       </div>
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../db';
 import type {
   DownloadedAttachment,
+  MailAttachmentRef,
   MailMessage,
   MailMessageDetail,
   MailProvider,
@@ -11,6 +12,7 @@ import type {
 } from '../mail/types';
 import { LEARN_FROM_SENT } from '../queue/handlers';
 import { listJobs } from '../queue/store';
+import { listAttachments } from '../tasks/attachments';
 import { listMessages } from '../tasks/messages';
 import { createTask, getTask, updateTask } from '../tasks/store';
 import { createOperator } from '../operators/store';
@@ -46,11 +48,14 @@ class FakeMailbox implements MailProvider {
     return this.sentFolder;
   }
 
+  /** What a test wants hanging off a message, keyed by message id. */
+  attachments = new Map<string, MailAttachmentRef[]>();
+
   async getMessage(id: string): Promise<MailMessageDetail> {
     this.detailFetches.push(id);
     const message = this.inbox.find(m => m.id === id);
     if (!message) throw new Error(`no such message: ${id}`);
-    return { ...message, text: `full body of ${id}`, attachments: [] };
+    return { ...message, text: `full body of ${id}`, attachments: this.attachments.get(id) ?? [] };
   }
 
   /** Whatever a test wants the thread to be, keyed by the message asked about. */
@@ -221,6 +226,49 @@ describe('syncInbox', () => {
     // A nuisance beats an outage: some already-handled mail in the queue is
     // recoverable, a sync that returns nothing is not.
     expect(result).toMatchObject({ created: 1, answered: 0, failures: [] });
+  });
+
+  it('writes down what the customer attached', async () => {
+    const provider = new FakeMailbox([message('a', { hasAttachments: true })]);
+    provider.attachments.set('a', [
+      { id: 'att-1', filename: 'export.log', contentType: 'text/plain', size: 4096, inline: false },
+      { id: 'att-2', filename: 'logo.png', contentType: 'image/png', size: 900, inline: true, contentId: 'cid:1' },
+    ]);
+
+    await syncInbox({ provider, db });
+
+    const task = db.prepare('SELECT id FROM tasks').get() as { id: string };
+    const files = listAttachments(task.id, db);
+
+    expect(files.map(f => [f.filename, f.inline])).toEqual([
+      ['export.log', false],
+      // The signature logo is stored but flagged, so the reviewer and the
+      // drafter can both leave it out of what "they attached something" means.
+      ['logo.png', true],
+    ]);
+    // The provider ids are kept: without them there is nothing to fetch with.
+    expect(files[0]).toMatchObject({ messageId: 'a', attachmentId: 'att-1', size: 4096 });
+  });
+
+  it('writes down what was attached earlier in the conversation too', async () => {
+    // The screenshot usually arrives with the *first* message, and the mail we
+    // are replying to is the third. A drafter told only about the last one asks
+    // for a file that is two messages up the thread.
+    const provider = new FakeMailbox([message('c')]);
+    provider.threads.set('c', [
+      {
+        ...message('c0', { receivedAt: '2026-07-30T09:00:00.000Z' }),
+        text: 'here is the file',
+        attachments: [
+          { id: 'att-0', filename: 'export.log', contentType: 'text/plain', size: 12, inline: false },
+        ],
+      },
+    ]);
+
+    await syncInbox({ provider, db });
+
+    const task = db.prepare('SELECT id FROM tasks').get() as { id: string };
+    expect(listAttachments(task.id, db).map(f => f.filename)).toEqual(['export.log']);
   });
 
   it('records the rest of the conversation, and which side said what', async () => {

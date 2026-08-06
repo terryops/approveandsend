@@ -456,6 +456,50 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 14,
+    name: 'task_attachments',
+    up: db => {
+      // What the customer sent with their email.
+      //
+      // Metadata only. The bytes stay in the mailbox and are fetched on demand
+      // when somebody clicks: a support desk's attachments are screen
+      // recordings and database dumps, and copying them into a SQLite file
+      // turns a database that fits in a backup into one that does not — while
+      // making this the second place a customer's data has to be deleted from.
+      //
+      // Recorded even though nothing here can open them, because the drafter
+      // needs to know they exist. A reply asking for the screenshot they just
+      // attached is the most annoying possible failure, and it happens every
+      // time otherwise.
+      db.exec(`
+        CREATE TABLE task_attachments (
+          id            TEXT PRIMARY KEY,
+          task_id       TEXT NOT NULL,
+          -- The provider message this hangs off. Needed to fetch the bytes:
+          -- attachment ids are only meaningful against their own message.
+          message_id    TEXT NOT NULL,
+          attachment_id TEXT NOT NULL,
+          filename      TEXT NOT NULL DEFAULT '',
+          content_type  TEXT NOT NULL DEFAULT 'application/octet-stream',
+          size          INTEGER NOT NULL DEFAULT 0,
+          -- 1 for images the HTML body references by cid:. Listed apart from
+          -- real attachments, because a signature logo is not a file anyone
+          -- meant to send.
+          inline        INTEGER NOT NULL DEFAULT 0,
+          created_at    TEXT NOT NULL,
+
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_task_attachments_task ON task_attachments(task_id);
+
+        -- Re-reading a message on a later sync must not double its files.
+        CREATE UNIQUE INDEX idx_task_attachments_provider
+          ON task_attachments(task_id, message_id, attachment_id);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

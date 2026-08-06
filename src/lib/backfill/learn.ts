@@ -170,6 +170,10 @@ export async function runBackfillItem(
     // ago, and a rule learned from a fact the writer never had is a rule
     // learned from fiction.
     context: '',
+    // And no attachments. The synthetic task has no row in the table; leaving
+    // this to the default would list whatever a real task with the same id
+    // happens to have.
+    files: '',
     db,
   });
 

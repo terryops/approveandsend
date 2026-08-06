@@ -54,6 +54,8 @@ export const zhCN: Dictionary = {
   "task.status.dismissed": "已忽略",
   "task.status.failed": "失败",
   "task.emptyBody": "（正文为空）",
+  "task.attachments": "附件",
+  "task.unnamedAttachment": "(未命名)",
   "task.conversation": "这次对话的早前消息（{n} 条）",
   "task.threadCustomer": "客户",
   "task.threadUs": "我们",

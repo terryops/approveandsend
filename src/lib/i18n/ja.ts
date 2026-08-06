@@ -54,6 +54,8 @@ export const ja: Dictionary = {
   "task.status.dismissed": "見送り",
   "task.status.failed": "失敗",
   "task.emptyBody": "（本文なし）",
+  "task.attachments": "添付ファイル",
+  "task.unnamedAttachment": "(名称なし)",
   "task.conversation": "このやり取りのこれまでの経緯（{n} 件）",
   "task.threadCustomer": "お客様",
   "task.threadUs": "当方",

@@ -72,6 +72,8 @@ export const en = {
   "task.status.dismissed": "dismissed",
   "task.status.failed": "failed",
   "task.emptyBody": "(empty body)",
+  "task.attachments": "Attachments",
+  "task.unnamedAttachment": "(unnamed)",
   "task.conversation": "Earlier in this conversation ({n})",
   "task.threadCustomer": "Customer",
   "task.threadUs": "Us",
