@@ -195,6 +195,34 @@ no prompt files to edit:
 load-bearing — it goes into every draft. `replyLanguage: "match"` answers in
 whatever language the customer wrote in.
 
+## Tell it who it's writing to
+
+"Have you tried logging out?" to someone whose subscription lapsed yesterday is
+worse than no reply at all, and the model cannot know that from the email. A
+**context source** is a read-only lookup that turns the sender's address into a
+few facts — a card above the draft, and a sentence in the prompt.
+
+Stripe is built in. Set `STRIPE_API_KEY` to a restricted read key and drafts
+start knowing who is paying you:
+
+```
+No active subscription — the most recent one is canceled, last period ended
+2026-01-14. Do not talk to them as a current subscriber.
+```
+
+Your own sources are plain ESM modules you point at by path:
+
+```json
+{ "contextSources": ["/srv/approveandsend/sources/crm.mjs"] }
+```
+
+Two rules hold everywhere: a source **cannot act** — there is no `refund()` and
+there will not be one — and a source writes its **own prose** rather than
+handing back a blob for the prompt to `JSON.stringify`. A source that breaks
+never stops the mail; drafting is queued even when every lookup failed. Full
+interface and worked example in
+[docs/context-sources.md](docs/context-sources.md).
+
 ## Deploying
 
 ```bash

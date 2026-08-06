@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 
 import { requirePage } from '@/lib/auth/guard';
+import { listContext } from '@/lib/context/store';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
 
@@ -32,6 +33,7 @@ export default async function TaskPage({
   const sent = task.status === 'sent';
   const body = task.finalReply ?? task.draft ?? '';
   const rulesInPlay = listRules({ enabledOnly: true }).length;
+  const context = listContext(task.id);
 
   return (
     <>
@@ -87,6 +89,41 @@ export default async function TaskPage({
           )}
         </div>
       )}
+
+      {/* Shown above the draft, not beside it: this is what the model was
+          told, and a reviewer deciding whether a reply is right needs to know
+          what it was working from before they read it. */}
+      {context.map((block) => (
+        <div className="card" key={block.sourceId}>
+          <div className="row">
+            <h2 className="grow" style={{ margin: 0 }}>
+              {block.title}
+            </h2>
+            {block.href && (
+              <a className="meta" href={block.href} target="_blank" rel="noreferrer">
+                Open ↗
+              </a>
+            )}
+          </div>
+          <dl className="facts">
+            {block.fields.map((field, i) => (
+              <div key={i}>
+                <dt>{field.label}</dt>
+                <dd>
+                  {field.href ? (
+                    <a href={field.href} target="_blank" rel="noreferrer">
+                      {field.value}
+                    </a>
+                  ) : (
+                    field.value
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {block.prompt && <p className="meta">{block.prompt}</p>}
+        </div>
+      ))}
 
       <form className="card stack" action={approveAndSend}>
         <h2>{sent ? 'What went out' : 'The reply'}</h2>

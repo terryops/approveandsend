@@ -162,6 +162,11 @@ export async function runBackfillItem(
   const shadow = await draftReply(task, {
     critic: options.critic !== false,
     recordUsage: false,
+    // No looked-up context. A subscription as it stands today says nothing
+    // true about the account as it stood when this reply was written two years
+    // ago, and a rule learned from a fact the writer never had is a rule
+    // learned from fiction.
+    context: '',
     db,
   });
 

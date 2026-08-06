@@ -15,7 +15,7 @@ import {
   createWorker,
   enqueueBackfillScan,
   enqueueConsolidateRules,
-  enqueueDraftReply,
+  enqueueForDrafting,
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
@@ -103,7 +103,10 @@ export async function redraftTask(form: FormData): Promise<void> {
     // Back to pending first, or the job's own guard would see a task that is
     // already awaiting review and the queue would dedupe the request away.
     updateTask(id, { status: 'pending', error: null });
-    enqueueDraftReply(id);
+    // Through the enrichment path, not straight to drafting. Someone clicking
+    // Redraft is often doing it because the reply was wrong about who this
+    // person is, which is the case a stale — or failed — lookup produces.
+    await enqueueForDrafting(id);
   }
   revalidatePath(`/tasks/${id}`);
   redirect(`/tasks/${id}?queued=1`);

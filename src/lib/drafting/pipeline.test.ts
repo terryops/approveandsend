@@ -158,6 +158,7 @@ describe('workspace config', () => {
       signature: '',
       replyLanguage: 'match',
       neverPromise: ['a refund date'],
+      contextSources: [],
     };
 
     const text = describeWorkspace(config);

@@ -40,6 +40,15 @@ export interface WorkspaceConfig {
   replyLanguage: string;
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
+  /**
+   * Paths to modules that look up who the sender is — billing, a CRM, an
+   * internal admin. Each default-exports a `ContextSource`.
+   *
+   * Paths rather than package names, because the useful ones are specific to
+   * one company and cannot be published: they hold a tenant id, an internal
+   * URL, a session cookie. Keep them next to the deployment, not in here.
+   */
+  contextSources: string[];
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceConfig = {
@@ -52,6 +61,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
   ],
+  contextSources: [],
 };
 
 let cached: WorkspaceConfig | null = null;
@@ -105,6 +115,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       asString(fromFile.replyLanguage) ??
       DEFAULT_WORKSPACE.replyLanguage,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
+    contextSources: asStringArray(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };
 }
 

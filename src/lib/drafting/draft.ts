@@ -1,5 +1,6 @@
 import { callAI } from '../ai';
 import { describeWorkspace, getWorkspaceConfig, type WorkspaceConfig } from '../config/workspace';
+import { contextForPrompt } from '../context/gather';
 import type { Db } from '../db';
 import { getDb } from '../db';
 import { extractJson } from '../json-repair';
@@ -45,6 +46,13 @@ export interface DraftOptions {
    */
   recordUsage?: boolean;
   workspace?: WorkspaceConfig;
+  /**
+   * Override the looked-up context block. The backfill passes an empty string:
+   * a Stripe subscription as it stands today says nothing true about what the
+   * customer's account looked like when the archived reply was written, and
+   * feeding it in would teach rules from a fact that was not available.
+   */
+  context?: string;
   db?: Db;
 }
 
@@ -56,10 +64,15 @@ export interface Critique {
   revised?: string;
 }
 
-function buildPrompt(task: Task, workspace: WorkspaceConfig, rulesBlock: string): string {
+function buildPrompt(
+  task: Task,
+  workspace: WorkspaceConfig,
+  rulesBlock: string,
+  contextBlock: string,
+): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
-  return `${describeWorkspace(workspace)}${rulesBlock}
+  return `${describeWorkspace(workspace)}${rulesBlock}${contextBlock}
 
 ## The customer's email
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -118,7 +131,11 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const rules = listRules({ enabledOnly: true }, db);
   const block = selectRules(rules, { ...(task.scope ? { scope: task.scope } : {}) });
 
-  const raw = await callAI(buildPrompt(task, workspace, block.text), { role: 'drafter' });
+  // Whatever the enrichment job found, if it ran. Empty when no sources are
+  // configured, which is the default and costs nothing.
+  const contextBlock = options.context ?? contextForPrompt(task.id, db);
+
+  const raw = await callAI(buildPrompt(task, workspace, block.text, contextBlock), { role: 'drafter' });
   const parsed = parseDraft(raw);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
@@ -138,7 +155,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   };
 
   if (options.critic) {
-    const critique = await criticise(task, signed, workspace, block.text);
+    const critique = await criticise(task, signed, workspace, block.text, contextBlock);
     if (critique) {
       result.critique = critique;
       if (critique.revised) result.draft = critique.revised;
@@ -164,10 +181,15 @@ async function criticise(
   draft: string,
   workspace: WorkspaceConfig,
   rulesBlock: string,
+  // The critic sees the looked-up context too, and needs it more than the
+  // drafter does: "claims not supported by the facts above" is how a reply
+  // that cheerfully tells a lapsed customer their subscription renews next
+  // month gets caught before a human has to notice it.
+  contextBlock: string,
 ): Promise<Critique | undefined> {
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
-${describeWorkspace(workspace)}${rulesBlock}
+${describeWorkspace(workspace)}${rulesBlock}${contextBlock}
 
 ## The customer's email
 Subject: ${task.subject}

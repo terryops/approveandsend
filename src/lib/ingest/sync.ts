@@ -2,7 +2,7 @@ import type { Db } from '../db';
 import { getDb } from '../db';
 import { mailProvider } from '../mail/config';
 import type { MailMessage, MailProvider } from '../mail/types';
-import { enqueueDraftReply } from '../queue/handlers/draft-reply';
+import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { createTask, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
 
@@ -70,7 +70,7 @@ async function ingest(
   const detail = await provider.getMessage(message.id);
   updateTask(task.id, { body: bodyOf(detail) }, db);
 
-  if (draft) enqueueDraftReply(task.id, { db });
+  if (draft) await enqueueForDrafting(task.id, { db });
   return 'created';
 }
 

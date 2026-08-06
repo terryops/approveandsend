@@ -316,3 +316,24 @@ table.plain th {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Looked-up facts about the sender. A definition list because that is what it
+   is, and because it wraps sensibly at any width without a media query. */
+dl.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 10px 0 0;
+}
+
+dl.facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+dl.facts dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+}

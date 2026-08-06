@@ -235,6 +235,31 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    name: 'task-context',
+    up: db => {
+      // One row per source per task, rather than a JSON column on `tasks`.
+      // Sources are looked up in parallel and each finishes when it finishes;
+      // a shared column would mean two writers racing over one blob, and the
+      // loser's lookup would vanish.
+      db.exec(`
+        CREATE TABLE task_context (
+          task_id   TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          label TEXT NOT NULL,
+          title TEXT NOT NULL,
+          href  TEXT,
+          fields TEXT NOT NULL DEFAULT '[]',
+          prompt TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+
+          PRIMARY KEY (task_id, source_id),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
