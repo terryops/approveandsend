@@ -108,6 +108,8 @@ export const en = {
   "queue.status.total": "total",
   "queue.runQueue": "Run queue",
   "queue.processed": "Processed {n} job(s).",
+  "queue.sweep": "Rescue stuck",
+  "queue.swept": "Rescued {n} stuck task(s).",
   "queue.empty": "Queue is empty.",
   "queue.colType": "Type",
   "queue.colStatus": "Status",

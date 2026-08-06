@@ -90,6 +90,8 @@ export const ja: Dictionary = {
   "queue.status.total": "合計",
   "queue.runQueue": "キューを実行",
   "queue.processed": "{n} 件のジョブを処理しました。",
+  "queue.sweep": "滞留を復旧",
+  "queue.swept": "滞留していたタスクを{n}件復旧しました。",
   "queue.empty": "キューは空です。",
   "queue.colType": "種類",
   "queue.colStatus": "状態",

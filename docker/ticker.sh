@@ -3,7 +3,7 @@
 #
 # Not cron. cron in a container means a second init system, a second log
 # destination and a crontab that has to be baked into an image to be edited.
-# This is a loop that wakes once a minute and posts to three endpoints on a
+# This is a loop that wakes once a minute and posts to four endpoints on a
 # schedule, which is all cron was being asked to do.
 #
 # On a host that already has cron, delete this service and point the host's
@@ -36,6 +36,7 @@ i=0
 while :; do
   [ $((i % 2)) -eq 0 ] && post /api/worker
   [ $((i % 5)) -eq 0 ] && post /api/sync
+  [ $((i % 60)) -eq 0 ] && post /api/sweep
   [ $((i % 10080)) -eq 0 ] && post /api/consolidate
   i=$((i + 1))
   sleep 60

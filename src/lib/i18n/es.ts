@@ -90,6 +90,8 @@ export const es: Dictionary = {
   "queue.status.total": "total",
   "queue.runQueue": "Ejecutar la cola",
   "queue.processed": "Se procesaron {n} trabajos.",
+  "queue.sweep": "Rescatar atascadas",
+  "queue.swept": "Se rescataron {n} tarea(s) atascada(s).",
   "queue.empty": "La cola está vacía.",
   "queue.colType": "Tipo",
   "queue.colStatus": "Estado",

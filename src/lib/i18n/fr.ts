@@ -90,6 +90,8 @@ export const fr: Dictionary = {
   "queue.status.total": "total",
   "queue.runQueue": "Exécuter la file",
   "queue.processed": "{n} tâche(s) traitée(s).",
+  "queue.sweep": "Récupérer les bloquées",
+  "queue.swept": "{n} tâche(s) bloquée(s) récupérée(s).",
   "queue.empty": "La file d'attente est vide.",
   "queue.colType": "Type",
   "queue.colStatus": "Statut",

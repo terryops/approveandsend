@@ -2,7 +2,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listJobs, queueStats, type QueueStats } from '@/lib/queue';
 
-import { runQueue } from '../actions';
+import { runQueue, sweepNow } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,10 +30,19 @@ export default async function QueuePage({
         <form action={runQueue}>
           <button type="submit">{t('queue.runQueue')}</button>
         </form>
+        {/* Deliberately not automatic on page load: it writes to tasks, and a
+            repair that runs because somebody opened a tab is a repair nobody
+            can say happened. */}
+        <form action={sweepNow} style={{ marginLeft: 8 }}>
+          <button type="submit">{t('queue.sweep')}</button>
+        </form>
       </div>
 
       {typeof query.ran === 'string' && (
         <p className="meta">{t('queue.processed', { n: query.ran })}</p>
+      )}
+      {typeof query.swept === 'string' && (
+        <p className="meta">{t('queue.swept', { n: query.swept })}</p>
       )}
       {typeof query.error === 'string' && <p className="banner">{query.error}</p>}
 

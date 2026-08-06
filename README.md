@@ -116,18 +116,21 @@ fictional emails and a rulebook, including one reply that was edited before
 sending and the two rules that edit taught. It refuses to touch a database that
 already has anything in it.
 
-Three endpoints drive it from cron:
+Four endpoints drive it from cron:
 
 ```cron
 */5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
 */2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
+17  * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sweep
 30 4 * * 1  curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
 ```
 
 `/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs,
 and `/api/consolidate` is the weekly tidy — it merges rules that have drifted
-into saying the same thing. All three have buttons in the UI too, so you can run
-without a scheduler while you are trying it out.
+into saying the same thing. `/api/sweep` is the one you will forget you have:
+it finds emails whose drafting job died without saying so, which otherwise sit
+in the database looking like nothing at all. All four have buttons in the UI
+too, so you can run without a scheduler while you are trying it out.
 
 The whole UI is plain forms — it works with JavaScript off, and a half-written
 draft survives a reload because it was posted rather than kept in component

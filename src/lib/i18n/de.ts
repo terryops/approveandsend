@@ -90,6 +90,8 @@ export const de: Dictionary = {
   "queue.status.total": "gesamt",
   "queue.runQueue": "Warteschlange abarbeiten",
   "queue.processed": "Abgearbeitete Jobs: {n}.",
+  "queue.sweep": "Hängende retten",
+  "queue.swept": "{n} hängende Aufgabe(n) gerettet.",
   "queue.empty": "Die Warteschlange ist leer.",
   "queue.colType": "Typ",
   "queue.colStatus": "Status",

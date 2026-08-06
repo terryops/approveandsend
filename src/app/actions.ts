@@ -33,6 +33,7 @@ import { installStarterRules } from '@/lib/rules/starter';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
+import { sweepStuckTasks } from '@/lib/tasks/sweep';
 
 /**
  * Every mutation the UI can perform.
@@ -311,6 +312,27 @@ export async function runQueue(): Promise<void> {
   try {
     const processed = await worker.drain(25);
     query = `?ran=${processed.length}`;
+  } catch (error) {
+    query = `?error=${encodeURIComponent(message(error))}`;
+  }
+  revalidatePath('/queue');
+  revalidatePath('/');
+  redirect(`/queue${query}`);
+}
+
+/**
+ * Rescuing tasks nothing is going to finish, from a button.
+ *
+ * On the queue page rather than the inbox because what it repairs is a queue
+ * fault — and because the tasks it finds are, by definition, the ones not
+ * showing up on the inbox.
+ */
+export async function sweepNow(): Promise<void> {
+  await requireApi();
+  let query = '';
+  try {
+    const result = await sweepStuckTasks();
+    query = `?swept=${result.requeued + result.failed}`;
   } catch (error) {
     query = `?error=${encodeURIComponent(message(error))}`;
   }

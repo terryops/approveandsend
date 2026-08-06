@@ -90,6 +90,8 @@ export const zhCN: Dictionary = {
   "queue.status.total": "合计",
   "queue.runQueue": "运行队列",
   "queue.processed": "已处理{n}个任务。",
+  "queue.sweep": "救回卡住的",
+  "queue.swept": "已救回 {n} 个卡住的任务。",
   "queue.empty": "队列是空的。",
   "queue.colType": "类型",
   "queue.colStatus": "状态",
