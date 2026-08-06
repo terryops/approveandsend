@@ -2,7 +2,10 @@ import { APP_NAME } from '@/lib/brand';
 import { t, type MessageKey } from '@/lib/i18n';
 import { setupState, type SetupStep } from '@/lib/setup/state';
 
-import { loadDemo, syncNow } from '../../actions';
+import { STARTER_RULES } from '@/lib/rules/starter';
+import { listRules } from '@/lib/rules/store';
+
+import { addStarterRules, loadDemo, syncNow } from '../../actions';
 import { finishSetup } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +30,9 @@ export default async function DonePage() {
   const state = setupState();
   const missing = state.steps.filter(step => !step.done);
   const blocked = missing.filter(step => !step.optional);
+  // Offered only while there is nothing to overwrite. Somebody who reaches
+  // /setup again on a working desk does not need to be asked about this.
+  const rulebookEmpty = listRules({}).length === 0;
 
   return (
     <>
@@ -48,6 +54,17 @@ export default async function DonePage() {
           </>
         )}
       </div>
+
+      {rulebookEmpty && (
+        <div className="card stack">
+          <h2>{t('setup.starter.title')}</h2>
+          <p className="meta">{t('setup.starter.body', { n: STARTER_RULES.length })}</p>
+          <form action={addStarterRules}>
+            <input type="hidden" name="next" value="setup" />
+            <button type="submit">{t('setup.starter.button')}</button>
+          </form>
+        </div>
+      )}
 
       <div className="card stack">
         <h2>{t('setup.done.cronTitle')}</h2>

@@ -29,6 +29,7 @@ import {
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
+import { installStarterRules } from '@/lib/rules/starter';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
 
@@ -166,6 +167,23 @@ export async function addRule(form: FormData): Promise<void> {
   }
   revalidatePath('/rules');
   redirect('/rules');
+}
+
+/**
+ * Installs the starter rulebook.
+ *
+ * Only ever reached by somebody pressing the button. Nothing seeds these on
+ * first run: a desk that discovered rules it had never agreed to would have
+ * good reason to stop trusting the rest of the rulebook, which is the one
+ * thing this whole system is asking it to trust.
+ */
+export async function addStarterRules(form: FormData): Promise<void> {
+  await requireApi();
+  const result = installStarterRules();
+  revalidatePath('/rules');
+  // The wizard sends people back to the wizard: pressing this mid-setup should
+  // not abandon the three steps they have not done yet.
+  redirect(field(form, 'next') === 'setup' ? '/setup/done' : `/rules?starter=${result.added}`);
 }
 
 export async function editRule(form: FormData): Promise<void> {

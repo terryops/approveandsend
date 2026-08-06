@@ -11,6 +11,7 @@ import { learnFromSentReply } from './learn';
 import { formatRulesForReview, selectRules } from './prompt';
 import { formatRetrieved, retrieveRules } from './retrieve';
 import { rankBySimilarity, shortlist, tokenize } from './similarity';
+import { installStarterRules, STARTER_RULES } from './starter';
 import {
   createRule,
   deleteRule,
@@ -897,5 +898,69 @@ describe('retrieving the rules that did not fit', () => {
     server = undefined;
 
     expect((await ask([rule])).rules).toEqual([]);
+  });
+});
+
+// --- the rulebook a desk starts with --------------------------------------
+
+describe('starter rules', () => {
+  it('installs every one of them into an empty rulebook', () => {
+    const result = installStarterRules(db);
+
+    expect(result).toEqual({ added: STARTER_RULES.length, skipped: 0 });
+    expect(listRules({}, db)).toHaveLength(STARTER_RULES.length);
+  });
+
+  it('adds nothing the second time', () => {
+    installStarterRules(db);
+    const again = installStarterRules(db);
+
+    expect(again).toEqual({ added: 0, skipped: STARTER_RULES.length });
+    expect(listRules({}, db)).toHaveLength(STARTER_RULES.length);
+  });
+
+  it('does not resurrect a starter rule somebody retired', () => {
+    installStarterRules(db);
+    const retired = listRules({}, db)[0]!;
+    disableRule(retired.id, db);
+
+    installStarterRules(db);
+
+    expect(listRules({}, db)).toHaveLength(STARTER_RULES.length);
+    expect(getRule(retired.id, db)?.enabled).toBe(false);
+  });
+
+  it('leaves a starter rule that has since been rewritten alone', () => {
+    installStarterRules(db);
+    const edited = listRules({}, db)[0]!;
+    updateRule(edited.id, { content: 'Our own wording, thanks.' }, {}, db);
+
+    // The old text is gone, so that one comes back — and the rewritten rule is
+    // untouched, which is what matters: an edit is never overwritten.
+    const again = installStarterRules(db);
+
+    expect(again.added).toBe(1);
+    expect(getRule(edited.id, db)?.content).toBe('Our own wording, thanks.');
+  });
+
+  it('ships every rule with a summary, so the page is scannable at once', () => {
+    installStarterRules(db);
+    expect(listRules({ unsummarisedOnly: true }, db)).toEqual([]);
+  });
+
+  it('applies to every kind of mail, on a desk whose topics it cannot know', () => {
+    installStarterRules(db);
+    const rules = listRules({ enabledOnly: true }, db);
+
+    expect(rules.every(rule => rule.topics.length === 0)).toBe(true);
+    // Which is the only reason they survive routing to an unheard-of topic.
+    const block = selectRules(rules, { topic: 'something-else-entirely' });
+    expect(block.includedIds).toHaveLength(STARTER_RULES.length);
+    expect(block.droppedIds).toEqual([]);
+  });
+
+  it('says where each one came from', () => {
+    installStarterRules(db);
+    expect(listRules({}, db).every(rule => rule.rationale?.includes('Starter rule'))).toBe(true);
   });
 });

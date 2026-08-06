@@ -2,10 +2,18 @@ import { requirePage } from '@/lib/auth/guard';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
+import { STARTER_RULES } from '@/lib/rules/starter';
 import { listRules, revisionsByRule } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
 
-import { addRule, editRule, removeRule, tidyRulebook, toggleRule } from '../actions';
+import {
+  addRule,
+  addStarterRules,
+  editRule,
+  removeRule,
+  tidyRulebook,
+  toggleRule,
+} from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,6 +121,14 @@ export default async function RulesPage({
         </form>
       </div>
 
+      {typeof query.starter === 'string' && (
+        <p className="banner" style={{ borderColor: 'var(--line)' }}>
+          {query.starter === '0'
+            ? t('rules.starterNothingAdded')
+            : t('rules.starterAdded', { n: Number(query.starter) })}
+        </p>
+      )}
+
       {typeof query.tidy === 'string' && (
         <p className="banner" style={{ borderColor: 'var(--line)' }}>
           {query.tidy === 'already' ? t('rules.tidyAlreadyQueued') : t('rules.tidyQueued')}
@@ -141,7 +157,19 @@ export default async function RulesPage({
       </form>
 
       {rules.length === 0 ? (
-        <p className="empty">{t('rules.empty')}</p>
+        // The empty state used to be a dead end that said "rules appear as you
+        // edit drafts" — true, and no help to somebody whose first hundred
+        // replies go out before the first rule exists. The starter set is
+        // offered here rather than installed, and only where the rulebook is
+        // genuinely empty: on a desk that has already written rules, a button
+        // that adds fourteen more is noise.
+        <div className="card stack">
+          <p className="empty" style={{ margin: 0 }}>{t('rules.empty')}</p>
+          <p className="meta" style={{ margin: 0 }}>{t('rules.starterOffer', { n: STARTER_RULES.length })}</p>
+          <form action={addStarterRules}>
+            <button type="submit">{t('rules.starterButton')}</button>
+          </form>
+        </div>
       ) : (
         rules.map((rule) => (
           <form key={rule.id} className="card stack" action={editRule}>

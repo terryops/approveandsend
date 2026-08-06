@@ -213,6 +213,19 @@ edited it first, that edit is a correction, and the difference between the two
 versions says what the model got wrong more precisely than any prompt tuning
 would have found.
 
+**The rulebook starts offered, not empty and not seeded.** Learning from
+corrections only pays once corrections exist, so a new desk sends its first
+few hundred replies against the persona alone — including the ones a rule
+would have caught. `rules/starter.ts` holds fourteen rules that hold on any
+support desk (do not state a fact you were not given, do not promise a date or
+an amount, answer the question first) with hand-written summaries and no
+topics, so they survive routing to a vocabulary they cannot know. They are
+installed by a button on the empty rulebook and in the wizard, never on first
+run: a rule that appeared without anyone agreeing to it is the one thing that
+would make the rest of the rulebook not worth reading. Installation is
+idempotent on the rule's text, so a rule someone has since retired does not
+come back and a rule someone has rewritten is not overwritten.
+
 **Show the model both versions and the diff.** The original only ever saw the
 final text plus whatever the reviewer typed in a notes box. That learns well
 from reviewers who write good notes and learns nothing from the far more common
