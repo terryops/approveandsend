@@ -4,6 +4,8 @@ import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
+import { getTranslation } from '@/lib/translation/store';
+import { reviewLanguage } from '@/lib/translation/translate';
 
 import { approveAndSend, dismissTask, redraftTask, saveDraft } from '../../actions';
 
@@ -35,6 +37,14 @@ export default async function TaskPage({
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
 
+  // Only ever the translation of exactly what is rendered below it. A draft
+  // regenerated since its translation was written shows none, because a
+  // reviewer who cannot read the reply cannot notice the two have drifted.
+  const language = reviewLanguage();
+  const bodyText = task.body || '';
+  const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
+  const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+
   return (
     <>
       <p className="meta">
@@ -60,6 +70,14 @@ export default async function TaskPage({
         <pre className="email" style={{ marginTop: 12 }}>
           {task.body || '(empty body)'}
         </pre>
+        {/* `details`, so it is open by default and collapsible without a line
+            of JavaScript — the same constraint the rest of this UI works to. */}
+        {incoming && (
+          <details className="translation" open>
+            <summary>Translation · {incoming.language}</summary>
+            <pre className="email">{incoming.content}</pre>
+          </details>
+        )}
       </div>
 
       {task.analysis && (
@@ -135,6 +153,17 @@ export default async function TaskPage({
           readOnly={sent}
           placeholder="No draft yet. Run the queue, or write one here."
         />
+        {/* The nearest thing here to a confirmation step: what you are about
+            to send, in a language you read. */}
+        {outgoing && (
+          <details className="translation" open>
+            <summary>{sent ? 'What went out' : 'What you are about to send'} · {outgoing.language}</summary>
+            <pre className="email">{outgoing.content}</pre>
+          </details>
+        )}
+        {language && !outgoing && body.trim() !== '' && (
+          <p className="meta">No current {language} translation — run the queue to render this draft.</p>
+        )}
         <input
           type="text"
           name="notes"

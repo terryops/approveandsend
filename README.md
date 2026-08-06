@@ -195,6 +195,19 @@ no prompt files to edit:
 load-bearing — it goes into every draft. `replyLanguage: "match"` answers in
 whatever language the customer wrote in.
 
+## Approving mail you can't read
+
+Add `"reviewLanguage": "Chinese"` and every message and every draft is also
+rendered into *your* language beside the original — never sent to anyone. The
+whole claim of this product is that a person read it before it went out, and a
+reviewer approving a Japanese reply they cannot read has not read it.
+
+A translation is tied to a SHA-256 of the exact text it was made from, so a
+redrafted reply shows **no** translation rather than the previous draft's — the
+one failure a reviewer in this position could never catch themselves. Empty is
+the default and turns the whole thing off: no job, no model call, nothing on
+screen. [docs/review-language.md](docs/review-language.md).
+
 ## Tell it who it's writing to
 
 "Have you tried logging out?" to someone whose subscription lapsed yesterday is

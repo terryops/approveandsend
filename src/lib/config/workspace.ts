@@ -38,6 +38,18 @@ export interface WorkspaceConfig {
    * forces one language regardless.
    */
   replyLanguage: string;
+  /**
+   * The language the people doing the reviewing read.
+   *
+   * Separate from `replyLanguage`, and the distinction is the whole point: the
+   * customer gets an answer in their language, and the reviewer gets a
+   * translation of it in theirs. Empty — the default — turns the feature off
+   * entirely, which is right for a team that reads the mail it receives.
+   *
+   * It is never sent to anyone. It exists so that clicking Send is not an act
+   * of faith.
+   */
+  reviewLanguage: string;
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
@@ -62,6 +74,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
   facts: [],
   signature: '',
   replyLanguage: 'match',
+  reviewLanguage: '',
   neverPromise: [
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
@@ -135,6 +148,10 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       asString(process.env.AAS_REPLY_LANGUAGE) ??
       asString(fromFile.replyLanguage) ??
       DEFAULT_WORKSPACE.replyLanguage,
+    reviewLanguage:
+      asString(process.env.AAS_REVIEW_LANGUAGE) ??
+      asString(fromFile.reviewLanguage) ??
+      DEFAULT_WORKSPACE.reviewLanguage,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
     contextSources: asSourceList(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };

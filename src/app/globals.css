@@ -296,6 +296,21 @@ button.danger:hover {
   font-size: 14px;
 }
 
+/* Set apart from the text it renders, because it is the one thing on this
+   screen that is not going to the customer. */
+.translation {
+  margin-top: 12px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.translation > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
 table.plain {
   width: 100%;
   border-collapse: collapse;

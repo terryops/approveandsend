@@ -3,6 +3,7 @@ import { draftReply } from '../../drafting/draft';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
+import { enqueueForTranslation } from './translate-task';
 
 /**
  * Turning an ingested email into a draft awaiting review.
@@ -70,6 +71,10 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
       },
       context.db,
     );
+
+    // Now that both halves exist — their mail and our answer — one job can
+    // render the pair for whoever has to read it.
+    enqueueForTranslation(taskId, { db: context.db });
 
     return {
       appliedRules: result.appliedRuleIds.length,

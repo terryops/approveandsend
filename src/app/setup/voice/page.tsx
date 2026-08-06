@@ -77,11 +77,23 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
             placeholder="match"
             style={{ width: 110 }}
           />
+          <input
+            type="text"
+            name="reviewLanguage"
+            defaultValue={config.reviewLanguage}
+            placeholder="you read"
+            style={{ width: 110 }}
+          />
           <button type="submit">Save</button>
         </div>
         <span className="meta">
-          <code>match</code> answers in whatever language the customer wrote in. An ISO code like{' '}
-          <code>en</code> forces one.
+          Reply language: <code>match</code> answers in whatever language the customer wrote in. An
+          ISO code like <code>en</code> forces one.
+        </span>
+        <span className="meta">
+          Review language: the language <em>you</em> read. Set it and every message and draft is
+          also rendered into it for whoever approves the reply — never sent to anyone. Leave it
+          empty if your team reads the mail it gets.
         </span>
       </form>
 

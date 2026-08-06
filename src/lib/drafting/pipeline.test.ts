@@ -157,6 +157,7 @@ describe('workspace config', () => {
       facts: ['Refunds take 5-10 business days.'],
       signature: '',
       replyLanguage: 'match',
+      reviewLanguage: '',
       neverPromise: ['a refund date'],
       contextSources: [],
     };

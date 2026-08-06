@@ -12,5 +12,6 @@
     "delivery dates for unreleased features"
   ],
   "signature": "— The Acme team",
-  "replyLanguage": "match"
+  "replyLanguage": "match",
+  "reviewLanguage": ""
 }

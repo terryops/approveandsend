@@ -120,6 +120,9 @@ export async function saveVoice(form: FormData): Promise<void> {
     voice: text(form, 'voice'),
     signature: text(form, 'signature'),
     replyLanguage: text(form, 'replyLanguage') || 'match',
+    // Empty is meaningful here — it is how the feature stays off — so unlike
+    // replyLanguage there is no default to fall back to.
+    reviewLanguage: text(form, 'reviewLanguage'),
     facts,
   });
 

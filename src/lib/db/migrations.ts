@@ -272,6 +272,32 @@ export const MIGRATIONS: Migration[] = [
       db.exec('CREATE INDEX idx_tasks_from ON tasks(from_address COLLATE NOCASE, status);');
     },
   },
+  {
+    version: 8,
+    name: 'task-translations',
+    up: db => {
+      // A translation for the reviewer, never for the customer.
+      //
+      // `source_hash` is what keeps it honest. A translation is only ever shown
+      // beside the exact text it was made from, so a draft that has since been
+      // rewritten shows no translation rather than the previous draft's — which
+      // is the failure mode that matters here, because a reviewer who cannot
+      // read the reply has no way of noticing the two have drifted apart.
+      db.exec(`
+        CREATE TABLE task_translations (
+          task_id  TEXT NOT NULL,
+          kind     TEXT NOT NULL,
+          language TEXT NOT NULL,
+          source_hash TEXT NOT NULL,
+          content  TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+
+          PRIMARY KEY (task_id, kind),
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
