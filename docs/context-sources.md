@@ -112,6 +112,14 @@ A few of those keys are load-bearing:
   both space themselves the same way: a word gets a space, punctuation does
   not. `Lv.2`, `$40`, `95%`, but `40 credits`. Reach for `prefix` rather than a
   `map` enumerating every plan level you might ever have.
+- **Timestamps are rewritten for you.** `2026-09-17T00:00:00.000Z` renders as
+  `17 September 2026`, on the card and inside a sentence, because otherwise the
+  model is handed "your credits expire 2026-09-17T00:00:00.000Z" and will
+  either quote that back at a customer or try to do arithmetic on it. A bare
+  `2026-09-17` is left alone — it already says what it means. The day is UTC
+  and no time is shown; "expires on the 17th" is the fact, and the hour it
+  turns over is not something to read off a card on a desk that spans time
+  zones.
 - **`prompt`** is a list of sentences, and **a sentence with a missing value is
   dropped whole**. That is why there is no `if` in this format: the sentence
   about expiring credits simply is not there for someone who has none, and you

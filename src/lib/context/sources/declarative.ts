@@ -139,7 +139,39 @@ function scalar(value: unknown): string | null {
   if (typeof value === 'boolean') return value ? 'yes' : null;
   if (typeof value === 'object') return null;
   const text = String(value).trim();
-  return text === '' ? null : text;
+  if (text === '') return null;
+  return readableDate(text) ?? text;
+}
+
+/**
+ * `2026-09-17T00:00:00.000Z` → `17 September 2026`.
+ *
+ * Every JSON API in the world answers with a timestamp and nobody wants to
+ * read one. It lands in two places that both matter: a card a person scans in
+ * two seconds, and a sentence handed to a model — "Their credits start
+ * expiring 2026-09-17T00:00:00.000Z" is a sentence that makes the model
+ * either quote the timestamp back at a customer or do arithmetic on a string.
+ *
+ * A bare `2026-09-17` is left alone. The reason to rewrite is that a timestamp
+ * is unreadable, not that dates should be prettier, and a source that already
+ * answered with a plain date has said what it meant.
+ *
+ * The day is rendered in UTC, and no time of day is shown. A support desk
+ * spans time zones, and "expires on the 17th" is the fact; the hour it turns
+ * over is not something anyone should be reading off a card.
+ */
+const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+function readableDate(text: string): string | null {
+  if (!ISO_DATETIME.test(text)) return null;
+  const at = new Date(text);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 interface Filled {

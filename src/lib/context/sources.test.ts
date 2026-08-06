@@ -389,6 +389,51 @@ describe('a lookup declared against a command', () => {
     ).resolves.toBeNull();
   });
 
+  it('turns a timestamp into a date a person can read', async () => {
+    // Every JSON API answers with one of these and nobody wants to read it —
+    // least of all a model being asked to write "your credits expire on ...".
+    // Left raw, that sentence ends in an ISO string the model either quotes
+    // back at a customer or tries to do arithmetic on.
+    const path = script(
+      'expiry.js',
+      `console.log(JSON.stringify({ expires: '2026-09-17T00:00:00.000Z' }));`,
+    );
+
+    const block = await buildDeclarativeSource({
+      id: 'account',
+      label: 'Account',
+      command: ['node', path],
+      title: 'Account',
+      fields: [{ label: 'Expires', path: 'expires' }],
+      prompt: 'Their credits start expiring {expires}.',
+    }).lookup(SUBJECT);
+
+    expect(block!.fields[0]!.value).toBe('17 September 2026');
+    expect(block!.prompt).toBe('Their credits start expiring 17 September 2026.');
+  });
+
+  it('leaves a plain date, and anything date-shaped, alone', async () => {
+    // A bare date already says what it means. The reason to rewrite is that a
+    // timestamp is unreadable, not that dates should be prettier.
+    const path = script(
+      'joined.js',
+      `console.log(JSON.stringify({ joined: '2026-02-04', code: 'PLAN-2026-09-17' }));`,
+    );
+
+    const block = await buildDeclarativeSource({
+      id: 'account',
+      label: 'Account',
+      command: ['node', path],
+      title: 'Account',
+      fields: [
+        { label: 'Joined', path: 'joined' },
+        { label: 'Code', path: 'code' },
+      ],
+    }).lookup(SUBJECT);
+
+    expect(block!.fields.map(field => field.value)).toEqual(['2026-02-04', 'PLAN-2026-09-17']);
+  });
+
   it('fails loudly when the command does', async () => {
     const path = script('boom.js', `process.exit(3);`);
 
