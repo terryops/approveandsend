@@ -4,6 +4,7 @@ import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml } from '../mail/render';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
+import { enqueueForTranslation } from '../queue/handlers/translate-task';
 import { markHandled } from './mark-read';
 import { addMessage } from './messages';
 import { getTask, updateTask } from './store';
@@ -135,6 +136,17 @@ export async function sendReply(
       // The mail is gone. Failing the request now would tell the reviewer the
       // send failed, and they would send it again.
       console.warn('[tasks] could not enqueue the learning job:', error);
+    }
+  }
+
+  // What actually went out, in the reviewer's language. Only worth a call when
+  // a human changed the reply — an untouched draft was already translated
+  // before they approved it, and `hasTranslation` would skip this anyway.
+  if (reply !== (task.draft ?? '').trim()) {
+    try {
+      enqueueForTranslation(taskId, { db });
+    } catch (error) {
+      console.warn('[tasks] could not enqueue the translation job:', error);
     }
   }
 

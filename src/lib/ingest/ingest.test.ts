@@ -10,7 +10,8 @@ import type {
   OutgoingMail,
   SendResult,
 } from '../mail/types';
-import { LEARN_FROM_SENT } from '../queue/handlers';
+import { resetWorkspaceConfig } from '../config/workspace';
+import { LEARN_FROM_SENT, TRANSLATE_TASK } from '../queue/handlers';
 import { listJobs } from '../queue/store';
 import { listAttachments } from '../tasks/attachments';
 import { listMessages } from '../tasks/messages';
@@ -422,6 +423,45 @@ describe('sendReply', () => {
     // Absent, not empty: an empty html part is still a multipart/alternative
     // mail, and some clients will render the empty half.
     expect(provider.sent[0]!.html).toBeUndefined();
+  });
+
+  /** Runs `body` on an install whose reviewer reads Chinese. */
+  async function withReviewLanguage(body: () => Promise<void>): Promise<void> {
+    process.env.AAS_REVIEW_LANGUAGE = 'Chinese';
+    resetWorkspaceConfig();
+    try {
+      await body();
+    } finally {
+      delete process.env.AAS_REVIEW_LANGUAGE;
+      resetWorkspaceConfig();
+    }
+  }
+
+  it('queues a rendering of the reply a human rewrote before sending', async () => {
+    // Without this the "what went out" panel is empty forever for anybody who
+    // does not read the reply's language: the stored translation is of the
+    // draft, and the draft is not what was sent.
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await withReviewLanguage(async () => {
+      await sendReply(task.id, { finalReply: 'Not the draft at all' }, { provider, db, learn: false });
+    });
+
+    expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
+  });
+
+  it('does not pay to render a draft that was sent unchanged', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await withReviewLanguage(async () => {
+      await sendReply(task.id, { finalReply: 'A draft' }, { provider, db, learn: false });
+    });
+
+    // Approving without editing is the common case, and that text was already
+    // translated when it was drafted.
+    expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(0);
   });
 
   it('sends the reply, threads it, and records what went out', async () => {

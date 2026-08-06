@@ -25,6 +25,7 @@ import {
   enqueueBackfillScan,
   enqueueConsolidateRules,
   enqueueForDrafting,
+  enqueueForTranslation,
   enqueueSummariseRules,
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
@@ -100,7 +101,22 @@ export async function logout(): Promise<void> {
 export async function saveDraft(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
-  updateTask(id, { draft: field(form, 'draft'), reviewerNotes: field(form, 'notes') || null });
+  const draft = field(form, 'draft');
+  const before = getTask(id);
+
+  updateTask(id, { draft, reviewerNotes: field(form, 'notes') || null });
+
+  // An edited draft's translation is now of text nobody is going to send.
+  // `getTranslation` already refuses to show it — which leaves a reviewer who
+  // does not read the reply's language staring at an empty panel with no way
+  // to fill it, because until now nothing queued the re-translation.
+  //
+  // Skipped when only the notes changed: the same words do not need rendering
+  // twice, and saving is what people do while thinking.
+  if (draft.trim() !== (before?.draft ?? '').trim()) {
+    enqueueForTranslation(id);
+  }
+
   revalidatePath(`/tasks/${id}`);
   redirect(`/tasks/${id}?saved=1`);
 }
