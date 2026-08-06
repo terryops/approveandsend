@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb, type Db } from '../db';
 import { recordEvent } from './events';
 import { isRiskFactor, isRiskLevel, type Risk } from './risk';
-import { isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
+import { isCause, isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
 
 interface TaskRow {
   id: string;
@@ -47,6 +47,7 @@ function parseAnalysis(raw: string | null): Analysis | null {
         ? value.suggestedActions.filter((p): p is string => typeof p === 'string')
         : [],
       ...(typeof value.scope === 'string' ? { scope: value.scope } : {}),
+      ...(isCause(value.cause) ? { cause: value.cause } : {}),
     };
   } catch {
     // Same reasoning as the queue's payload: reading a row must not throw.

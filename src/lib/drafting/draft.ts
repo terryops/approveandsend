@@ -17,7 +17,7 @@ import { listRules, recordApplied } from '../rules/store';
 import { attachmentSummary, listAttachments } from '../tasks/attachments';
 import { threadContextFor } from '../tasks/messages';
 import type { Analysis, Task } from '../tasks/types';
-import { isSentiment } from '../tasks/types';
+import { isCause, isSentiment } from '../tasks/types';
 import { clip, htmlToText } from '../thread-context';
 
 /**
@@ -181,6 +181,18 @@ Subject: ${task.subject}
 
 ${body}${filesBlock}
 
+## Where the fault lies
+If they are reporting that something did not work, work down this list and
+stop at the first one that fits what they described: our bug, a limit of the
+product we already know about, something we built that is easy to get wrong,
+and only last, something they did. Do not reach for the last one because it is
+the cheapest — a desk that assumes user error is a desk where real bugs go
+unreported for weeks. If they are reporting no fault at all, say
+not_a_problem rather than picking somebody to blame.
+
+This is for whoever reads the reply, not for the reply. Do not tell the
+customer whose fault it was; write the answer their message needs.
+
 ## What to return
 JSON only, no prose around it:
 {
@@ -196,6 +208,7 @@ JSON only, no prose around it:
       : '\n  "scope": "a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to",'
   }
   "keyPoints": ["what they actually said, in their terms"],
+  "cause": "system_bug | known_limitation | ux_issue | user_error | not_a_problem",
   "suggestedActions": ["what a human may need to do outside this reply, if anything"],
   "draft": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
 }`;
@@ -246,6 +259,7 @@ function parseDraft(
         ? parsed.suggestedActions.filter((p): p is string => typeof p === 'string')
         : [],
       ...(scope ? { scope } : {}),
+      ...(isCause(parsed.cause) ? { cause: parsed.cause } : {}),
     },
   };
 }

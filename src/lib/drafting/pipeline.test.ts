@@ -670,6 +670,31 @@ describe('drafting', () => {
     expect(result.analysis.sentiment).toBe('neutral');
   });
 
+  it('records where the fault most likely lies', async () => {
+    queued.push(JSON.stringify({ draft: 'We are looking into it.', cause: 'system_bug' }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.cause).toBe('system_bug');
+  });
+
+  it('asks for our bug before theirs', async () => {
+    // The order in the prompt is the whole feature. A desk that reaches for
+    // user error first is a desk where real bugs go unreported for weeks.
+    queued.push(GOOD_DRAFT);
+    await draftReply(createTask(INCOMING, db).task, { db });
+
+    const prompt = prompts[0] ?? '';
+    expect(prompt.indexOf('our bug')).toBeGreaterThan(-1);
+    expect(prompt.indexOf('our bug')).toBeLessThan(prompt.indexOf('something they did'));
+  });
+
+  it('stores no cause when the drafter invents one', async () => {
+    queued.push(JSON.stringify({ draft: 'Hello.', cause: 'act_of_god' }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.cause).toBeUndefined();
+  });
+
   it('takes the critic’s rewrite when the critic rejects the draft', async () => {
     queued.push(GOOD_DRAFT);
     queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'], revised: 'A safer reply.' }));

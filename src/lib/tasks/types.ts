@@ -21,6 +21,34 @@ export const TASK_STATUSES = [
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+/**
+ * When something is not working, whose fault is it — asked in this order.
+ *
+ * A support desk asked "why is this person complaining?" reaches for user
+ * error first, because that is the cheapest answer and it is right often
+ * enough to be a habit. The habit is what makes support replies infuriating,
+ * and it is how a real bug goes six weeks without being reported internally.
+ *
+ * So the ladder is climbed from the bottom: our bug, then a limit we know
+ * about, then something confusing we built, and only then something they did.
+ * `not_a_problem` is the exit for mail that reports no fault at all — most
+ * sales and how-to questions — so the model is not made to blame somebody for
+ * asking how exports work.
+ */
+export const CAUSES = [
+  'system_bug',
+  'known_limitation',
+  'ux_issue',
+  'user_error',
+  'not_a_problem',
+] as const;
+
+export type Cause = (typeof CAUSES)[number];
+
+export function isCause(value: unknown): value is Cause {
+  return typeof value === 'string' && (CAUSES as readonly string[]).includes(value);
+}
+
 export const SENTIMENTS = ['positive', 'neutral', 'negative', 'angry'] as const;
 export type Sentiment = (typeof SENTIMENTS)[number];
 
@@ -34,6 +62,8 @@ export interface Analysis {
   suggestedActions: string[];
   /** The kind of mail, which scopes the rules that apply to it. */
   scope?: string;
+  /** Where the fault most likely lies, when the mail reports a fault at all. */
+  cause?: Cause;
 }
 
 export interface Task {

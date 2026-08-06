@@ -35,6 +35,8 @@ export const RISK_FACTORS = [
   'noRules',
   /** This conversation has already gone back and forth without resolving. */
   'longThread',
+  /** The drafter thinks the customer found a real fault in the product. */
+  'possibleBug',
 ] as const;
 export type RiskFactor = (typeof RISK_FACTORS)[number];
 
@@ -69,6 +71,11 @@ export function gradeRisk(input: RiskInput): Risk {
   // grading every uncriticised draft high would grade every draft high on an
   // install that has the critic switched off to halve its bill.
   if (input.criticApproved === false) factors.push('criticRejected');
+
+  // Not because the reply is likely wrong, but because somebody other than
+  // the reviewer needs to hear about it, and the reply going out is the moment
+  // the report stops being anybody's problem.
+  if (input.analysis?.cause === 'system_bug') factors.push('possibleBug');
 
   if (input.analysis?.sentiment === 'angry') factors.push('angry');
   else if (input.analysis?.sentiment === 'negative') factors.push('unhappy');

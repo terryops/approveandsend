@@ -83,6 +83,26 @@ describe('gradeRisk', () => {
     ).toBe('low');
   });
 
+  it('flags a suspected bug on our side', () => {
+    // Not because the reply is likely wrong. Because somebody other than the
+    // reviewer needs to hear about it before the task is closed.
+    const risk = gradeRisk({
+      analysis: { ...analysis('neutral'), cause: 'system_bug' },
+      criticApproved: true,
+    });
+
+    expect(risk).toEqual({ level: 'normal', factors: ['possibleBug'] });
+  });
+
+  it('says nothing about a cause that blames nobody', () => {
+    const risk = gradeRisk({
+      analysis: { ...analysis('neutral'), cause: 'not_a_problem' },
+      criticApproved: true,
+    });
+
+    expect(risk.factors).toEqual([]);
+  });
+
   it('collects every reason, not only the one that set the level', () => {
     const risk = gradeRisk({
       analysis: analysis('angry'),

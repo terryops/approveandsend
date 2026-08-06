@@ -181,8 +181,13 @@ export default async function TaskPage({
           <p style={{ marginTop: 0 }}>{task.analysis.intent}</p>
           <p className="meta">
             {task.analysis.language || '?'} · {t(`task.sentiment.${task.analysis.sentiment}`)}
-            {task.analysis.scope ? ` · ${task.analysis.scope}` : ''} ·{' '}
-            {t('task.rulesActive', { n: rulesInPlay })}
+            {task.analysis.scope ? ` · ${task.analysis.scope}` : ''}
+            {/* Left out entirely when nothing is broken. A "cause" on a sales
+                enquiry is a label looking for a fault that was never there. */}
+            {task.analysis.cause && task.analysis.cause !== 'not_a_problem'
+              ? ` · ${t(`task.cause.${task.analysis.cause}`)}`
+              : ''}{' '}
+            · {t('task.rulesActive', { n: rulesInPlay })}
           </p>
           {task.analysis.keyPoints.length > 0 && (
             <ul>
