@@ -74,7 +74,19 @@ export function selectRules(rules: Rule[], options: RuleBlockOptions = {}): Rule
 
   for (const rule of byPriority) {
     const cost = rule.content.length + 4; // "N. " and a newline.
-    if (used + cost > budget && kept.size > 0) {
+
+    // Policy is not subject to the budget. Everything else here is a decision
+    // about which rules to spend characters on; a policy rule is a decision
+    // about whether to promise a refund that does not exist, and there is no
+    // prompt size at which that becomes the cheaper mistake. It also makes the
+    // retrieval layer's invariant structural rather than remembered: what gets
+    // dropped, and therefore what a model is ever asked to choose to read, can
+    // only be product, general or tone.
+    //
+    // The cost of being wrong about this is a desk whose policy alone exceeds
+    // the budget sending very large prompts. That is visible, expensive and
+    // fixable. A silently dropped policy rule is none of the three.
+    if (rule.category !== 'policy' && used + cost > budget && kept.size > 0) {
       dropped.push(rule.id);
       continue;
     }

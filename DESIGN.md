@@ -309,6 +309,32 @@ The cap was 6k, on the reasoning that the mail being replied to should be the
 bulk of the prompt. That was the wrong thing to protect. It is a stable prefix,
 so it caches; a rule that never reaches the model is not a saving.
 
+### Summaries, and reading a rule on demand
+
+Every rule carries a one-line summary of what it is about, filled in by a
+queue pass and cleared whenever the rule's text changes — a description of text
+that no longer exists is worse than no description. It does two jobs. On the
+rules page it is the line a rule collapses to, which is the difference between
+a rulebook of four hundred and a page nobody can scan. In the prompt it is an
+index.
+
+When the budget bites, the rules that did not fit are no longer dropped in
+silence. They are listed as summaries, a small call picks the ones this
+particular email needs, and those are read in full. A rule the model chose to
+read is worse than a rule that was simply there, and much better than a rule
+nobody chose to drop.
+
+Two limits keep that honest. **Policy is exempt from the budget entirely**, so
+a policy rule can never reach the index — the choice on offer is only ever
+between product, general and tone rules, where a wrong pick reads slightly off
+rather than promising money the desk does not give. And retrieval may add at
+most half the budget again, so a model answering "all of them" cannot undo the
+thing it was working around.
+
+On the desk this was built against, routing means nothing is dropped, so none
+of this runs. It exists because the rulebook is the one part of the system
+designed to grow forever.
+
 ### Topics, and why the vocabulary is fixed
 
 A budget alone only decides *which* rules to lose. Routing decides whether

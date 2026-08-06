@@ -9,6 +9,7 @@ import { dedupeAndApplyRule } from './dedup';
 import { diffSentences, diffSummary, splitSentences } from './diff';
 import { learnFromSentReply } from './learn';
 import { formatRulesForReview, selectRules } from './prompt';
+import { formatRetrieved, retrieveRules } from './retrieve';
 import { rankBySimilarity, shortlist, tokenize } from './similarity';
 import {
   createRule,
@@ -404,6 +405,22 @@ describe('rule block', () => {
     const block = selectRules(listRules({ enabledOnly: true }, db), { maxChars: 250 });
     expect(block.includedIds).toEqual([policy.id]);
     expect(block.droppedIds).toEqual([tone.id]);
+  });
+
+  it('never drops a policy rule, however tight the budget', () => {
+    // The budget decides which rules to spend characters on. A policy rule is
+    // not that kind of decision: dropped, it is a refund promised that the
+    // desk does not give. So it is exempt, and the drops the retrieval layer
+    // is later asked to choose from can only be the cheaper categories.
+    const policyOne = seed('P'.repeat(400), { category: 'policy' });
+    const policyTwo = seed('Q'.repeat(400), { category: 'policy' });
+    const product = seed('R'.repeat(400), { category: 'product' });
+
+    const block = selectRules(listRules({ enabledOnly: true }, db), { maxChars: 100 });
+
+    expect(block.includedIds).toContain(policyOne.id);
+    expect(block.includedIds).toContain(policyTwo.id);
+    expect(block.droppedIds).toEqual([product.id]);
   });
 
   it('emits at least one rule even when a single rule exceeds the budget', () => {
@@ -808,5 +825,77 @@ describe('summarising rules', () => {
 
     const pending = listRules({ unsummarisedOnly: true }, db);
     expect(pending.map(r => r.id)).toEqual([waiting.id]);
+  });
+});
+
+// --- retrieval ------------------------------------------------------------
+
+describe('retrieving the rules that did not fit', () => {
+  const ask = (available: Rule[]) =>
+    retrieveRules({ subject: 'Refund please', body: 'I want my money back.', available });
+
+  it('returns the full text of the rules it asks for', async () => {
+    const wanted = seed('Refunds take ten business days.', { category: 'product' });
+    const other = seed('Never quote an API rate limit.', { category: 'product' });
+    queued.push(JSON.stringify({ read: [wanted.id] }));
+
+    const result = await ask([wanted, other]);
+
+    expect(result.rules.map(r => r.id)).toEqual([wanted.id]);
+    expect(formatRetrieved(result.rules)).toContain('Refunds take ten business days.');
+  });
+
+  it('indexes by summary where there is one, and by the rule where there is not', async () => {
+    const summarised = seed('Refunds take ten business days.', { category: 'product' });
+    const bare = seed('Never quote an API rate limit.', { category: 'product' });
+    attachSummary(summarised.id, 'How long a refund takes', summarised.content, db);
+    queued.push(JSON.stringify({ read: [] }));
+
+    await ask([getRule(summarised.id, db)!, bare]);
+
+    expect(prompts[0]).toContain('How long a refund takes');
+    // Not silently unreachable just because nothing has summarised it yet.
+    expect(prompts[0]).toContain('Never quote an API rate limit.');
+    expect(prompts[0]).not.toContain('Refunds take ten business days.');
+  });
+
+  it('ignores an id it was never shown', async () => {
+    const rule = seed('Refunds take ten business days.', { category: 'product' });
+    queued.push(JSON.stringify({ read: ['invented', rule.id] }));
+
+    expect((await ask([rule])).rules.map(r => r.id)).toEqual([rule.id]);
+  });
+
+  it('refuses to undo the budget when the model asks for everything', async () => {
+    const many = Array.from({ length: 20 }, (_, i) =>
+      seed(`Rule ${i}: ${'x'.repeat(50)}`, { category: 'tone' }),
+    );
+    queued.push(JSON.stringify({ read: many.map(r => r.id) }));
+
+    const result = await ask(many);
+
+    expect(result.rules.length).toBeLessThanOrEqual(12);
+    expect(result.refusedIds.length).toBe(20 - result.rules.length);
+  });
+
+  it('returns the rules in the order they were written, not the order asked for', async () => {
+    const first = seed('First.', { category: 'tone' });
+    const second = seed('Second.', { category: 'tone' });
+    queued.push(JSON.stringify({ read: [second.id, first.id] }));
+
+    expect((await ask([first, second])).rules.map(r => r.id)).toEqual([first.id, second.id]);
+  });
+
+  it('costs nothing when nothing was dropped', async () => {
+    expect((await ask([])).rules).toEqual([]);
+    expect(prompts).toHaveLength(0);
+  });
+
+  it('drafts without them rather than failing when the call does', async () => {
+    const rule = seed('Refunds take ten business days.', { category: 'product' });
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    server = undefined;
+
+    expect((await ask([rule])).rules).toEqual([]);
   });
 });

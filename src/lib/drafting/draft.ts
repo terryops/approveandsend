@@ -12,6 +12,7 @@ import type { Db } from '../db';
 import { getDb } from '../db';
 import { extractJson } from '../json-repair';
 import { selectRules } from '../rules/prompt';
+import { formatRetrieved, retrieveRules } from '../rules/retrieve';
 import { listRules, recordApplied } from '../rules/store';
 import type { Analysis, Task } from '../tasks/types';
 import { isSentiment } from '../tasks/types';
@@ -185,11 +186,27 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const rules = listRules({ enabledOnly: true }, db);
   const block = selectRules(rules, { ...(topic ? { topic } : {}) });
 
+  // Anything the budget pushed out is offered back as an index of summaries,
+  // and whatever this email actually needs is read in full. On a rulebook
+  // where everything fits — which is the point of routing — there is nothing
+  // dropped, so this costs nothing and does not run.
+  const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
+  const dropped = block.droppedIds.length > 0
+    ? await retrieveRules({
+        subject: task.subject,
+        body,
+        available: rules.filter(rule => block.droppedIds.includes(rule.id)),
+      })
+    : { rules: [], refusedIds: [] };
+
+  const rulesBlock = block.text + formatRetrieved(dropped.rules);
+  const appliedIds = [...block.includedIds, ...dropped.rules.map(rule => rule.id)];
+
   // Whatever the enrichment job found, if it ran. Empty when no sources are
   // configured, which is the default and costs nothing.
   const contextBlock = options.context ?? contextForPrompt(task.id, db);
 
-  const raw = await callAI(buildPrompt(task, workspace, block.text, contextBlock, topic || undefined), { role: 'drafter' });
+  const raw = await callAI(buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined), { role: 'drafter' });
   const parsed = parseDraft(raw, workspace, topic || undefined);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
@@ -197,19 +214,22 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
 
   // Telemetry is recorded once the draft exists, not when the prompt is built:
   // a failed generation should not inflate a rule's usage count.
-  if (options.recordUsage !== false) recordApplied(block.includedIds, db);
+  if (options.recordUsage !== false) recordApplied(appliedIds, db);
 
   const signed = workspace.signature ? `${parsed.draft}\n\n${workspace.signature}` : parsed.draft;
 
   const result: DraftResult = {
     analysis: parsed.analysis,
     draft: signed,
-    appliedRuleIds: block.includedIds,
-    droppedRuleIds: block.droppedIds,
+    appliedRuleIds: appliedIds,
+    // What did not fit and was not asked for either. A rule that was retrieved
+    // is not a dropped rule, and reporting it as one would hide the fact that
+    // retrieval is working.
+    droppedRuleIds: block.droppedIds.filter(id => !appliedIds.includes(id)),
   };
 
   if (options.critic) {
-    const critique = await criticise(task, signed, workspace, block.text, contextBlock);
+    const critique = await criticise(task, signed, workspace, rulesBlock, contextBlock);
     if (critique) {
       result.critique = critique;
       if (critique.revised) result.draft = critique.revised;

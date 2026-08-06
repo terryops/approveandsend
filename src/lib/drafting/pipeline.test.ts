@@ -365,6 +365,35 @@ describe('drafting', () => {
     expect(result.draft).toBe('We have escalated this and will update you shortly.');
   });
 
+  it('reads the rules the budget pushed out, instead of losing them', async () => {
+    // Two rules that cannot both fit. The one that does not is offered back as
+    // an index of summaries and read in full because this email needs it —
+    // which is the difference between a rule that was dropped and a rule that
+    // was chosen against.
+    const kept = createRule({ content: `Kept: ${'x'.repeat(20_000)}`, category: 'product' }, db);
+    const overflow = createRule(
+      { content: 'Refunds take ten business days.', category: 'product' },
+      db,
+    );
+    queued.push(JSON.stringify({ read: [overflow.id] }), GOOD_DRAFT);
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+
+    expect(result.appliedRuleIds).toEqual([kept.id, overflow.id]);
+    expect(result.droppedRuleIds).toEqual([]);
+    // The retrieval saw a summary index, and the drafter saw the full text.
+    expect(prompts[0]).toContain(`[${overflow.id}]`);
+    expect(prompts[1]).toContain('Refunds take ten business days.');
+  });
+
+  it('does not pay to retrieve anything when everything fits', async () => {
+    createRule({ content: 'Refunds take ten business days.', category: 'product' }, db);
+    queued.push(GOOD_DRAFT);
+
+    await draftReply(createTask(INCOMING, db).task, { db });
+    expect(prompts).toHaveLength(1);
+  });
+
   it('accepts any slug when no vocabulary is configured', async () => {
     queued.push(JSON.stringify({ ...JSON.parse(GOOD_DRAFT), scope: 'Whatever It Wants' }));
 
