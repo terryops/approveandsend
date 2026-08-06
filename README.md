@@ -12,9 +12,10 @@ The instance this was extracted from has processed **929 emails**, of which
 active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
-> Status: v0.1. End to end and usable — fetch mail, draft, review, send, learn.
-> Still to come before a release: a weekly pass that consolidates the rulebook,
-> and demo seed data.
+> Status: v0.1. End to end and usable — fetch mail, draft, review, send, learn,
+> plus a weekly pass that consolidates the rulebook, a setup wizard that tests
+> what you typed, and sample data so there is something to look at on day one.
+> It has not yet been run by anyone but its author.
 
 ## Why it exists
 
