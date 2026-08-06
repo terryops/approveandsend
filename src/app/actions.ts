@@ -27,6 +27,9 @@ import {
   enqueueForDrafting,
   enqueueForTranslation,
   enqueueSummariseRules,
+  deleteJob,
+  releaseJob,
+  retryJob,
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
@@ -343,6 +346,40 @@ export async function runQueue(): Promise<void> {
   revalidatePath('/queue');
   revalidatePath('/');
   redirect(`/queue${query}`);
+}
+
+/**
+ * The three things a person needs to do to a single job.
+ *
+ * Without these, a queue page is a window onto a problem with no handle on it:
+ * the only way to clear one bad job has been a SQLite client and a guess at
+ * the schema, on a machine somebody has to SSH into. Each one redirects back
+ * with a note rather than throwing, because the row being acted on may well
+ * have finished on its own between the render and the click, and that is not
+ * an error worth a stack trace.
+ */
+export async function retryJobNow(form: FormData): Promise<void> {
+  await requireApi();
+  const job = retryJob(field(form, 'jobId'));
+  revalidatePath('/queue');
+  redirect(job ? '/queue?retried=1' : `/queue?error=${encodeURIComponent(t('queue.notFailed'))}`);
+}
+
+export async function releaseJobNow(form: FormData): Promise<void> {
+  await requireApi();
+  const job = releaseJob(field(form, 'jobId'));
+  revalidatePath('/queue');
+  redirect(job ? '/queue?released=1' : `/queue?error=${encodeURIComponent(t('queue.notStuck'))}`);
+}
+
+export async function deleteJobNow(form: FormData): Promise<void> {
+  await requireApi();
+  // No confirmation step. A job is a note to do something, not the something:
+  // the task it refers to is untouched, the sweep will find it if it is left
+  // owing work, and re-enqueueing is one button away on the task itself.
+  deleteJob(field(form, 'jobId'));
+  revalidatePath('/queue');
+  redirect('/queue?deleted=1');
 }
 
 /**

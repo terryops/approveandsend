@@ -104,6 +104,14 @@ export const de: Dictionary = {
   "queue.colTries": "Versuche",
   "queue.colCreated": "Erstellt",
   "queue.colDetail": "Detail",
+  "queue.retry": "Erneut versuchen",
+  "queue.release": "Freigeben",
+  "queue.delete": "Löschen",
+  "queue.retried": "Auftrag wieder eingereiht.",
+  "queue.released": "Auftrag zurück in die Warteschlange.",
+  "queue.deleted": "Auftrag gelöscht.",
+  "queue.notFailed": "Dieser Auftrag ist nicht mehr fehlgeschlagen.",
+  "queue.notStuck": "Dieser Auftrag läuft nicht mehr.",
 
   // --- The rulebook ---
   "rules.activeCount": "{n} aktiv",

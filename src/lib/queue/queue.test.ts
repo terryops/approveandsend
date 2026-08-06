@@ -17,6 +17,7 @@ import {
   getJob,
   listJobs,
   queueStats,
+  releaseJob,
   retryJob,
 } from './store';
 import { PermanentJobError, type JobHandler } from './types';
@@ -385,6 +386,33 @@ describe('inspection and cleanup', () => {
   it('will not requeue a job that has not failed', () => {
     const { job } = enqueue('demo', {}, db);
     expect(retryJob(job.id, db)).toBeNull();
+  });
+
+  it('releases a job whose worker is never coming back', () => {
+    const { job } = enqueue('demo', {}, db);
+    claimNext({}, db);
+
+    const released = releaseJob(job.id, db);
+    expect(released?.status).toBe('pending');
+    // Claimable again straight away, which is the whole point: without this
+    // somebody watching a dead job has to wait out the lease.
+    expect(claimNext({}, db)?.id).toBe(job.id);
+  });
+
+  it('keeps the attempt count when releasing', () => {
+    // The job may have been killed *by* what it was doing. Resetting the
+    // budget would turn "this crashes the worker" into an endless loop.
+    const { job } = enqueue('demo', { maxAttempts: 3 }, db);
+    claimNext({}, db);
+    failJob(job.id, 'worker died', {}, db);
+    claimNext({}, db);
+
+    expect(releaseJob(job.id, db)?.attempts).toBe(2);
+  });
+
+  it('will not release a job that is not running', () => {
+    const { job } = enqueue('demo', {}, db);
+    expect(releaseJob(job.id, db)).toBeNull();
   });
 
   it('deletes finished jobs past the retention window, and leaves live ones', () => {

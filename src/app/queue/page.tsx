@@ -2,7 +2,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listJobs, queueStats, type QueueStats } from '@/lib/queue';
 
-import { runQueue, sweepNow } from '../actions';
+import { deleteJobNow, releaseJobNow, retryJobNow, runQueue, sweepNow } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +44,9 @@ export default async function QueuePage({
       {typeof query.swept === 'string' && (
         <p className="meta">{t('queue.swept', { n: query.swept })}</p>
       )}
+      {typeof query.retried === 'string' && <p className="meta">{t('queue.retried')}</p>}
+      {typeof query.released === 'string' && <p className="meta">{t('queue.released')}</p>}
+      {typeof query.deleted === 'string' && <p className="meta">{t('queue.deleted')}</p>}
       {typeof query.error === 'string' && <p className="banner">{query.error}</p>}
 
       <div className="card">
@@ -58,6 +61,7 @@ export default async function QueuePage({
                 <th>{t('queue.colTries')}</th>
                 <th>{t('queue.colCreated')}</th>
                 <th>{t('queue.colDetail')}</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -74,6 +78,35 @@ export default async function QueuePage({
                   </td>
                   <td className="meta">{job.createdAt.slice(0, 16).replace('T', ' ')}</td>
                   <td className="meta">{job.error ?? ''}</td>
+                  <td className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                    {/* Offered only where they mean something. A retry button
+                        on a pending job either does nothing or resets an
+                        attempt counter that was counting for a reason. */}
+                    {job.status === 'failed' && (
+                      <form action={retryJobNow}>
+                        <input type="hidden" name="jobId" value={job.id} />
+                        <button type="submit" className="link">
+                          {t('queue.retry')}
+                        </button>
+                      </form>
+                    )}
+                    {job.status === 'processing' && (
+                      <form action={releaseJobNow}>
+                        <input type="hidden" name="jobId" value={job.id} />
+                        <button type="submit" className="link">
+                          {t('queue.release')}
+                        </button>
+                      </form>
+                    )}
+                    {job.status !== 'processing' && (
+                      <form action={deleteJobNow}>
+                        <input type="hidden" name="jobId" value={job.id} />
+                        <button type="submit" className="link danger">
+                          {t('queue.delete')}
+                        </button>
+                      </form>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

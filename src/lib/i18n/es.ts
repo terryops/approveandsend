@@ -104,6 +104,14 @@ export const es: Dictionary = {
   "queue.colTries": "Intentos",
   "queue.colCreated": "Creado",
   "queue.colDetail": "Detalle",
+  "queue.retry": "Reintentar",
+  "queue.release": "Desbloquear",
+  "queue.delete": "Eliminar",
+  "queue.retried": "Trabajo devuelto a la cola.",
+  "queue.released": "Trabajo liberado a la cola.",
+  "queue.deleted": "Trabajo eliminado.",
+  "queue.notFailed": "Ese trabajo ya no está fallido; no hay nada que reintentar.",
+  "queue.notStuck": "Ese trabajo ya no se está ejecutando; no hay nada que liberar.",
 
   // --- The rulebook ---
   "rules.activeCount": "{n} activas",

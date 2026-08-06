@@ -104,6 +104,14 @@ export const fr: Dictionary = {
   "queue.colTries": "Essais",
   "queue.colCreated": "Créée",
   "queue.colDetail": "Détail",
+  "queue.retry": "Réessayer",
+  "queue.release": "Débloquer",
+  "queue.delete": "Supprimer",
+  "queue.retried": "Tâche remise en file.",
+  "queue.released": "Tâche renvoyée dans la file.",
+  "queue.deleted": "Tâche supprimée.",
+  "queue.notFailed": "Cette tâche n'est plus en échec ; rien à réessayer.",
+  "queue.notStuck": "Cette tâche ne tourne plus ; rien à débloquer.",
 
   // --- The rulebook ---
   "rules.activeCount": "{n} active(s)",

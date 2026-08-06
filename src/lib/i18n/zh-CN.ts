@@ -104,6 +104,14 @@ export const zhCN: Dictionary = {
   "queue.colTries": "尝试次数",
   "queue.colCreated": "创建时间",
   "queue.colDetail": "详情",
+  "queue.retry": "重试",
+  "queue.release": "解除卡住",
+  "queue.delete": "删除",
+  "queue.retried": "任务已重新排队。",
+  "queue.released": "任务已放回队列。",
+  "queue.deleted": "任务已删除。",
+  "queue.notFailed": "该任务已不是失败状态，无需重试。",
+  "queue.notStuck": "该任务已不在运行中，无需解除。",
 
   // --- The rulebook ---
   "rules.activeCount": "{n}条生效",

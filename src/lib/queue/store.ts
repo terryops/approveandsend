@@ -317,6 +317,32 @@ export function retryJob(id: string, db: Db = getDb()): Job | null {
   return row ? mapJob(row) : null;
 }
 
+/**
+ * Takes a job away from whatever claimed it and puts it back on the queue.
+ *
+ * For the job that says `processing` and is not: the worker was killed, the
+ * container was replaced, the machine went away. `claimNext` will pick it up
+ * again on its own once the lease runs out, so this is not a repair so much as
+ * an "I know it is dead, do not make me wait fifteen minutes for it".
+ *
+ * The attempt counter is left alone, unlike `retryJob`. This job may well have
+ * been killed by the thing it was doing — a prompt that runs the machine out
+ * of memory every time — and resetting the count would make that a loop with
+ * nothing to stop it.
+ */
+export function releaseJob(id: string, db: Db = getDb()): Job | null {
+  const row = db
+    .prepare(
+      `UPDATE jobs
+          SET status = 'pending', lease_expires_at = NULL, run_after = ?
+        WHERE id = ? AND status = 'processing'
+        RETURNING *`,
+    )
+    .get(new Date().toISOString(), id) as JobRow | undefined;
+
+  return row ? mapJob(row) : null;
+}
+
 export function deleteJob(id: string, db: Db = getDb()): boolean {
   return db.prepare('DELETE FROM jobs WHERE id = ?').run(id).changes > 0;
 }

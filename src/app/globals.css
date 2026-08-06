@@ -278,6 +278,22 @@ button.primary {
   font-weight: 600;
 }
 
+/* A button that has to sit inside a table row without turning it into a
+   toolbar. Same element and same form post as any other button — it only
+   stops looking like one. */
+button.link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+}
+
+button.link:hover {
+  color: var(--accent);
+}
+
 button.danger:hover {
   border-color: var(--bad);
   color: var(--bad);

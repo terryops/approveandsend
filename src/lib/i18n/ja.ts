@@ -104,6 +104,14 @@ export const ja: Dictionary = {
   "queue.colTries": "試行",
   "queue.colCreated": "作成",
   "queue.colDetail": "詳細",
+  "queue.retry": "再試行",
+  "queue.release": "解除",
+  "queue.delete": "削除",
+  "queue.retried": "ジョブを再度キューに入れました。",
+  "queue.released": "ジョブをキューに戻しました。",
+  "queue.deleted": "ジョブを削除しました。",
+  "queue.notFailed": "このジョブはもう失敗状態ではありません。",
+  "queue.notStuck": "このジョブはもう実行中ではありません。",
 
   // --- The rulebook ---
   "rules.activeCount": "有効 {n} 件",

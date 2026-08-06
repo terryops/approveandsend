@@ -122,6 +122,14 @@ export const en = {
   "queue.colTries": "Tries",
   "queue.colCreated": "Created",
   "queue.colDetail": "Detail",
+  "queue.retry": "Retry",
+  "queue.release": "Unstick",
+  "queue.delete": "Delete",
+  "queue.retried": "Job requeued.",
+  "queue.released": "Job released back to the queue.",
+  "queue.deleted": "Job deleted.",
+  "queue.notFailed": "That job is no longer failed — nothing to retry.",
+  "queue.notStuck": "That job is no longer running — nothing to release.",
 
   // --- The rulebook ---
   "rules.activeCount": "{n} active",
