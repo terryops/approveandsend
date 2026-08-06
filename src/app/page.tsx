@@ -1,4 +1,7 @@
+import { redirect } from 'next/navigation';
+
 import { requirePage } from '@/lib/auth/guard';
+import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
 import { TASK_STATUSES, isTaskStatus, type TaskStatus } from '@/lib/tasks/types';
 
@@ -30,6 +33,12 @@ export default async function InboxPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requirePage();
+
+  // An install with no configuration and no data has nothing to show here but
+  // an explanation of why it is empty, which is what the wizard is. It stops
+  // once setup is finished or dismissed — nobody gets sent to /setup because
+  // they cleared their inbox.
+  if (shouldOnboard()) redirect('/setup');
 
   const params = await searchParams;
   const requested = typeof params.status === 'string' ? params.status : 'awaiting_review';

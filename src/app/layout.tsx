@@ -23,12 +23,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <a href="/">Inbox</a>
               <a href="/rules">Rules</a>
               <a href="/queue">Queue</a>
+              <a href="/setup">Setup</a>
             </nav>
           </header>
           {!isProtected() && (
             <p className="banner">
               <strong>Unprotected.</strong> No <code>ADMIN_PASSWORD</code> is set, so anyone who can
-              reach this port can read and send your mail.
+              reach this port can read and send your mail. <a href="/setup">Set one</a>.
             </p>
           )}
           {children}

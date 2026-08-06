@@ -134,9 +134,24 @@ job queue that is one SQLite table, because "self-hosted" should not mean
 
 ```bash
 npm install
+npm run build && npm start      # http://localhost:3000
+```
+
+A fresh install opens the setup wizard: password, model, mailbox, voice. Each
+step ends by using what you typed — one completion against the model, one login
+to the mailbox — and tells you what came back, so a wrong port or a stale key
+surfaces there rather than in a failed job at 4am.
+
+It writes `.env` and `aas.config.json`, the same two files you would edit by
+hand, and only the keys it asked about; your comments and everything else stay
+put. Values take effect immediately — no restart. On a read-only container the
+write fails and the page hands you the lines to paste instead.
+
+So you can skip it entirely and configure by hand if you prefer:
+
+```bash
 cp .env.example .env            # model + mailbox
 cp aas.config.example.json aas.config.json
-npm run build && npm start      # http://localhost:3000
 ```
 
 Set `ADMIN_PASSWORD` before you expose the port. There are no accounts — one
