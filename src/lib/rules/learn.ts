@@ -39,6 +39,17 @@ export interface LearningInput {
   sentReply: string;
   /** Anything the reviewer typed while rejecting or revising. */
   reviewerNotes?: string;
+
+  /**
+   * Where the pair came from. Default `'review'`.
+   *
+   * `'counterfactual'` means the human never saw the draft: they wrote the
+   * reply unaided, months ago, and the draft was generated afterwards to
+   * compare against. The evidence is weaker and the extractor is told so — in
+   * a review the difference *is* a correction, whereas here two competent
+   * replies to the same email will differ in wording for no reason at all.
+   */
+  mode?: 'review' | 'counterfactual';
 }
 
 export interface LearningOutcome {
@@ -82,8 +93,10 @@ function buildPrompt(input: LearningInput, rules: Rule[], maxNewRules: number): 
   const sent = input.sentReply.trim();
   const edited = Boolean(original) && original !== sent;
 
+  const counterfactual = input.mode === 'counterfactual';
+
   const comparison = edited
-    ? `## What the assistant drafted
+    ? `## What the assistant ${counterfactual ? 'would write today' : 'drafted'}
 ${clip(original!, MAX_DRAFT_CHARS)}
 
 ## What the human actually sent
@@ -96,9 +109,16 @@ ${clip(sent, MAX_DRAFT_CHARS)}`;
 
   const notes = input.reviewerNotes?.trim();
 
+  const provenance = counterfactual
+    ? `This is an exchange from the archive. A human answered it some time ago,
+without any assistance, and the draft below was generated afterwards by
+running the current assistant over the same email. Nobody edited anything —
+the two texts are independent answers to the same message.`
+    : `A human has just approved and sent a reply.`;
+
   return `You maintain the rulebook for a customer-support reply assistant.
 
-A human has just approved and sent a reply. Your job is to decide whether this
+${provenance} Your job is to decide whether this
 exchange teaches anything that should change how future replies are written.
 
 ## The incoming message
@@ -114,7 +134,16 @@ ${formatRulesForReview(rules)}
 ## What to look for
 
 ${
-  edited
+  edited && counterfactual
+    ? `The two replies differ. Most of that difference is not a lesson: two
+competent people answering the same email choose different words, different
+orderings and different amounts of warmth, and none of that is a mistake.
+
+Look only for places where the human clearly knew something the assistant did
+not, or observed a constraint the assistant ignored — a fact about the product,
+a commitment it was not allowed to make, a step it left out. If the difference
+is only in phrasing, there is nothing here. Say so by returning no rules.`
+    : edited
     ? `The human edited the draft before sending. That edit is the signal — work
 out what principle it implies, not what the specific wording was. "Removed the
 apology paragraph" is an observation; "do not apologise more than once in a

@@ -35,6 +35,15 @@ export interface DraftResult {
 export interface DraftOptions {
   /** Skip the second opinion. Halves the cost of a draft. */
   critic?: boolean;
+  /**
+   * Count this generation against each rule's usage telemetry. Default true.
+   *
+   * Off for the counterfactual drafts the backfill generates: those replies
+   * were sent years ago and never went anywhere, and letting them increment
+   * `applied_count` would destroy the one number that says whether a rule is
+   * earning its place in real correspondence.
+   */
+  recordUsage?: boolean;
   workspace?: WorkspaceConfig;
   db?: Db;
 }
@@ -117,7 +126,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
 
   // Telemetry is recorded once the draft exists, not when the prompt is built:
   // a failed generation should not inflate a rule's usage count.
-  recordApplied(block.includedIds, db);
+  if (options.recordUsage !== false) recordApplied(block.includedIds, db);
 
   const signed = workspace.signature ? `${parsed.draft}\n\n${workspace.signature}` : parsed.draft;
 

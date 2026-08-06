@@ -54,6 +54,28 @@ reads it against the same rules and either signs it off or rewrites it. It
 catches the expensive failure, which is a reply that reads perfectly well and
 quietly breaks a policy.
 
+## Starting from your Sent folder
+
+A fresh install knows nothing, which means the first few weeks are the ones
+where it is least useful. Your Sent folder already contains the answers, so
+there is a screen — **Archive** — that reads them.
+
+It cannot learn the way the review loop does, because an archived reply has no
+draft to diff against. So it makes one: for each old reply it drafts what the
+assistant *would* write today, compares that against what you actually sent, and
+keeps only what the difference teaches. Where the current rulebook already gets
+it right the two agree and nothing is learned, which means the run gets cheaper
+and quieter as it goes.
+
+```bash
+# Archive → look back 12 months, at most 200 replies → Scan
+```
+
+Nothing is sent, nothing is written to your mailbox, and every rule it produces
+appears in the rulebook with the conversation behind it, to keep or retire like
+any other. It is a background job at the lowest priority, so it never delays
+today's mail; budget two or three model calls per archived email.
+
 ## What it doesn't do
 
 Being clear about this early saves you an evening:

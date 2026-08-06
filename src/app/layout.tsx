@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <nav>
               <a href="/">Inbox</a>
               <a href="/rules">Rules</a>
+              <a href="/backfill">Archive</a>
               <a href="/queue">Queue</a>
               <a href="/setup">Setup</a>
             </nav>

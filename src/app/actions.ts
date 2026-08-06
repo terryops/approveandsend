@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import { requireApi } from '@/lib/auth/guard';
+import { cancelPendingBackfill, clearBackfill } from '@/lib/backfill/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { COOKIE_NAME, checkPassword } from '@/lib/auth/session';
@@ -12,6 +13,7 @@ import { syncInbox } from '@/lib/ingest/sync';
 import {
   DEFAULT_HANDLERS,
   createWorker,
+  enqueueBackfillScan,
   enqueueConsolidateRules,
   enqueueDraftReply,
 } from '@/lib/queue';
@@ -206,6 +208,58 @@ export async function tidyRulebook(): Promise<void> {
   revalidatePath('/rules');
   revalidatePath('/queue');
   redirect(`/rules?tidy=${result.deduped ? 'already' : 'queued'}`);
+}
+
+/**
+ * Learning from the mailbox's history.
+ *
+ * Queued, never run inline. The scan itself is one provider call, but what it
+ * produces is hundreds of generations, and a button that blocked until those
+ * finished would be a button that always fails.
+ */
+export async function startBackfill(form: FormData): Promise<void> {
+  await requireApi();
+
+  const limit = Number.parseInt(field(form, 'limit'), 10);
+  const months = Number.parseInt(field(form, 'months'), 10);
+
+  // A window, because "learn from everything" against a mailbox with ten years
+  // in it is a bill nobody meant to authorise. Both bounds are shown in the
+  // form and both are editable; neither is hidden in an env var.
+  const since = Number.isFinite(months) && months > 0
+    ? new Date(Date.now() - months * 30 * 24 * 60 * 60 * 1000).toISOString()
+    : undefined;
+
+  enqueueBackfillScan({
+    ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
+    ...(since ? { since } : {}),
+  });
+
+  revalidatePath('/backfill');
+  revalidatePath('/queue');
+  redirect('/backfill?started=1');
+}
+
+/** Stopping a run. Items already generating are left to finish. */
+export async function stopBackfill(): Promise<void> {
+  await requireApi();
+  const cancelled = cancelPendingBackfill();
+  revalidatePath('/backfill');
+  redirect(`/backfill?stopped=${cancelled}`);
+}
+
+/**
+ * Clearing the record of a run.
+ *
+ * Only the record. Rules the backfill taught stay exactly where they are —
+ * they are in the rulebook now, with their provenance, and the rules screen is
+ * where you retire the ones you disagree with.
+ */
+export async function clearBackfillHistory(): Promise<void> {
+  await requireApi();
+  clearBackfill();
+  revalidatePath('/backfill');
+  redirect('/backfill?cleared=1');
 }
 
 /**

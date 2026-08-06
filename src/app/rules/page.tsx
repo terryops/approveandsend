@@ -100,7 +100,15 @@ export default async function RulesPage({
               />
               <span className="grow meta">
                 #{rule.seq} · used {rule.appliedCount}×
-                {rule.sourceTaskId ? (
+                {/* A backfill rule's source is an archived exchange, not a
+                    task, so it cannot link into the review screen — there is
+                    no row there to link to. */}
+                {rule.sourceTaskId?.startsWith('backfill:') ? (
+                  <>
+                    {' · from '}
+                    <a href="/backfill">an email in the archive</a>
+                  </>
+                ) : rule.sourceTaskId ? (
                   <>
                     {' · from '}
                     <a href={`/tasks/${rule.sourceTaskId}`}>the email that taught it</a>

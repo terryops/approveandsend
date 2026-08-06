@@ -185,6 +185,56 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    name: 'backfill',
+    up: db => {
+      db.exec(`
+        -- Historical mail the rulebook is being taught from.
+        --
+        -- Deliberately not the tasks table. These conversations were answered
+        -- months ago and need no reply; putting them in tasks would mean five
+        -- hundred rows that look actionable, an inbox nobody can read, and a
+        -- status enum that has to grow a value meaning "do not offer this to a
+        -- human". A separate table costs one join that nothing needs.
+        CREATE TABLE backfill_items (
+          id TEXT PRIMARY KEY,
+          -- The provider id of the reply we sent. The unique key: rescanning
+          -- an overlapping window is a no-op rather than a second lesson from
+          -- the same email.
+          sent_message_id     TEXT NOT NULL,
+          -- The message it answered. Not known until the item runs, because
+          -- finding it costs a thread fetch.
+          incoming_message_id TEXT,
+
+          subject      TEXT NOT NULL DEFAULT '',
+          -- Who we were talking to, for the progress list.
+          counterparty TEXT NOT NULL DEFAULT '',
+          sent_at      TEXT,
+
+          -- pending | learning | learned | skipped | failed
+          status      TEXT NOT NULL DEFAULT 'pending',
+          -- Why an item taught nothing: no inbound message, an empty body, a
+          -- newsletter. Shown rather than hidden — "skipped 300 of 400" is a
+          -- fact about your mailbox worth seeing.
+          skip_reason TEXT,
+
+          -- What the current assistant would have written. Kept because it is
+          -- the evidence for every rule this item produced, and because
+          -- re-deriving it costs another generation.
+          shadow_draft  TEXT,
+          rules_learned INTEGER NOT NULL DEFAULT 0,
+          error         TEXT,
+
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE UNIQUE INDEX idx_backfill_message ON backfill_items(sent_message_id);
+        CREATE INDEX idx_backfill_status ON backfill_items(status, sent_at);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
