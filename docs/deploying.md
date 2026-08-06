@@ -48,6 +48,31 @@ Set `DATABASE_PATH` somewhere durable and back that file up. `npm start` runs a
 normal Next.js server; the standalone build the Docker image uses is opt-in
 behind `NEXT_STANDALONE=1` and is not what you want here.
 
+## Being told when it changes something by itself
+
+Set `NOTIFY_WEBHOOK_URL` to a Discord or Slack incoming webhook. The text goes
+under both `content` and `text`, which is what those two read respectively, so
+there is nothing to declare about which one you pointed at.
+
+It is used for exactly one thing today: the weekly tidy, when it actually
+merged or rewrote something. That pass runs while nobody is watching and edits
+rules a human wrote, and without a message the first anyone knows of a merge is
+a reply quoting a policy in words they do not recognise. A "nothing to tidy"
+every Sunday would teach people to stop reading the channel, so it does not
+send one.
+
+Leave it unset and nothing is posted anywhere.
+
+## Snapshots
+
+The tidy copies the database before it writes, into `snapshots/` next to
+`DATABASE_PATH`, keeping the last five. `rule_revisions` already makes any one
+rule recoverable; the copy is what makes the *pass* recoverable, which is not
+forty button presses but a file.
+
+They are a restore point for one operation, not a backup — the file the tidy
+copies is the file you should already be backing up.
+
 ## It does not fit Vercel
 
 Worth stating plainly, because it is the first thing people try.

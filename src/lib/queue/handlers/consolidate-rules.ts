@@ -1,4 +1,6 @@
 import { getDb, type Db } from '../../db';
+import { snapshot } from '../../db/snapshot';
+import { notify } from '../../notify';
 import {
   applyConsolidation,
   consolidationGate,
@@ -53,6 +55,8 @@ export interface ConsolidateOutcome extends Partial<ConsolidationSummary> {
   changed: number;
   before?: number;
   after?: number;
+  /** Where the rulebook can be recovered from, when the pass changed one. */
+  backup?: string;
 }
 
 export const consolidateRulesHandler: JobHandler = async (
@@ -67,11 +71,36 @@ export const consolidateRulesHandler: JobHandler = async (
   }
 
   const plan = await planConsolidation({ db: context.db });
+
+  // After the planning and before the writing, which is the only window where
+  // it is both worth taking and worth the wait: the plan is what says anything
+  // is about to change, and by here the LLM calls are already paid for.
+  const backup = plan.after < plan.before ? await snapshot('consolidate', context.db) : null;
+
   const summary = applyConsolidation(plan, { actor: context.job.id, db: context.db });
 
   // Every rule the tidy rewrote lost its summary along with the text it
   // described. Re-index before anybody scans the result of the merge.
   if (plan.after < plan.before) enqueueSummariseRules({ db: context.db });
 
-  return { ran: true, changed: gate.changed, before: plan.before, after: plan.after, ...summary };
+  // Only when it actually did something. A weekly "nothing to tidy" is how a
+  // notification channel teaches people to stop reading it, and this is the
+  // one message in the product that has to be read.
+  if (summary.merged > 0 || summary.rewritten > 0) {
+    await notify(
+      `Rulebook tidied: ${plan.before} rules are now ${plan.after}. ` +
+        `${summary.merged} group(s) merged, ${summary.rewritten} rule(s) rewritten, ` +
+        `${summary.disabled} disabled.` +
+        (backup ? ` Copy of the rulebook as it stood: ${backup}` : ''),
+    );
+  }
+
+  return {
+    ran: true,
+    changed: gate.changed,
+    before: plan.before,
+    after: plan.after,
+    ...summary,
+    ...(backup ? { backup } : {}),
+  };
 };
