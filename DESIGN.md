@@ -299,19 +299,28 @@ and enqueues.
 ### What the rule block does about growth
 
 Every enabled rule goes into every generation, so an unbounded rulebook
-eventually becomes the prompt. `selectRules` caps it at ~6k characters and
+eventually becomes the prompt. `selectRules` caps it at ~20k characters and
 drops by category when it bites — policy first, tone last, on the grounds that
 a dropped tone rule reads slightly wrong while a dropped policy rule promises a
 refund that does not exist. Drops are returned, not swallowed, so the caller
 can log them.
+
+The cap was 6k, on the reasoning that the mail being replied to should be the
+bulk of the prompt. That was the wrong thing to protect. It is a stable prefix,
+so it caches; a rule that never reaches the model is not a saving.
 
 ### Topics, and why the vocabulary is fixed
 
 A budget alone only decides *which* rules to lose. Routing decides whether
 they need to be lost at all: the analysis names what the mail is about, and
 only the rules filed under that name — plus the ones filed under nothing —
-reach the prompt. On a rulebook of 136 that is roughly a tenfold cut, and the
-budget stops binding.
+reach the prompt. On a rulebook of 136 that is roughly a tenfold cut.
+
+Routing is what makes a larger budget affordable rather than a replacement for
+one: the two together are what stopped the dropping. Routing alone still lost
+64 of 88 eligible rules on a refund reply, because that desk's rules had grown
+into 3000-character essays; a larger budget alone would have spent 20k
+characters on rules about subtitle export in front of a refund request.
 
 Two things make it work, and neither is optional.
 

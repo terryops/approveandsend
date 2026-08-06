@@ -10,10 +10,16 @@ import { RULE_CATEGORIES, type Rule, type RuleCategory } from './types';
  */
 
 /**
- * Roughly 6k characters. Large enough for a few hundred rules, small enough
- * that the conversation being replied to is still the bulk of the prompt.
+ * Roughly 20k characters — about 5k tokens, and a stable prefix, so it caches.
+ *
+ * This was 6k, chosen so the conversation being replied to would still be the
+ * bulk of the prompt. On a real rulebook that turned out to be the wrong thing
+ * to optimise: even with topic routing, a refund reply saw 24 of its 88
+ * eligible rules and the other 64 were dropped in silence. At 20k, twelve of
+ * that desk's thirteen topics fit whole. A rule that never reaches the model
+ * is not a small prompt, it is a rule that does not exist.
  */
-export const DEFAULT_RULE_BUDGET_CHARS = 6000;
+export const DEFAULT_RULE_BUDGET_CHARS = 20000;
 
 /**
  * When the budget bites, the first rules kept are the ones whose absence is
