@@ -25,6 +25,7 @@ import {
   enqueueBackfillScan,
   enqueueConsolidateRules,
   enqueueForDrafting,
+  enqueueSummariseRules,
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
@@ -161,6 +162,7 @@ export async function addRule(form: FormData): Promise<void> {
       topics: form.getAll('topics').map(String),
       rationale: t('actions.handWrittenRuleRationale'),
     });
+    enqueueSummariseRules();
   }
   revalidatePath('/rules');
   redirect('/rules');
@@ -180,6 +182,9 @@ export async function editRule(form: FormData): Promise<void> {
     },
     { reason: 'manual', actor: await actorName() },
   );
+  // A rewritten rule had its summary cleared on the way in, so it needs a new
+  // one. Toggling or deleting a rule does not — neither changes what it says.
+  enqueueSummariseRules();
   revalidatePath('/rules');
   redirect('/rules');
 }

@@ -141,6 +141,7 @@ export const en = {
   "rules.historyReason.merge": "merged with another rule",
   "rules.historyReason.replace": "replaced an older rule",
   "rules.historyReason.consolidation": "tidied up",
+  "rules.historyReason.split": "cut into separate rules",
   "rules.saveButton": "Save",
   "rules.retireButton": "Retire",
   "rules.restoreButton": "Restore",

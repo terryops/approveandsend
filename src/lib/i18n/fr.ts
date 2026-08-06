@@ -123,6 +123,7 @@ export const fr: Dictionary = {
   "rules.historyReason.merge": "fusionnée avec une autre règle",
   "rules.historyReason.replace": "a remplacé une règle plus ancienne",
   "rules.historyReason.consolidation": "revue lors d'un nettoyage",
+  "rules.historyReason.split": "scindée en plusieurs règles",
   "rules.saveButton": "Enregistrer",
   "rules.retireButton": "Retirer",
   "rules.restoreButton": "Restaurer",

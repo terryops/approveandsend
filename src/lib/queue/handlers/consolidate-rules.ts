@@ -6,6 +6,7 @@ import {
   type ConsolidationSummary,
 } from '../../rules/consolidate';
 import { enqueue, type EnqueueResult } from '../store';
+import { enqueueSummariseRules } from './summarise-rules';
 import type { JobHandler } from '../types';
 
 /**
@@ -67,6 +68,10 @@ export const consolidateRulesHandler: JobHandler = async (
 
   const plan = await planConsolidation({ db: context.db });
   const summary = applyConsolidation(plan, { actor: context.job.id, db: context.db });
+
+  // Every rule the tidy rewrote lost its summary along with the text it
+  // described. Re-index before anybody scans the result of the merge.
+  if (plan.after < plan.before) enqueueSummariseRules({ db: context.db });
 
   return { ran: true, changed: gate.changed, before: plan.before, after: plan.after, ...summary };
 };

@@ -21,6 +21,7 @@ import {
   revisionsByRule,
   updateRule,
 } from './store';
+import { attachSummary, summariseRules } from './summarise';
 import type { Rule } from './types';
 
 // --- an AI server that returns whatever the test queues -------------------
@@ -720,5 +721,92 @@ describe('learnFromSentReply', () => {
     const outcome = await learnFromSentReply(sample, { db });
     expect(outcome.discarded).toContain('new:(empty)');
     expect(listRules({}, db)).toHaveLength(0);
+  });
+});
+
+// --- summaries ------------------------------------------------------------
+
+describe('summarising rules', () => {
+  const reply = (entries: { id: string; summary: string }[]): string =>
+    JSON.stringify({ summaries: entries });
+
+  it('returns a line per rule, keyed by id', async () => {
+    const a = seed('Refunds are not given after thirty days.');
+    const b = seed('Never mention the internal ticket number.');
+    queued.push(
+      reply([
+        { id: a.id, summary: 'When a refund is asked for late' },
+        { id: b.id, summary: 'What must not appear in a reply' },
+      ]),
+    );
+
+    const summaries = await summariseRules([a, b]);
+
+    expect(summaries.get(a.id)).toBe('When a refund is asked for late');
+    expect(summaries.get(b.id)).toBe('What must not appear in a reply');
+  });
+
+  it('ignores a summary for a rule it was never given', async () => {
+    const rule = seed('Refunds are not given after thirty days.');
+    queued.push(reply([{ id: 'invented', summary: 'Something' }]));
+
+    const summaries = await summariseRules([rule]);
+    expect(summaries.size).toBe(0);
+  });
+
+  it('strips an echoed id and flattens a multi-line answer', async () => {
+    const rule = seed('Refunds are not given after thirty days.');
+    queued.push(reply([{ id: rule.id, summary: `[${rule.id}] Late\n   refund requests` }]));
+
+    expect((await summariseRules([rule])).get(rule.id)).toBe('Late refund requests');
+  });
+
+  it('makes no call at all for an empty batch', async () => {
+    expect((await summariseRules([])).size).toBe(0);
+    expect(prompts).toHaveLength(0);
+  });
+
+  it('survives an unparseable response with no summaries rather than a throw', async () => {
+    const rule = seed('Refunds are not given after thirty days.');
+    queued.push('I am afraid I cannot do that.');
+
+    expect((await summariseRules([rule])).size).toBe(0);
+  });
+
+  it('attaches a summary only while the rule still says what was summarised', () => {
+    const rule = seed('Refunds are not given after thirty days.');
+
+    expect(attachSummary(rule.id, 'Late refunds', rule.content, db)).toBe(true);
+    expect(getRule(rule.id, db)?.summary).toBe('Late refunds');
+
+    // The rule moved under us — a summary of text that no longer exists is
+    // worse than none.
+    expect(attachSummary(rule.id, 'Stale', 'text it no longer has', db)).toBe(false);
+    expect(getRule(rule.id, db)?.summary).toBe('Late refunds');
+  });
+
+  it('clears the summary when the content is rewritten', () => {
+    const rule = seed('Refunds are not given after thirty days.');
+    attachSummary(rule.id, 'Late refunds', rule.content, db);
+
+    const updated = updateRule(rule.id, { content: 'Refunds are given for sixty days.' }, {}, db);
+    expect(updated?.summary).toBeNull();
+  });
+
+  it('keeps the summary when only the category or topics move', () => {
+    const rule = seed('Refunds are not given after thirty days.');
+    attachSummary(rule.id, 'Late refunds', rule.content, db);
+
+    const updated = updateRule(rule.id, { category: 'policy', topics: ['account-access'] }, {}, db);
+    expect(updated?.summary).toBe('Late refunds');
+  });
+
+  it('lists exactly the rules still waiting for one', () => {
+    const done = seed('Refunds are not given after thirty days.');
+    const waiting = seed('Never mention the internal ticket number.');
+    attachSummary(done.id, 'Late refunds', done.content, db);
+
+    const pending = listRules({ unsummarisedOnly: true }, db);
+    expect(pending.map(r => r.id)).toEqual([waiting.id]);
   });
 });

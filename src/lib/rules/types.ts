@@ -30,6 +30,13 @@ export interface Rule {
    */
   seq: number;
   content: string;
+  /**
+   * One line saying what this rule is about — enough to decide whether it
+   * bears on a reply, not enough to follow it. Null until it has been
+   * summarised. Never shown to the drafter in place of a rule it is expected
+   * to obey.
+   */
+  summary: string | null;
   category: RuleCategory;
   /**
    * The subjects this rule is about, from the workspace's topic vocabulary.
@@ -58,10 +65,18 @@ export interface RuleRevision {
   createdAt: string;
 }
 
-export type RuleChangeReason = 'manual' | 'learned' | 'merge' | 'replace' | 'consolidation';
+export type RuleChangeReason =
+  | 'manual'
+  | 'learned'
+  | 'merge'
+  | 'replace'
+  | 'consolidation'
+  /** One rule that had grown into several was cut into its parts. */
+  | 'split';
 
 export interface NewRule {
   content: string;
+  summary?: string | null;
   category?: RuleCategory;
   /** Omitted or empty makes the rule apply to every kind of mail. */
   topics?: string[];

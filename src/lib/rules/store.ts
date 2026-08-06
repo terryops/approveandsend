@@ -15,6 +15,7 @@ interface RuleRow {
   seq: number;
   id: string;
   content: string;
+  summary: string | null;
   category: string;
   enabled: number;
   source_task_id: string | null;
@@ -49,6 +50,7 @@ function toRule(row: RuleRow): Rule {
     id: row.id,
     seq: row.seq,
     content: row.content,
+    summary: row.summary,
     category: coerceCategory(row.category),
     topics: row.topics ? row.topics.split(',').sort() : [],
     enabled: row.enabled === 1,
@@ -70,6 +72,13 @@ export interface ListRulesOptions {
    */
   topic?: string;
   category?: RuleCategory;
+  /**
+   * Only rules with no summary yet. The indexing pass's work queue: a rule
+   * whose content changed had its summary cleared, so it reappears here.
+   */
+  unsummarisedOnly?: boolean;
+  /** For the indexing pass, which works in batches rather than all at once. */
+  limit?: number;
 }
 
 // SQLite's implicit rowid is the insertion counter and `rules` is not WITHOUT
@@ -87,6 +96,7 @@ export function listRules(options: ListRulesOptions = {}, db: Db = getDb()): Rul
   const params: unknown[] = [];
 
   if (options.enabledOnly) where.push('r.enabled = 1');
+  if (options.unsummarisedOnly) where.push('r.summary IS NULL');
   if (options.category) {
     where.push('r.category = ?');
     params.push(options.category);
@@ -107,7 +117,8 @@ export function listRules(options: ListRulesOptions = {}, db: Db = getDb()): Rul
     // Insertion order. Not a quality signal, but it is stable, which matters
     // more than it sounds: reordering the rule block between two otherwise
     // identical generations makes their outputs impossible to compare.
-    ' ORDER BY r.rowid ASC';
+    ' ORDER BY r.rowid ASC' +
+    (options.limit !== undefined ? ` LIMIT ${Math.max(0, Math.floor(options.limit))}` : '');
 
   return db.prepare(sql).all(...params).map(row => toRule(row as RuleRow));
 }
@@ -136,12 +147,13 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
   const write = db.transaction(() => {
     db.prepare(
       `INSERT INTO rules
-         (id, content, category, scope, enabled, source_task_id, rationale,
+         (id, content, summary, category, scope, enabled, source_task_id, rationale,
           applied_count, last_applied_at, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, 1, ?, ?, 0, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, NULL, 1, ?, ?, 0, NULL, ?, ?)`,
     ).run(
       id,
       content,
+      input.summary?.trim() || null,
       input.category ?? 'general',
       input.sourceTaskId ?? null,
       input.rationale ?? null,
@@ -157,6 +169,8 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
 
 export interface RuleUpdate {
   content?: string;
+  /** Null clears it, which is what a rewritten rule wants until it is resummarised. */
+  summary?: string | null;
   category?: RuleCategory;
   /** The complete intended set, not an addition. Empty clears every topic. */
   topics?: string[];
@@ -189,9 +203,20 @@ export function updateRule(
   const params: unknown[] = [];
 
   const content = update.content?.trim();
-  if (content !== undefined && content !== '' && content !== existing.content) {
+  const contentChanged = content !== undefined && content !== '' && content !== existing.content;
+  if (contentChanged) {
     sets.push('content = ?');
     params.push(content);
+  }
+  if (update.summary !== undefined) {
+    sets.push('summary = ?');
+    params.push(update.summary?.trim() || null);
+  } else if (contentChanged) {
+    // A rewritten rule with its old summary still attached is worse than one
+    // with no summary: whoever is scanning the list, or choosing which rules
+    // to read, is told about a rule that no longer exists. Clearing it puts
+    // the rule back in the queue to be summarised again.
+    sets.push('summary = NULL');
   }
   if (update.category !== undefined) {
     sets.push('category = ?');

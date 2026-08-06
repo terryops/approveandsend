@@ -392,6 +392,22 @@ export const MIGRATIONS: Migration[] = [
       // and this is the migration most likely to be reverted by hand.
     },
   },
+  {
+    version: 12,
+    name: 'rule_summary',
+    up: db => {
+      // One line saying what a rule is about, for the two readers that need to
+      // know *whether* a rule matters before paying to read it: a person
+      // scanning a rulebook of several hundred, and the drafter deciding which
+      // rules to ask for when they no longer all fit.
+      //
+      // Null means "not summarised yet", which is different from an empty
+      // summary and is what every existing rule starts as. Nothing falls back
+      // to a truncated `content`: the first sentence of a rule is usually its
+      // trigger condition, which reads as a summary and is not one.
+      db.exec(`ALTER TABLE rules ADD COLUMN summary TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

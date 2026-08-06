@@ -16,6 +16,27 @@ export const dynamic = 'force-dynamic';
  */
 const HISTORY_SHOWN = 5;
 
+/** Below this many rules there is nothing to scan, so nothing is collapsed. */
+const SCANNING_STARTS_AT = 12;
+
+/** As much of a rule as fits on one line before it stops being scannable. */
+const HEADLINE_CHARS = 100;
+
+/**
+ * The one line that stands for a rule in the list.
+ *
+ * The summary when there is one, and the rule's own opening when there is not
+ * — which is worse, and honest about being worse: the first sentence of a rule
+ * is usually its trigger condition, so it says when the rule fires and not
+ * what it does. An unsummarised rule reads exactly as badly here as it does in
+ * a list of four hundred, which is the pressure that gets it summarised.
+ */
+function headline(rule: { summary: string | null; content: string }): string {
+  if (rule.summary) return rule.summary;
+  const flat = rule.content.replace(/\s+/g, ' ').trim();
+  return flat.length > HEADLINE_CHARS ? `${flat.slice(0, HEADLINE_CHARS - 1)}…` : flat;
+}
+
 /**
  * The topic checkboxes for one rule.
  *
@@ -125,7 +146,20 @@ export default async function RulesPage({
         rules.map((rule) => (
           <form key={rule.id} className="card stack" action={editRule}>
             <input type="hidden" name="ruleId" value={rule.id} />
-            <textarea name="content" defaultValue={rule.content} rows={2} />
+            {/* Collapsed, because a rulebook is read by scanning for the one
+                rule you came for and a page of open textareas cannot be
+                scanned at all. Open on a small rulebook, where there is
+                nothing to scan and the extra click is pure friction. */}
+            <details className="rule" open={rules.length <= SCANNING_STARTS_AT}>
+              <summary>
+                {headline(rule)}
+                <span className="meta">
+                  {' · '}
+                  {rule.category}
+                  {rule.enabled ? '' : ` · ${t('rules.retiredTag')}`}
+                </span>
+              </summary>
+              <textarea name="content" defaultValue={rule.content} rows={2} />
             <div className="row">
               <select name="category" defaultValue={rule.category} style={{ width: 140 }}>
                 {RULE_CATEGORIES.map((category) => (
@@ -205,8 +239,9 @@ export default async function RulesPage({
                     })}
                   </p>
                 )}
-              </details>
-            )}
+                </details>
+              )}
+            </details>
           </form>
         ))
       )}

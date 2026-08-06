@@ -123,6 +123,7 @@ export const ja: Dictionary = {
   "rules.historyReason.merge": "別のルールと統合",
   "rules.historyReason.replace": "古いルールを置き換え",
   "rules.historyReason.consolidation": "整理で調整",
+  "rules.historyReason.split": "複数のルールに分割",
   "rules.saveButton": "保存",
   "rules.retireButton": "停止",
   "rules.restoreButton": "復元",

@@ -311,6 +311,28 @@ button.danger:hover {
   margin-bottom: 8px;
 }
 
+/* One rule, collapsed to its summary. The line is the whole point of the
+   collapse, so it reads as text rather than as a control — but it still has
+   to look clickable, or a page of them looks like a page of dead headings. */
+.rule > summary {
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rule > summary:hover {
+  color: var(--accent);
+}
+
+.rule > summary > .meta {
+  white-space: nowrap;
+}
+
+.rule[open] > summary {
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
 table.plain {
   width: 100%;
   border-collapse: collapse;

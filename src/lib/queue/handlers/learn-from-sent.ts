@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { getDb, type Db } from '../../db';
 import { learnFromSentReply, type LearningInput, type LearningOutcome } from '../../rules/learn';
 import { enqueue, type EnqueueResult } from '../store';
+import { enqueueSummariseRules } from './summarise-rules';
 import { PermanentJobError, type JobHandler } from '../types';
 
 /**
@@ -71,6 +72,15 @@ function parsePayload(payload: unknown): LearnFromSentPayload {
 
 export const learnFromSentHandler: JobHandler = async (payload, context): Promise<LearningOutcome> => {
   const input = parsePayload(payload);
-  return learnFromSentReply(input, { db: context.db });
+  const outcome = await learnFromSentReply(input, { db: context.db });
+
+  // A pass that added or rewrote anything has left rules with no summary, or
+  // with one that has just been cleared for describing text that no longer
+  // exists. Deduped, so a busy afternoon's learning costs one indexing pass.
+  const changed =
+    outcome.amended.length > 0 || outcome.results.some(result => result.action !== 'skip');
+  if (changed) enqueueSummariseRules({ db: context.db });
+
+  return outcome;
 };
 

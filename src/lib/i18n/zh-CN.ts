@@ -123,6 +123,7 @@ export const zhCN: Dictionary = {
   "rules.historyReason.merge": "与另一条规则合并",
   "rules.historyReason.replace": "替换了一条更旧的规则",
   "rules.historyReason.consolidation": "整理时理顺的",
+  "rules.historyReason.split": "拆成了几条独立规则",
   "rules.saveButton": "保存",
   "rules.retireButton": "停用",
   "rules.restoreButton": "恢复",
