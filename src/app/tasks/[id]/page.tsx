@@ -125,8 +125,20 @@ export default async function TaskPage({
       <div className="card">
         <div className="row">
           <span className="subject grow">{task.subject || t('task.noSubject')}</span>
+          {task.risk && task.risk.level !== 'low' && (
+            <span className={`tag risk-${task.risk.level}`}>
+              {t(`task.risk.${task.risk.level}`)}
+            </span>
+          )}
           <span className={`tag ${task.status}`}>{t(`task.status.${task.status}`)}</span>
         </div>
+        {/* The reasons, not just the grade. A badge a reviewer cannot argue
+            with is one they learn to ignore. */}
+        {task.risk && task.risk.factors.length > 0 && (
+          <p className="meta">
+            {task.risk.factors.map(f => t(`task.riskFactor.${f}`)).join(' · ')}
+          </p>
+        )}
         <div className="meta">
           {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
           {task.receivedAt ? ` · ${task.receivedAt.slice(0, 16).replace('T', ' ')}` : ''}

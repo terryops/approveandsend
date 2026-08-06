@@ -1,6 +1,9 @@
 import { getDb, type Db } from '../../db';
 import { draftReply } from '../../drafting/draft';
+import { listRules } from '../../rules/store';
 import { recordEvent } from '../../tasks/events';
+import { listMessages } from '../../tasks/messages';
+import { gradeRisk } from '../../tasks/risk';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
@@ -61,12 +64,24 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
   try {
     const result = await draftReply(task, { critic: value.critic !== false, db: context.db });
 
+    // Graded here rather than in `draftReply`, because two of the inputs are
+    // not the drafter's business: how long the conversation has been running,
+    // and whether this desk has a rulebook at all.
+    const risk = gradeRisk({
+      analysis: result.analysis,
+      criticApproved: result.critique?.approved,
+      appliedRules: result.appliedRuleIds.length,
+      haveRules: listRules({ enabledOnly: true }, context.db).length > 0,
+      threadLength: task.threadId ? listMessages(task.id, context.db).length : 0,
+    });
+
     updateTask(
       taskId,
       {
         status: 'awaiting_review',
         analysis: result.analysis,
         draft: result.draft,
+        risk,
         ...(result.analysis.scope ? { scope: result.analysis.scope } : {}),
         error: null,
         // Unread again. Whoever glanced at the previous draft — on a redraft,
@@ -88,6 +103,7 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
       appliedRules: result.appliedRuleIds.length,
       droppedRules: result.droppedRuleIds.length,
       criticApproved: result.critique?.approved,
+      risk: risk.level,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

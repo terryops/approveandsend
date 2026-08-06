@@ -157,6 +157,11 @@ export default async function InboxPage({
                     )}
                     {task.subject || t('inbox.noSubject')}
                   </a>
+                  {/* Only when it is worth interrupting for. A queue where
+                      every row wears a badge is a queue with no badges. */}
+                  {task.risk?.level === 'high' && (
+                    <span className="tag risk-high">{t('task.risk.high')}</span>
+                  )}
                   <span className={`tag ${task.status}`}>{LABELS[task.status] ?? task.status}</span>
                 </div>
                 <div className="meta">

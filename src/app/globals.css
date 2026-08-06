@@ -222,6 +222,19 @@ nav a.active {
   border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
 }
 
+/* Filled rather than outlined, unlike every other tag: this is the one badge
+   meant to be found by someone scanning the list rather than read in place. */
+.tag.risk-high {
+  color: var(--bg);
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.tag.risk-normal {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
 .filters {
   display: flex;
   gap: 8px;

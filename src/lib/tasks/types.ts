@@ -8,6 +8,8 @@
  * writers.
  */
 
+import type { Risk } from './risk';
+
 export const TASK_STATUSES = [
   'pending',
   'drafting',
@@ -67,6 +69,8 @@ export interface Task {
   openedAt: string | null;
   /** Why a human refused to send the draft. Their words, not the system's. */
   rejectionReason: string | null;
+  /** How much attention the draft deserves. Null until one has been written. */
+  risk: Risk | null;
 
   createdAt: string;
   updatedAt: string;

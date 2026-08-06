@@ -581,6 +581,23 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 19,
+    name: 'risk',
+    up: db => {
+      // How much attention a draft deserves, and why. Written by the drafting
+      // job from `risk.ts`, which is arithmetic over things already known —
+      // there is no third model call behind these two columns.
+      //
+      // Null on every row that predates this and on anything not yet drafted,
+      // which is why the UI treats null as "not graded" rather than "low".
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN risk_level TEXT;
+        -- A JSON array of factor slugs, translated where they are shown.
+        ALTER TABLE tasks ADD COLUMN risk_factors TEXT;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

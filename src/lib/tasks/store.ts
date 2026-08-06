@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getDb, type Db } from '../db';
 import { recordEvent } from './events';
+import { isRiskFactor, isRiskLevel, type Risk } from './risk';
 import { isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
 
 interface TaskRow {
@@ -27,6 +28,8 @@ interface TaskRow {
   superseded_by: string | null;
   opened_at: string | null;
   rejection_reason: string | null;
+  risk_level: string | null;
+  risk_factors: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +52,24 @@ function parseAnalysis(raw: string | null): Analysis | null {
     // Same reasoning as the queue's payload: reading a row must not throw.
     return null;
   }
+}
+
+/** Null level means never graded, which is not the same as graded low. */
+function parseRisk(level: string | null, factors: string | null): Risk | null {
+  if (!isRiskLevel(level)) return null;
+
+  let parsed: unknown = [];
+  try {
+    parsed = factors ? JSON.parse(factors) : [];
+  } catch {
+    // Same as everywhere else here: reading a row must not throw. A grade with
+    // no reasons attached is still a usable grade.
+  }
+
+  return {
+    level,
+    factors: Array.isArray(parsed) ? parsed.filter(isRiskFactor) : [],
+  };
 }
 
 function mapTask(row: TaskRow): Task {
@@ -75,6 +96,7 @@ function mapTask(row: TaskRow): Task {
     supersededBy: row.superseded_by,
     openedAt: row.opened_at,
     rejectionReason: row.rejection_reason,
+    risk: parseRisk(row.risk_level, row.risk_factors),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -220,6 +242,7 @@ export interface TaskUpdate {
   supersededBy?: string | null;
   openedAt?: string | null;
   rejectionReason?: string | null;
+  risk?: Risk | null;
 }
 
 const COLUMNS: Record<keyof TaskUpdate, string> = {
@@ -237,6 +260,9 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   supersededBy: 'superseded_by',
   openedAt: 'opened_at',
   rejectionReason: 'rejection_reason',
+  // Two columns behind one field. `risk` is set as a unit or not at all, so
+  // there is no update that writes a level without its reasons.
+  risk: 'risk_level',
 };
 
 export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): Task | null {
@@ -246,6 +272,17 @@ export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): T
   for (const [key, column] of Object.entries(COLUMNS) as [keyof TaskUpdate, string][]) {
     if (!(key in changes)) continue;
     const value = changes[key];
+
+    // The one field that is two columns. Writing the reasons in the same
+    // statement as the grade is what stops a row claiming to be high risk for
+    // reasons that belong to the draft before this one.
+    if (key === 'risk') {
+      const risk = value as Risk | null;
+      sets.push('risk_level = ?', 'risk_factors = ?');
+      params.push(risk?.level ?? null, risk ? JSON.stringify(risk.factors) : null);
+      continue;
+    }
+
     sets.push(`${column} = ?`);
     params.push(key === 'analysis' && value ? JSON.stringify(value) : (value ?? null));
   }
