@@ -7,6 +7,7 @@ import {
   type WorkspaceConfig,
 } from '../config/workspace';
 import { contextForPrompt } from '../context/gather';
+import { classifyTopic } from './classify';
 import type { Db } from '../db';
 import { getDb } from '../db';
 import { extractJson } from '../json-repair';
@@ -19,11 +20,17 @@ import { clip, htmlToText } from '../thread-context';
 /**
  * Reading a customer's email and writing a reply to it.
  *
- * One call, not two. The predecessor ran an analysis pass and then a separate
- * drafting pass over the same email, which doubled the latency and the cost to
- * produce a draft that could contradict its own analysis. The critic pass
- * below is a genuinely independent second opinion; splitting analysis from
- * drafting was not.
+ * One drafting call, not two. The predecessor ran a full analysis pass and
+ * then a separate drafting pass over the same email, which doubled the latency
+ * and the cost to produce a draft that could contradict its own analysis. The
+ * critic pass below is a genuinely independent second opinion; splitting
+ * analysis from drafting was not.
+ *
+ * What does run first is a classification (`classify.ts`): one small call that
+ * answers what the mail is about and nothing else. That is not the analysis
+ * pass coming back — it forms no opinion the drafter could contradict, and it
+ * is the only way the rules can be chosen by topic at all, since the drafter
+ * cannot route a prompt on an answer it has not given yet.
  */
 
 const MAX_BODY_CHARS = 12_000;
@@ -75,10 +82,20 @@ function buildPrompt(
   workspace: WorkspaceConfig,
   rulesBlock: string,
   contextBlock: string,
+  /** Already decided, and already used to choose the rules above. */
+  topic: string | undefined,
 ): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
-  return `${describeWorkspace(workspace)}${describeTopics(workspace)}${rulesBlock}${contextBlock}
+  // The vocabulary is listed only where the drafter still has to choose from
+  // it. Once the classifier has answered, listing the alternatives invites the
+  // drafter to relitigate a decision the rules in front of it were already
+  // chosen by.
+  const topicBlock = topic
+    ? `\n\nThis mail has been classified as: ${topic}. The rules below were chosen for it.`
+    : describeTopics(workspace);
+
+  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}
 
 ## The customer's email
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -91,12 +108,15 @@ JSON only, no prose around it:
 {
   "intent": "one specific sentence about what this person wants and why — 'wants a refund because the export was silent', not 'refund'",
   "language": "ISO 639-1 code of the language they wrote in",
-  "sentiment": "positive | neutral | negative | angry",
-  "scope": ${
+  "sentiment": "positive | neutral | negative | angry",${
+    // Asked for only where nothing else can answer it. Where the desk has a
+    // topic vocabulary the classifier has already decided, and asking again
+    // would produce a second answer that the reviewer sees and the rules were
+    // not chosen by.
     workspace.topics.length > 0
-      ? '"the name of the kind of mail this is, from the list above, or an empty string if none of them fits"'
-      : '"a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to"'
-  },
+      ? ''
+      : '\n  "scope": "a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to",'
+  }
   "keyPoints": ["what they actually said, in their terms"],
   "suggestedActions": ["what a human may need to do outside this reply, if anything"],
   "draft": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
@@ -104,22 +124,24 @@ JSON only, no prose around it:
 }
 
 /**
- * The classifier's answer, only if it is a name that exists.
+ * The topic a desk with no vocabulary gets: whatever the drafter called it.
  *
- * A vocabulary that is not enforced is not a vocabulary. Left unchecked the
- * model returns `refunds` where the rules say `refund` — close enough to look
- * right on the task page, and it routes the reply past every refund rule the
- * desk has. An unrecognised name is dropped, which falls back to the rules
- * that apply to everything.
+ * Only reachable where there is no list to check against. Where there is one,
+ * the classifier owns the answer and a name the drafter volunteers is ignored
+ * rather than validated — the rules in that prompt were chosen by the
+ * classifier, and recording a different name would route the next
+ * regeneration by a topic this draft never saw.
  */
-function acceptScope(value: unknown, workspace: WorkspaceConfig): string | undefined {
-  const slug = normaliseTopicSlug(value);
-  if (!slug) return undefined;
-  if (workspace.topics.length === 0) return slug;
-  return workspace.topics.some(topic => topic.slug === slug) ? slug : undefined;
+function freeSlug(value: unknown): string | undefined {
+  return normaliseTopicSlug(value) ?? undefined;
 }
 
-function parseDraft(raw: string, workspace: WorkspaceConfig): { analysis: Analysis; draft: string } | null {
+function parseDraft(
+  raw: string,
+  workspace: WorkspaceConfig,
+  /** What the rules were routed by. Outranks anything the drafter says. */
+  routedTopic: string | undefined,
+): { analysis: Analysis; draft: string } | null {
   const parsed = extractJson<Record<string, unknown>>(raw);
   if (!parsed) return null;
 
@@ -128,7 +150,10 @@ function parseDraft(raw: string, workspace: WorkspaceConfig): { analysis: Analys
   // empty and the reviewer still has something to work with.
   if (!draft) return null;
 
-  const scope = acceptScope(parsed.scope, workspace);
+  // The topic on the task must be the topic the rules were chosen by, or the
+  // next regeneration routes on something this draft never saw. The drafter's
+  // own answer is only consulted where there was no classification to make.
+  const scope = routedTopic ?? (workspace.topics.length === 0 ? freeSlug(parsed.scope) : undefined);
 
   return {
     draft,
@@ -151,18 +176,21 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const db = options.db ?? getDb();
   const workspace = options.workspace ?? getWorkspaceConfig();
 
-  // The topic is not known until the analysis has run, so the first draft for
-  // a task sees the rules that apply to everything plus whichever topic the
-  // task already carries. A regeneration, which does know, sees the right set.
+  // What the mail is about has to be settled before the rules are chosen, or
+  // the rules are chosen by nothing. A task that already carries a topic — a
+  // regeneration, a backfill — keeps it rather than paying for the same answer
+  // twice.
+  const topic = task.scope || (await classifyTopic(task, workspace));
+
   const rules = listRules({ enabledOnly: true }, db);
-  const block = selectRules(rules, { ...(task.scope ? { topic: task.scope } : {}) });
+  const block = selectRules(rules, { ...(topic ? { topic } : {}) });
 
   // Whatever the enrichment job found, if it ran. Empty when no sources are
   // configured, which is the default and costs nothing.
   const contextBlock = options.context ?? contextForPrompt(task.id, db);
 
-  const raw = await callAI(buildPrompt(task, workspace, block.text, contextBlock), { role: 'drafter' });
-  const parsed = parseDraft(raw, workspace);
+  const raw = await callAI(buildPrompt(task, workspace, block.text, contextBlock, topic || undefined), { role: 'drafter' });
+  const parsed = parseDraft(raw, workspace, topic || undefined);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
   }

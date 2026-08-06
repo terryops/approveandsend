@@ -312,8 +312,8 @@ so it caches; a rule that never reaches the model is not a saving.
 ### Topics, and why the vocabulary is fixed
 
 A budget alone only decides *which* rules to lose. Routing decides whether
-they need to be lost at all: the analysis names what the mail is about, and
-only the rules filed under that name — plus the ones filed under nothing —
+they need to be lost at all: a classification names what the mail is about,
+and only the rules filed under that name — plus the ones filed under nothing —
 reach the prompt. On a rulebook of 136 that is roughly a tenfold cut.
 
 Routing is what makes a larger budget affordable rather than a replacement for
@@ -322,7 +322,24 @@ one: the two together are what stopped the dropping. Routing alone still lost
 into 3000-character essays; a larger budget alone would have spent 20k
 characters on rules about subtitle export in front of a refund request.
 
-Two things make it work, and neither is optional.
+**The topic is decided before the rules are chosen, in its own call.** It has
+to be: rules are selected by topic, and for a while the topic came out of the
+drafting call that the selection fed. So the first draft of every task — the
+one a reviewer actually reads — was routed by nothing, and only a
+regeneration saw the right rules. On a real desk that was 84 of 354 rules
+reaching a first draft, with every product rule among the 270 that did not.
+Classifying first costs one small call on the utility model and takes the
+number to 88 of 88.
+
+This is not the analysis pass this codebase removed. That one re-read the
+mail, formed its own view of intent and tone, and handed the drafter a second
+opinion to contradict. This asks one question and answers with one word, and
+it is the sole owner of the answer: where a desk has a vocabulary the drafter
+is not asked for a topic at all, so there is nothing for the two to disagree
+about. Where a desk has none, there is nothing to classify against and the
+drafter's own label is kept, exactly as before.
+
+Two more things make it work, and neither is optional.
 
 **The names come from a list.** `topics` in the workspace config is a fixed
 vocabulary, and the classifier is told to choose from it and checked against

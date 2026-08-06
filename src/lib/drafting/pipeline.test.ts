@@ -311,14 +311,14 @@ describe('drafting', () => {
     expect(result.analysis.sentiment).toBe('negative');
   });
 
-  it('refuses a scope the vocabulary does not contain', async () => {
+  it('refuses a classification the vocabulary does not contain', async () => {
     // The failure this whole mechanism exists to stop. `refunds` is one
     // letter from the configured `refund`, looks entirely correct on the task
     // page, and routes the reply past every refund rule the desk has. Better
     // to have no topic — which falls back to the rules that apply to
     // everything — than a name nothing is filed under.
     writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
-    queued.push(JSON.stringify({ ...JSON.parse(GOOD_DRAFT), scope: 'refunds' }));
+    queued.push('refunds', GOOD_DRAFT);
 
     const result = await draftReply(createTask(INCOMING, db).task, { db });
     expect(result.analysis.scope).toBeUndefined();
@@ -328,12 +328,41 @@ describe('drafting', () => {
     expect(prompts[0]).toContain('- refund: money back');
   });
 
-  it('keeps a scope the vocabulary does contain', async () => {
+  it('routes the rules by the classification, before the draft exists', async () => {
     writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
-    queued.push(GOOD_DRAFT);
+    const wanted = createRule({ content: 'Refunds take ten days.', topics: ['refund'] }, db);
+    const other = createRule({ content: 'Never quote an API rate limit.', topics: ['api'] }, db);
+    queued.push('refund', GOOD_DRAFT);
 
     const result = await draftReply(createTask(INCOMING, db).task, { db });
+
     expect(result.analysis.scope).toBe('refund');
+    // The point of the whole exercise: a first draft, on a task that carried
+    // no topic, written against the rules for what the mail is actually about.
+    expect(result.appliedRuleIds).toContain(wanted.id);
+    expect(result.appliedRuleIds).not.toContain(other.id);
+    expect(prompts[1]).toContain('Refunds take ten days.');
+    expect(prompts[1]).not.toContain('Never quote an API rate limit.');
+  });
+
+  it('does not pay to classify a task that already carries a topic', async () => {
+    writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
+    const { task } = createTask(INCOMING, db);
+    queued.push(GOOD_DRAFT);
+
+    const result = await draftReply({ ...task, scope: 'refund' }, { db });
+
+    expect(prompts).toHaveLength(1);
+    expect(result.analysis.scope).toBe('refund');
+  });
+
+  it('drafts anyway when the classifier says nothing useful', async () => {
+    writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
+    queued.push('none', GOOD_DRAFT);
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.scope).toBeUndefined();
+    expect(result.draft).toBe('We have escalated this and will update you shortly.');
   });
 
   it('accepts any slug when no vocabulary is configured', async () => {
