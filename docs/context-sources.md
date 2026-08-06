@@ -236,6 +236,42 @@ A slow scraper gets `timeoutMs` and nothing else. It is one of several lookups
 running in parallel, it cannot delay a mail past its own timeout, and if it
 gives up it is a red row on the queue page rather than a failed draft.
 
+## When the lookup takes four minutes
+
+Everything above runs inside `enrich-context`, which means it runs while a mail
+is waiting. Some lookups cannot: a scrape behind a login that has to solve a
+challenge, a report that takes minutes to build, a question a person answers in
+Slack. Those run on their own schedule and post the answer back:
+
+```bash
+curl -XPOST "$AAS/api/tasks/$TASK_ID/context" \
+  -H "Authorization: Bearer $CRON_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sourceId": "crm",
+    "label": "Account (CRM)",
+    "title": "Account",
+    "href": "https://crm.example/accounts/8812",
+    "fields": [{ "label": "Tier", "value": "Enterprise" }],
+    "prompt": "Enterprise account with 2 open tickets."
+  }'
+```
+
+The body is the block a source would have returned, plus a `sourceId` — the row
+is keyed on it, so posting twice replaces rather than stacks, and a callback
+that does not say which lookup it is would overwrite whichever one went last.
+
+The card appears the next time the review screen is loaded. If the draft was
+already written, it was written without this, which is the trade: a lookup that
+cannot finish in time cannot inform the first draft. It can inform the reviewer,
+and it will inform a redraft.
+
+**It will not accept a draft.** The system this came from had an endpoint that
+let an outside process write the reply text directly, which walked around the
+version history and the audit trail — the two records that exist to answer "who
+decided this". A machine token adds facts. Deciding what to say with them stays
+where it can be traced.
+
 ## Writing your own
 
 When the mapping is not enough — the response needs two calls, or a date needs
