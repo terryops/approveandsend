@@ -221,20 +221,50 @@ export function recordApplied(ids: string[], db: Db = getDb()): void {
   run(ids);
 }
 
-export function listRevisions(ruleId: string, db: Db = getDb()): RuleRevision[] {
-  const rows = db
-    .prepare('SELECT * FROM rule_revisions WHERE rule_id = ? ORDER BY created_at DESC, id DESC')
-    .all(ruleId) as {
-    id: number;
-    rule_id: string;
-    previous_content: string;
-    new_content: string;
-    reason: string;
-    actor: string | null;
-    created_at: string;
-  }[];
+/**
+ * Every revision for a page full of rules, in one query.
+ *
+ * The rules page needs the history of each rule it renders, and asking per
+ * rule is a statement whose cost grows with the rulebook — which is the one
+ * thing in this app designed to grow forever. Returns a Map so a rule with no
+ * history is a missing key rather than a query that found nothing.
+ */
+export function revisionsByRule(
+  ruleIds: string[],
+  db: Db = getDb(),
+): Map<string, RuleRevision[]> {
+  const grouped = new Map<string, RuleRevision[]>();
+  if (ruleIds.length === 0) return grouped;
 
-  return rows.map(row => ({
+  const placeholders = ruleIds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(
+      `SELECT * FROM rule_revisions WHERE rule_id IN (${placeholders})
+       ORDER BY created_at DESC, id DESC`,
+    )
+    .all(...ruleIds) as RevisionRow[];
+
+  for (const row of rows) {
+    const revision = toRevision(row);
+    const existing = grouped.get(revision.ruleId);
+    if (existing) existing.push(revision);
+    else grouped.set(revision.ruleId, [revision]);
+  }
+  return grouped;
+}
+
+interface RevisionRow {
+  id: number;
+  rule_id: string;
+  previous_content: string;
+  new_content: string;
+  reason: string;
+  actor: string | null;
+  created_at: string;
+}
+
+function toRevision(row: RevisionRow): RuleRevision {
+  return {
     id: row.id,
     ruleId: row.rule_id,
     previousContent: row.previous_content,
@@ -242,5 +272,13 @@ export function listRevisions(ruleId: string, db: Db = getDb()): RuleRevision[] 
     reason: row.reason as RuleChangeReason,
     actor: row.actor,
     createdAt: row.created_at,
-  }));
+  };
+}
+
+export function listRevisions(ruleId: string, db: Db = getDb()): RuleRevision[] {
+  const rows = db
+    .prepare('SELECT * FROM rule_revisions WHERE rule_id = ? ORDER BY created_at DESC, id DESC')
+    .all(ruleId) as RevisionRow[];
+
+  return rows.map(toRevision);
 }

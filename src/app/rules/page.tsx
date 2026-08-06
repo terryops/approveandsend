@@ -1,12 +1,19 @@
 import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
-import { listRules } from '@/lib/rules/store';
+import { listRules, revisionsByRule } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
 
 import { addRule, editRule, removeRule, tidyRulebook, toggleRule } from '../actions';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * How many earlier wordings are worth reading. Beyond about five the question
+ * stops being "what did this used to say" and starts being "why does this rule
+ * keep changing", which the count in the summary already answers.
+ */
+const HISTORY_SHOWN = 5;
 
 /**
  * The rulebook, in the open.
@@ -27,6 +34,7 @@ export default async function RulesPage({
   const rules = listRules({ ...(showDisabled ? {} : { enabledOnly: true }) });
   const active = rules.filter((rule) => rule.enabled).length;
   const gate = consolidationGate();
+  const history = revisionsByRule(rules.map((rule) => rule.id));
 
   return (
     <>
@@ -127,6 +135,39 @@ export default async function RulesPage({
               </button>
             </div>
             {rule.rationale && <p className="meta">{rule.rationale}</p>}
+            {/* Closed by default, and the only thing on this page that answers
+                "who changed this, and what did it say before". A rule that
+                drifts one edit at a time is indistinguishable from a rule that
+                was always wrong unless the earlier wording is still readable. */}
+            {(history.get(rule.id)?.length ?? 0) > 0 && (
+              <details className="translation">
+                <summary>
+                  {t('rules.historyHeading', { n: history.get(rule.id)!.length })}
+                </summary>
+                {history
+                  .get(rule.id)!
+                  .slice(0, HISTORY_SHOWN)
+                  .map((revision) => (
+                    <div key={revision.id} style={{ marginTop: 8 }}>
+                      <p className="meta" style={{ margin: 0 }}>
+                        {revision.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
+                        {t(`rules.historyReason.${revision.reason}`)}
+                        {revision.actor
+                          ? ` · ${t('rules.historyBy', { who: revision.actor })}`
+                          : ''}
+                      </p>
+                      <pre className="email">{revision.previousContent}</pre>
+                    </div>
+                  ))}
+                {history.get(rule.id)!.length > HISTORY_SHOWN && (
+                  <p className="meta">
+                    {t('rules.historyOlder', {
+                      n: history.get(rule.id)!.length - HISTORY_SHOWN,
+                    })}
+                  </p>
+                )}
+              </details>
+            )}
           </form>
         ))
       )}

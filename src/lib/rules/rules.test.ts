@@ -18,6 +18,7 @@ import {
   listRevisions,
   listRules,
   recordApplied,
+  revisionsByRule,
   updateRule,
 } from './store';
 import type { Rule } from './types';
@@ -127,6 +128,33 @@ describe('rule store', () => {
       reason: 'learned',
     });
     expect(getRule(rule.id, db)?.category).toBe('tone');
+  });
+
+  it('groups a whole page of histories in one lookup, newest first', () => {
+    const changed = seed('First wording.');
+    const twice = seed('Also first.');
+    const untouched = seed('Never edited.');
+
+    updateRule(changed.id, { content: 'Second wording.' }, { actor: 'Sam' }, db);
+    updateRule(twice.id, { content: 'Also second.' }, { actor: 'Ada' }, db);
+    updateRule(twice.id, { content: 'Also third.' }, { actor: 'Ada' }, db);
+
+    const history = revisionsByRule([changed.id, twice.id, untouched.id], db);
+
+    expect(history.get(changed.id)).toHaveLength(1);
+    expect(history.get(changed.id)?.[0]).toMatchObject({
+      previousContent: 'First wording.',
+      actor: 'Sam',
+    });
+    // Newest first, so the page shows the most recent rewording at the top.
+    expect(history.get(twice.id)?.map(r => r.previousContent)).toEqual([
+      'Also second.',
+      'Also first.',
+    ]);
+    // A rule nobody has touched is a missing key, not an empty array — the
+    // page tests for history by asking whether the key is there.
+    expect(history.has(untouched.id)).toBe(false);
+    expect(revisionsByRule([], db).size).toBe(0);
   });
 
   it('returns null for an unknown id instead of throwing', () => {
