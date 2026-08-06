@@ -156,6 +156,56 @@ is not transient: that is a revoked refresh token, and retrying makes it worse.
 A 401 from the API *is* worth exactly one retry with a fresh token, because
 tokens can be revoked mid-session.
 
+## Persona as configuration
+
+This is the whole de-branding story. In the original, the company name, the
+pricing, the refund window and the assistant's own name were written into six
+prompt strings across four route handlers. Changing "we" meant a code change,
+and publishing the code meant publishing the company's internal policy.
+
+`config/workspace.ts` moves all of it into one JSON file with bland defaults,
+so a fresh checkout produces a correct, boring support reply rather than
+refusing to start. A malformed config file *is* an error, though — falling back
+to defaults there would mean a deployment quietly losing its policy facts and
+nobody noticing until a draft promised something it should not have.
+
+`neverPromise` earns its place as a separate field rather than another fact:
+"do not state this" and "this is true" are different instructions, and models
+follow the negative one better when it is labelled as one.
+
+## Drafting
+
+**One call, not two.** The original ran an analysis pass and then a separate
+drafting pass over the same email. That doubles the latency and the cost to
+produce a draft that can contradict its own analysis. Analysis and draft come
+back from one generation as one JSON object.
+
+**The critic pass is a real second opinion, and is optional.** A second model
+reads the draft against the same rules and either signs it off or rewrites it.
+It is worth its cost because the failure it catches is the expensive one: a
+reply that reads perfectly well and quietly breaks a policy. A critic that
+approves *and* rewrites is contradicting itself, so the verdict wins and the
+rewrite is dropped.
+
+**A failing critic must not lose the draft.** The original failed the whole
+task when the review step errored, so a transient blip threw away a generation
+that had already taken a minute. A reviewer can judge an uncriticised draft
+perfectly well.
+
+**Rule telemetry is recorded when the draft exists, not when the prompt is
+built.** Otherwise a failed generation inflates the usage counts that decide
+which rules are pulling their weight.
+
+**Ingestion is idempotent through a unique index on the provider's message id.**
+The original kept a separate `deleted_emails` table so that dismissed mail did
+not reappear on the next sync; a uniqueness constraint plus a `dismissed`
+status says the same thing with one table instead of two.
+
+**A retrying task goes back to `pending`, not `failed`.** The queue owns the
+retry, and a routine 429 should not paint a row red for the thirty seconds
+before the next attempt. It becomes `failed` only when the last attempt is
+spent — which the handler knows because the job context tells it.
+
 ## The learning loop
 
 The part that makes this worth self-hosting. A human approves a reply; if they

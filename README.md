@@ -13,8 +13,8 @@ active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
 > Status: v0.1 in progress. The AI layer, the mail layer, the rules engine, the
-> learning loop and the job queue are done and tested. The review UI is still
-> being ported, so it is not yet usable end to end.
+> learning loop, the job queue and the drafting pipeline are done and tested.
+> The review UI is still being ported, so it is not yet usable end to end.
 
 ## Why it exists
 
@@ -80,6 +80,30 @@ GOOGLE_REFRESH_TOKEN=...
 For Workspace, a service account with domain-wide delegation works too — set
 `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_IMPERSONATE_USER`
 instead. Which mode you get is inferred from the variables you set.
+
+## Tell it who it is
+
+Copy `replyloop.config.example.json` to `replyloop.config.json`. This is the
+whole persona — no prompt files to edit:
+
+```json
+{
+  "organization": "Acme",
+  "voice": "Warm, direct and specific. No filler apologies.",
+  "facts": ["Refunds are processed within 5-10 business days."],
+  "neverPromise": ["refund dates that have not been confirmed"],
+  "signature": "— The Acme team",
+  "replyLanguage": "match"
+}
+```
+
+`facts` are the things the model would otherwise invent. Keep the list short
+and load-bearing — it goes into every draft. `replyLanguage: "match"` answers
+in whatever language the customer wrote in.
+
+A second model then reads each draft against the same rules and either signs it
+off or rewrites it, before any human sees it. It catches the expensive failure:
+a reply that reads perfectly well and quietly breaks a policy.
 
 ## How it learns
 

@@ -113,6 +113,60 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    name: 'tasks',
+    up: db => {
+      db.exec(`
+        CREATE TABLE tasks (
+          id         TEXT PRIMARY KEY,
+          -- pending | drafting | awaiting_review | sent | dismissed | failed
+          status     TEXT NOT NULL DEFAULT 'pending',
+          -- What kind of mail this is. Set by the analysis and used to scope
+          -- which learned rules apply, so a refund rule does not steer a bug
+          -- report.
+          scope      TEXT,
+          priority   INTEGER NOT NULL DEFAULT 5,
+
+          -- The provider's id for the message we are replying to.
+          message_id TEXT,
+          thread_id  TEXT,
+          -- The RFC 5322 Message-ID, which is what threads the reply.
+          message_id_header TEXT,
+
+          subject      TEXT NOT NULL DEFAULT '',
+          from_address TEXT NOT NULL DEFAULT '',
+          from_name    TEXT,
+          received_at  TEXT,
+          body         TEXT NOT NULL DEFAULT '',
+
+          -- The analysis JSON: intent, sentiment, key points.
+          analysis   TEXT,
+          -- What the model wrote. Kept after sending: without it the learning
+          -- loop has nothing to diff against.
+          draft      TEXT,
+          -- What the human actually sent.
+          final_reply TEXT,
+          reviewer_notes TEXT,
+          sent_at    TEXT,
+          error      TEXT,
+
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX idx_tasks_status ON tasks(status, priority, created_at);
+        CREATE INDEX idx_tasks_received ON tasks(received_at);
+
+        -- Ingesting the same email twice is a no-op rather than a duplicate
+        -- task. The original kept a separate table of deleted message ids to
+        -- stop dismissed mail reappearing on the next sync; a uniqueness
+        -- constraint plus a 'dismissed' status says the same thing with one
+        -- table instead of two.
+        CREATE UNIQUE INDEX idx_tasks_message ON tasks(message_id) WHERE message_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

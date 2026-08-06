@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetAiConfig } from '../ai';
 import { openDb, type Db } from '../db';
 import { listRules } from '../rules/store';
-import { DEFAULT_HANDLERS, enqueueLearnFromSent, LEARN_FROM_SENT } from './handlers/learn-from-sent';
+import { DEFAULT_HANDLERS, enqueueLearnFromSent, LEARN_FROM_SENT } from './handlers';
 import {
   backoffMs,
   claimNext,

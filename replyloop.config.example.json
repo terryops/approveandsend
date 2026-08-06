@@ -1,0 +1,16 @@
+{
+  "organization": "Acme",
+  "product": "Acme Cloud",
+  "voice": "Warm, direct and specific. No filler apologies, no corporate padding.",
+  "facts": [
+    "Refunds are processed within 5-10 business days, depending on the customer's bank.",
+    "Support is staffed 09:00-18:00 UTC on weekdays.",
+    "The free plan does not include API access."
+  ],
+  "neverPromise": [
+    "refund amounts or dates that have not been confirmed",
+    "delivery dates for unreleased features"
+  ],
+  "signature": "— The Acme team",
+  "replyLanguage": "match"
+}

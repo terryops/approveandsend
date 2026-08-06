@@ -74,7 +74,3 @@ export const learnFromSentHandler: JobHandler = async (payload, context): Promis
   return learnFromSentReply(input, { db: context.db });
 };
 
-/** The handlers a stock deployment runs. */
-export const DEFAULT_HANDLERS = {
-  [LEARN_FROM_SENT]: learnFromSentHandler,
-};
