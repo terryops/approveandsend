@@ -1,4 +1,5 @@
 import { requirePage } from '@/lib/auth/guard';
+import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
 import { listRules } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
@@ -31,33 +32,32 @@ export default async function RulesPage({
     <>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="grow meta">
-          {active} active {showDisabled ? `of ${rules.length}` : ''}
-          {gate.changed > 0 && ` · ${gate.changed} written since the last tidy`}
+          {t('rules.activeCount', { n: active })}{' '}
+          {showDisabled ? t('rules.ofTotal', { n: rules.length }) : ''}
+          {gate.changed > 0 && ` · ${t('rules.writtenSinceTidy', { n: gate.changed })}`}
         </span>
         <div className="filters" style={{ margin: 0 }}>
           <a href="/rules" className={showDisabled ? '' : 'active'}>
-            Active
+            {t('rules.filterActive')}
           </a>
           <a href="/rules?show=all" className={showDisabled ? 'active' : ''}>
-            Including retired
+            {t('rules.filterIncludingRetired')}
           </a>
         </div>
         <form action={tidyRulebook}>
-          <button type="submit">Tidy the rulebook</button>
+          <button type="submit">{t('rules.tidyButton')}</button>
         </form>
       </div>
 
       {typeof query.tidy === 'string' && (
         <p className="banner" style={{ borderColor: 'var(--line)' }}>
-          {query.tidy === 'already'
-            ? 'A tidy is already queued.'
-            : 'Queued. It merges near-duplicates in the background — run the queue, then reload.'}
+          {query.tidy === 'already' ? t('rules.tidyAlreadyQueued') : t('rules.tidyQueued')}
         </p>
       )}
 
       <form className="card stack" action={addRule}>
-        <h2>Write a rule</h2>
-        <input type="text" name="content" placeholder="One sentence the drafter must obey" />
+        <h2>{t('rules.writeHeading')}</h2>
+        <input type="text" name="content" placeholder={t('rules.contentPlaceholder')} />
         <div className="row">
           <select name="category" defaultValue="general" style={{ width: 160 }}>
             {RULE_CATEGORIES.map((category) => (
@@ -69,15 +69,15 @@ export default async function RulesPage({
           <input
             type="text"
             name="scope"
-            placeholder="scope — blank means every kind of mail"
+            placeholder={t('rules.scopePlaceholder')}
             style={{ width: 280 }}
           />
-          <button type="submit">Add</button>
+          <button type="submit">{t('rules.addButton')}</button>
         </div>
       </form>
 
       {rules.length === 0 ? (
-        <p className="empty">No rules yet. They appear as you edit drafts before sending them.</p>
+        <p className="empty">{t('rules.empty')}</p>
       ) : (
         rules.map((rule) => (
           <form key={rule.id} className="card stack" action={editRule}>
@@ -95,35 +95,35 @@ export default async function RulesPage({
                 type="text"
                 name="scope"
                 defaultValue={rule.scope ?? ''}
-                placeholder="all mail"
+                placeholder={t('rules.scopeAllMail')}
                 style={{ width: 200 }}
               />
               <span className="grow meta">
-                #{rule.seq} · used {rule.appliedCount}×
+                #{rule.seq} · {t('rules.usedTimes', { n: rule.appliedCount })}
                 {/* A backfill rule's source is an archived exchange, not a
                     task, so it cannot link into the review screen — there is
                     no row there to link to. */}
                 {rule.sourceTaskId?.startsWith('backfill:') ? (
                   <>
-                    {' · from '}
-                    <a href="/backfill">an email in the archive</a>
+                    {` · ${t('rules.sourceFrom')} `}
+                    <a href="/backfill">{t('rules.sourceArchiveLink')}</a>
                   </>
                 ) : rule.sourceTaskId ? (
                   <>
-                    {' · from '}
-                    <a href={`/tasks/${rule.sourceTaskId}`}>the email that taught it</a>
+                    {` · ${t('rules.sourceFrom')} `}
+                    <a href={`/tasks/${rule.sourceTaskId}`}>{t('rules.sourceTaskLink')}</a>
                   </>
                 ) : (
-                  ' · written by hand'
+                  ` · ${t('rules.writtenByHand')}`
                 )}
-                {rule.enabled ? '' : ' · retired'}
+                {rule.enabled ? '' : ` · ${t('rules.retiredTag')}`}
               </span>
-              <button type="submit">Save</button>
+              <button type="submit">{t('rules.saveButton')}</button>
               <button type="submit" formAction={toggleRule} name="enabled" value={String(!rule.enabled)}>
-                {rule.enabled ? 'Retire' : 'Restore'}
+                {rule.enabled ? t('rules.retireButton') : t('rules.restoreButton')}
               </button>
               <button className="danger" type="submit" formAction={removeRule}>
-                Delete
+                {t('rules.deleteButton')}
               </button>
             </div>
             {rule.rationale && <p className="meta">{rule.rationale}</p>}

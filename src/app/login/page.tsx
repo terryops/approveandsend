@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { hasSession } from '@/lib/auth/guard';
 import { APP_NAME } from '@/lib/brand';
+import { t } from '@/lib/i18n';
 
 import { login } from '../actions';
 
@@ -17,14 +18,15 @@ export default async function LoginPage({
 
   return (
     <form className="card stack" action={login} style={{ maxWidth: 380, margin: '10vh auto' }}>
-      <h2>Sign in to {APP_NAME}</h2>
-      <input type="password" name="password" placeholder="Password" autoFocus />
-      {typeof query.error === 'string' && <p className="error">That is not the password.</p>}
+      <h2>{t('login.title', { app: APP_NAME })}</h2>
+      <input type="password" name="password" placeholder={t('login.passwordPlaceholder')} autoFocus />
+      {typeof query.error === 'string' && <p className="error">{t('login.wrongPassword')}</p>}
       <button className="primary" type="submit">
-        Sign in
+        {t('login.submit')}
       </button>
       <p className="meta">
-        One password, set as <code>ADMIN_PASSWORD</code>. There are no accounts.
+        {t('login.hintLead')} <code>ADMIN_PASSWORD</code>
+        {t('login.hintRest')}
       </p>
     </form>
   );

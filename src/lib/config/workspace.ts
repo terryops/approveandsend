@@ -50,6 +50,16 @@ export interface WorkspaceConfig {
    * of faith.
    */
   reviewLanguage: string;
+  /**
+   * The language of the interface itself — buttons, labels, the setup wizard.
+   *
+   * A third language, and unrelated to the other two: what the reviewer reads
+   * in the email panels is `reviewLanguage`, what the customer gets is
+   * `replyLanguage`, and this is what the screen around them is written in.
+   * A team can want their own language on the buttons while still reading
+   * drafts in English, and the reverse. `en` when unset.
+   */
+  language: string;
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
@@ -75,6 +85,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
   signature: '',
   replyLanguage: 'match',
   reviewLanguage: '',
+  language: 'en',
   neverPromise: [
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
@@ -152,6 +163,10 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       asString(process.env.AAS_REVIEW_LANGUAGE) ??
       asString(fromFile.reviewLanguage) ??
       DEFAULT_WORKSPACE.reviewLanguage,
+    language:
+      asString(process.env.AAS_LANGUAGE) ??
+      asString(fromFile.language) ??
+      DEFAULT_WORKSPACE.language,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
     contextSources: asSourceList(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };

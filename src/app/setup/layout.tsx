@@ -1,7 +1,16 @@
 import type { ReactNode } from 'react';
 
 import { requirePage } from '@/lib/auth/guard';
-import { setupState } from '@/lib/setup/state';
+import { t, type MessageKey } from '@/lib/i18n';
+import { setupState, type SetupStep } from '@/lib/setup/state';
+
+/** The step titles live in the dictionary, keyed by step id. */
+const NAV_TITLES: Record<SetupStep, MessageKey> = {
+  access: 'setup.nav.access',
+  model: 'setup.nav.model',
+  mailbox: 'setup.nav.mailbox',
+  voice: 'setup.nav.voice',
+};
 
 /**
  * The rail down the side of every step.
@@ -28,7 +37,7 @@ export default async function SetupLayout({ children }: { children: ReactNode })
             style={{ padding: '6px 0', textDecoration: 'none' }}
           >
             <span style={{ opacity: step.done ? 1 : 0.5 }}>{step.done ? '●' : '○'}</span>{' '}
-            {index + 1}. {step.title}
+            {index + 1}. {t(NAV_TITLES[step.step])}
           </a>
         ))}
       </nav>

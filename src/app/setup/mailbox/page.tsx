@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n';
 import { envFilePath } from '@/lib/setup/env-file';
 
 import { saveMailbox, testMailbox } from '../actions';
@@ -28,24 +29,24 @@ export default async function MailboxPage({ searchParams }: { searchParams: Prom
       <Notice query={query} path={envFilePath()} />
 
       <form className="card stack" action={saveMailbox}>
-        <h2>3. Connect the mailbox</h2>
-        <p className="meta">
-          The account whose support mail you want drafted. Use an app-specific password rather than
-          the real one — Gmail, Fastmail and Zoho all issue them, and it can be revoked without
-          changing your login.
-        </p>
+        <h2>{t('setup.mailbox.title')}</h2>
+        <p className="meta">{t('setup.mailbox.intro')}</p>
 
         <input
           type="email"
           name="address"
           defaultValue={address}
-          placeholder="support@yourcompany.com"
+          placeholder={t('setup.mailbox.addressPlaceholder')}
         />
         <input
           type="password"
           name="password"
           autoComplete="off"
-          placeholder={hasPassword ? 'A password is saved — leave blank to keep it' : 'App password'}
+          placeholder={
+            hasPassword
+              ? t('setup.mailbox.passwordSavedPlaceholder')
+              : t('setup.mailbox.passwordPlaceholder')
+          }
         />
 
         <div className="row">
@@ -54,13 +55,13 @@ export default async function MailboxPage({ searchParams }: { searchParams: Prom
             type="text"
             name="imapHost"
             defaultValue={imapHost}
-            placeholder="IMAP host, e.g. imap.gmail.com"
+            placeholder={t('setup.mailbox.imapHostPlaceholder')}
           />
           <input
             type="text"
             name="imapPort"
             defaultValue={process.env.IMAP_PORT?.trim() ?? ''}
-            placeholder="993"
+            placeholder={t('setup.mailbox.imapPortPlaceholder')}
             style={{ width: 90 }}
           />
         </div>
@@ -71,23 +72,23 @@ export default async function MailboxPage({ searchParams }: { searchParams: Prom
             type="text"
             name="smtpHost"
             defaultValue={smtpHost}
-            placeholder="SMTP host, e.g. smtp.gmail.com"
+            placeholder={t('setup.mailbox.smtpHostPlaceholder')}
           />
           <input
             type="text"
             name="smtpPort"
             defaultValue={process.env.SMTP_PORT?.trim() ?? ''}
-            placeholder="465"
+            placeholder={t('setup.mailbox.smtpPortPlaceholder')}
             style={{ width: 90 }}
           />
         </div>
 
         <div className="row">
           <span className="grow meta">
-            Port 465 is implicit TLS, 587 is STARTTLS — either is fine and the right mode is picked
-            from the number. For Workspace domain-wide delegation, see <code>.env.example</code>.
+            {t('setup.mailbox.portsNoteBefore')} <code>.env.example</code>
+            {t('setup.mailbox.portsNoteAfter')}
           </span>
-          <button type="submit">Save</button>
+          <button type="submit">{t('setup.mailbox.save')}</button>
         </div>
       </form>
 
@@ -96,14 +97,12 @@ export default async function MailboxPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <form action={testMailbox}>
           <button type="submit" disabled={!imapHost}>
-            Test it
+            {t('setup.mailbox.test')}
           </button>
         </form>
-        <span className="grow meta">
-          Logs in and reads the top of the inbox. Nothing is imported, marked read, or sent.
-        </span>
+        <span className="grow meta">{t('setup.mailbox.testNote')}</span>
         <a className="meta" href="/setup/voice">
-          Next: who you are →
+          {t('setup.mailbox.next')}
         </a>
       </div>
     </>

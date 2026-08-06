@@ -1,5 +1,6 @@
 import { requirePage } from '@/lib/auth/guard';
-import { listJobs, queueStats } from '@/lib/queue';
+import { t } from '@/lib/i18n';
+import { listJobs, queueStats, type QueueStats } from '@/lib/queue';
 
 import { runQueue } from '../actions';
 
@@ -20,32 +21,34 @@ export default async function QueuePage({
     <>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="grow meta">
-          {Object.entries(stats).map(([status, count]) => (
+          {(Object.entries(stats) as [keyof QueueStats, number][]).map(([status, count]) => (
             <span key={status} style={{ marginRight: 14 }}>
-              {status}: <strong>{count}</strong>
+              {t(`queue.status.${status}`)}: <strong>{count}</strong>
             </span>
           ))}
         </span>
         <form action={runQueue}>
-          <button type="submit">Run queue</button>
+          <button type="submit">{t('queue.runQueue')}</button>
         </form>
       </div>
 
-      {typeof query.ran === 'string' && <p className="meta">Processed {query.ran} job(s).</p>}
+      {typeof query.ran === 'string' && (
+        <p className="meta">{t('queue.processed', { n: query.ran })}</p>
+      )}
       {typeof query.error === 'string' && <p className="banner">{query.error}</p>}
 
       <div className="card">
         {jobs.length === 0 ? (
-          <p className="empty">Queue is empty.</p>
+          <p className="empty">{t('queue.empty')}</p>
         ) : (
           <table className="plain">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Tries</th>
-                <th>Created</th>
-                <th>Detail</th>
+                <th>{t('queue.colType')}</th>
+                <th>{t('queue.colStatus')}</th>
+                <th>{t('queue.colTries')}</th>
+                <th>{t('queue.colCreated')}</th>
+                <th>{t('queue.colDetail')}</th>
               </tr>
             </thead>
             <tbody>
@@ -54,7 +57,7 @@ export default async function QueuePage({
                   <td>{job.type}</td>
                   <td>
                     <span className={`tag ${job.status === 'failed' ? 'failed' : ''}`}>
-                      {job.status}
+                      {t(`queue.status.${job.status}`)}
                     </span>
                   </td>
                   <td>

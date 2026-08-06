@@ -1,4 +1,5 @@
 import { getMeta } from '@/lib/db/meta';
+import { t } from '@/lib/i18n';
 
 export type Query = Record<string, string | string[] | undefined>;
 
@@ -22,7 +23,7 @@ export function Notice({ query, path }: { query: Query; path: string }) {
   if (error) {
     return (
       <p className="banner">
-        <strong>Not saved.</strong> {error}
+        <strong>{t('setup.notice.notSaved')}</strong> {error}
       </p>
     );
   }
@@ -30,9 +31,8 @@ export function Notice({ query, path }: { query: Query; path: string }) {
   if (unwritable !== null) {
     return (
       <p className="banner">
-        <strong>In effect, but not written down.</strong> This is live for the running server, but{' '}
-        <code>{path}</code> could not be written ({unwritable}), so it will be gone after a restart.
-        Put these lines wherever this deployment keeps its configuration.
+        <strong>{t('setup.notice.unwritableTitle')}</strong> {t('setup.notice.unwritableBefore')}{' '}
+        <code>{path}</code> {t('setup.notice.unwritableAfter', { reason: unwritable })}
       </p>
     );
   }
@@ -40,7 +40,8 @@ export function Notice({ query, path }: { query: Query; path: string }) {
   if (one(query, 'saved')) {
     return (
       <p className="banner" style={{ borderColor: 'var(--line)' }}>
-        Saved to <code>{path}</code>, and in effect now — no restart needed.
+        {t('setup.notice.savedBefore')} <code>{path}</code>
+        {t('setup.notice.savedAfter')}
       </p>
     );
   }
@@ -65,8 +66,9 @@ export function LastCheck({ step }: { step: 'model' | 'mailbox' }) {
 
   return (
     <p id="result" className="banner" style={parsed.ok ? { borderColor: 'var(--line)' } : undefined}>
-      <strong>{parsed.ok ? 'Works.' : 'Did not work.'}</strong> {parsed.detail}
-      {stamp && <span className="meta"> · checked {stamp}</span>}
+      <strong>{parsed.ok ? t('setup.notice.checkOk') : t('setup.notice.checkFailed')}</strong>{' '}
+      {parsed.detail}
+      {stamp && <span className="meta"> {t('setup.notice.checkedAt', { stamp })}</span>}
     </p>
   );
 }

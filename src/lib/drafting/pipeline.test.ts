@@ -158,6 +158,7 @@ describe('workspace config', () => {
       signature: '',
       replyLanguage: 'match',
       reviewLanguage: '',
+    language: 'en',
       neverPromise: ['a refund date'],
       contextSources: [],
     };

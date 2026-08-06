@@ -1,4 +1,5 @@
 import { getWorkspaceConfig, describeWorkspace } from '@/lib/config/workspace';
+import { LOCALES, locale, t } from '@/lib/i18n';
 import { workspaceFilePath } from '@/lib/setup/workspace-file';
 
 import { saveVoice } from '../actions';
@@ -22,11 +23,8 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
       <Notice query={query} path={workspaceFilePath()} />
 
       <form className="card stack" action={saveVoice}>
-        <h2>4. Say who you are</h2>
-        <p className="meta">
-          This opens every drafting prompt. The facts matter most: they are the things the model
-          would otherwise invent.
-        </p>
+        <h2>{t('setup.voice.title')}</h2>
+        <p className="meta">{t('setup.voice.intro')}</p>
 
         <div className="row">
           <input
@@ -34,14 +32,14 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
             type="text"
             name="organization"
             defaultValue={placeholder ? '' : config.organization}
-            placeholder="Company name — who the customer thinks they are writing to"
+            placeholder={t('setup.voice.organizationPlaceholder')}
           />
           <input
             className="grow"
             type="text"
             name="product"
             defaultValue={config.product ?? ''}
-            placeholder="What it makes (optional)"
+            placeholder={t('setup.voice.productPlaceholder')}
           />
         </div>
 
@@ -49,17 +47,14 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
           name="voice"
           rows={2}
           defaultValue={config.voice}
-          placeholder="How replies should sound"
+          placeholder={t('setup.voice.voicePlaceholder')}
         />
 
         <textarea
           name="facts"
           rows={5}
           defaultValue={config.facts.join('\n')}
-          placeholder={
-            'One fact per line. Refund window, support hours, what the product cannot do —\n' +
-            'short and load-bearing, because every one of these goes into every draft.'
-          }
+          placeholder={t('setup.voice.factsPlaceholder')}
         />
 
         <div className="row">
@@ -68,37 +63,47 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
             type="text"
             name="signature"
             defaultValue={config.signature}
-            placeholder="Signature, appended verbatim — e.g. — The Acme team"
+            placeholder={t('setup.voice.signaturePlaceholder')}
           />
           <input
             type="text"
             name="replyLanguage"
             defaultValue={config.replyLanguage}
-            placeholder="match"
+            placeholder={t('setup.voice.replyLanguagePlaceholder')}
             style={{ width: 110 }}
           />
           <input
             type="text"
             name="reviewLanguage"
             defaultValue={config.reviewLanguage}
-            placeholder="you read"
+            placeholder={t('setup.voice.reviewLanguagePlaceholder')}
             style={{ width: 110 }}
           />
-          <button type="submit">Save</button>
+          {/* Each language names itself, so the list is readable to someone who
+              cannot read the language the page is currently in. */}
+          <select name="language" defaultValue={locale()}>
+            {Object.entries(LOCALES).map(([tag, name]) => (
+              <option key={tag} value={tag}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <button type="submit">{t('setup.voice.save')}</button>
         </div>
         <span className="meta">
-          Reply language: <code>match</code> answers in whatever language the customer wrote in. An
-          ISO code like <code>en</code> forces one.
+          {t('setup.voice.replyLanguageNoteBefore')} <code>match</code>{' '}
+          {t('setup.voice.replyLanguageNoteMiddle')} <code>en</code>{' '}
+          {t('setup.voice.replyLanguageNoteAfter')}
         </span>
         <span className="meta">
-          Review language: the language <em>you</em> read. Set it and every message and draft is
-          also rendered into it for whoever approves the reply — never sent to anyone. Leave it
-          empty if your team reads the mail it gets.
+          {t('setup.voice.reviewLanguageNoteBefore')} <em>{t('setup.voice.reviewLanguageNoteYou')}</em>{' '}
+          {t('setup.voice.reviewLanguageNoteAfter')}
         </span>
+        <span className="meta">{t('setup.voice.uiLanguageNote')}</span>
       </form>
 
       <div className="card stack">
-        <h2>What the model will be told</h2>
+        <h2>{t('setup.voice.readbackTitle')}</h2>
         <pre className="snippet" style={{ whiteSpace: 'pre-wrap' }}>
           {describeWorkspace(config)}
         </pre>
@@ -107,7 +112,7 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
       <div className="row">
         <span className="grow" />
         <a className="meta" href="/setup/done">
-          Next: finish →
+          {t('setup.voice.next')}
         </a>
       </div>
     </>

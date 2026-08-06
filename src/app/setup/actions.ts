@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { requireApi } from '@/lib/auth/guard';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { setMeta } from '@/lib/db/meta';
+import { isLocale, t } from '@/lib/i18n';
 import { checkAi, checkMailbox, type CheckResult } from '@/lib/setup/checks';
 import { saveEnv } from '@/lib/setup/env-file';
 import { markSetupDone } from '@/lib/setup/state';
@@ -33,7 +34,7 @@ export async function saveAccess(form: FormData): Promise<void> {
 
   const password = text(form, 'password');
   if (password.length < 8) {
-    redirect('/setup?error=' + encodeURIComponent('Use at least 8 characters.'));
+    redirect('/setup?error=' + encodeURIComponent(t('setup.actions.passwordTooShort')));
   }
 
   const result = saveEnv({
@@ -59,7 +60,7 @@ export async function saveModel(form: FormData): Promise<void> {
   const baseUrl = text(form, 'baseUrl');
   const apiKey = text(form, 'apiKey');
 
-  if (!model) redirect('/setup/model?error=' + encodeURIComponent('A model name is required.'));
+  if (!model) redirect('/setup/model?error=' + encodeURIComponent(t('setup.actions.modelRequired')));
 
   const result = saveEnv({
     AI_PROVIDER: provider,
@@ -84,7 +85,7 @@ export async function saveMailbox(form: FormData): Promise<void> {
 
   if (!address || !imapHost || !smtpHost) {
     redirect(
-      '/setup/mailbox?error=' + encodeURIComponent('Address, IMAP host and SMTP host are all needed.'),
+      '/setup/mailbox?error=' + encodeURIComponent(t('setup.actions.mailboxFieldsRequired')),
     );
   }
 
@@ -106,7 +107,7 @@ export async function saveVoice(form: FormData): Promise<void> {
 
   const organization = text(form, 'organization');
   if (!organization) {
-    redirect('/setup/voice?error=' + encodeURIComponent('Who is replying?'));
+    redirect('/setup/voice?error=' + encodeURIComponent(t('setup.actions.organizationRequired')));
   }
 
   const facts = text(form, 'facts')
@@ -123,6 +124,10 @@ export async function saveVoice(form: FormData): Promise<void> {
     // Empty is meaningful here — it is how the feature stays off — so unlike
     // replyLanguage there is no default to fall back to.
     reviewLanguage: text(form, 'reviewLanguage'),
+    // A tag the dictionaries do not answer would render the whole UI in
+    // English anyway; refusing it here keeps the config file honest about
+    // what is actually on screen.
+    language: isLocale(text(form, 'language')) ? text(form, 'language') : 'en',
     facts,
   });
 

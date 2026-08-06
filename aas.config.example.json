@@ -13,5 +13,6 @@
   ],
   "signature": "— The Acme team",
   "replyLanguage": "match",
-  "reviewLanguage": ""
+  "reviewLanguage": "",
+  "language": "en"
 }

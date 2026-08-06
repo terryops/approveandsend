@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { requirePage } from '@/lib/auth/guard';
+import { t } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
 import { TASK_STATUSES, isTaskStatus, type TaskStatus } from '@/lib/tasks/types';
@@ -11,15 +12,19 @@ export const dynamic = 'force-dynamic';
 
 const FILTERS: (TaskStatus | 'all')[] = ['awaiting_review', 'pending', 'failed', 'sent', 'all'];
 
-const LABELS: Record<string, string> = {
-  awaiting_review: 'To review',
-  pending: 'Waiting',
-  drafting: 'Drafting',
-  failed: 'Failed',
-  sent: 'Sent',
-  dismissed: 'Dismissed',
-  all: 'Everything',
-};
+// Built per request rather than at module scope: the locale is resolved from
+// the workspace config, which is not readable while this module is evaluated.
+function labels(): Record<string, string> {
+  return {
+    awaiting_review: t('inbox.statusAwaitingReview'),
+    pending: t('inbox.statusPending'),
+    drafting: t('inbox.statusDrafting'),
+    failed: t('inbox.statusFailed'),
+    sent: t('inbox.statusSent'),
+    dismissed: t('inbox.statusDismissed'),
+    all: t('inbox.statusAll'),
+  };
+}
 
 function when(iso: string | null): string {
   if (!iso) return '';
@@ -46,18 +51,19 @@ export default async function InboxPage({
 
   const tasks = listTasks({ ...(status ? { status } : {}), limit: 100 });
   const counts = countTasksByStatus();
+  const LABELS = labels();
 
   const notice =
     typeof params.error === 'string'
       ? { kind: 'error', text: params.error }
       : typeof params.sent === 'string'
-        ? { kind: 'ok', text: 'Sent. The learning job is queued.' }
+        ? { kind: 'ok', text: t('inbox.sentLearningQueued') }
         : typeof params.synced === 'string'
-          ? { kind: 'ok', text: `Synced. ${params.synced} new email(s).` }
+          ? { kind: 'ok', text: t('inbox.synced', { count: params.synced }) }
           : typeof params.demo === 'string'
             ? {
                 kind: 'ok',
-                text: `Loaded ${params.demo} sample emails and a rulebook. None of it is real, and nothing will be sent.`,
+                text: t('inbox.demoLoaded', { count: params.demo }),
               }
             : null;
 
@@ -72,13 +78,13 @@ export default async function InboxPage({
           ))}
         </div>
         <form action={syncNow}>
-          <button type="submit">Fetch mail</button>
+          <button type="submit">{t('inbox.fetchMail')}</button>
         </form>
         <form action={runQueue}>
-          <button type="submit">Run queue</button>
+          <button type="submit">{t('inbox.runQueue')}</button>
         </form>
         <form action={logout}>
-          <button type="submit">Sign out</button>
+          <button type="submit">{t('inbox.signOut')}</button>
         </form>
       </div>
 
@@ -103,10 +109,10 @@ export default async function InboxPage({
       <div className="card">
         {tasks.length === 0 ? (
           <div className="empty">
-            <p>Nothing here. Fetch mail to pull the inbox in.</p>
+            <p>{t('inbox.emptyTitle')}</p>
             {/* Only offered on a genuinely empty database — see seedDemoData. */}
             <form action={loadDemo}>
-              <button type="submit">Load sample data</button>
+              <button type="submit">{t('inbox.loadSampleData')}</button>
             </form>
           </div>
         ) : (
@@ -115,7 +121,7 @@ export default async function InboxPage({
               <li key={task.id}>
                 <div className="row">
                   <a className="subject grow" href={`/tasks/${task.id}`}>
-                    {task.subject || '(no subject)'}
+                    {task.subject || t('inbox.noSubject')}
                   </a>
                   <span className={`tag ${task.status}`}>{LABELS[task.status] ?? task.status}</span>
                 </div>

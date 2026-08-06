@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 
 import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
+import { t } from '@/lib/i18n';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
@@ -48,19 +49,19 @@ export default async function TaskPage({
   return (
     <>
       <p className="meta">
-        <a href="/">← Inbox</a>
+        <a href="/">{t('task.backToInbox')}</a>
       </p>
 
       {typeof query.error === 'string' && <p className="banner">{query.error}</p>}
-      {typeof query.saved === 'string' && <p className="meta">Saved.</p>}
+      {typeof query.saved === 'string' && <p className="meta">{t('task.saved')}</p>}
       {typeof query.queued === 'string' && (
-        <p className="meta">Redraft queued. Run the queue to pick it up.</p>
+        <p className="meta">{t('task.redraftQueued')}</p>
       )}
 
       <div className="card">
         <div className="row">
-          <span className="subject grow">{task.subject || '(no subject)'}</span>
-          <span className={`tag ${task.status}`}>{task.status.replace('_', ' ')}</span>
+          <span className="subject grow">{task.subject || t('task.noSubject')}</span>
+          <span className={`tag ${task.status}`}>{t(`task.status.${task.status}`)}</span>
         </div>
         <div className="meta">
           {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -68,13 +69,15 @@ export default async function TaskPage({
         </div>
         {task.error && <p className="error">{task.error}</p>}
         <pre className="email" style={{ marginTop: 12 }}>
-          {task.body || '(empty body)'}
+          {task.body || t('task.emptyBody')}
         </pre>
         {/* `details`, so it is open by default and collapsible without a line
             of JavaScript — the same constraint the rest of this UI works to. */}
         {incoming && (
           <details className="translation" open>
-            <summary>Translation · {incoming.language}</summary>
+            <summary>
+              {t('task.translation')} · {incoming.language}
+            </summary>
             <pre className="email">{incoming.content}</pre>
           </details>
         )}
@@ -82,11 +85,12 @@ export default async function TaskPage({
 
       {task.analysis && (
         <div className="card">
-          <h2>What it understood</h2>
+          <h2>{t('task.whatItUnderstood')}</h2>
           <p style={{ marginTop: 0 }}>{task.analysis.intent}</p>
           <p className="meta">
-            {task.analysis.language || '?'} · {task.analysis.sentiment}
-            {task.analysis.scope ? ` · ${task.analysis.scope}` : ''} · {rulesInPlay} rules active
+            {task.analysis.language || '?'} · {t(`task.sentiment.${task.analysis.sentiment}`)}
+            {task.analysis.scope ? ` · ${task.analysis.scope}` : ''} ·{' '}
+            {t('task.rulesActive', { n: rulesInPlay })}
           </p>
           {task.analysis.keyPoints.length > 0 && (
             <ul>
@@ -97,7 +101,7 @@ export default async function TaskPage({
           )}
           {task.analysis.suggestedActions.length > 0 && (
             <div className="critique">
-              <strong>You may also need to:</strong>
+              <strong>{t('task.youMayAlsoNeedTo')}</strong>
               <ul style={{ margin: '4px 0 0' }}>
                 {task.analysis.suggestedActions.map((action, i) => (
                   <li key={i}>{action}</li>
@@ -119,7 +123,7 @@ export default async function TaskPage({
             </h2>
             {block.href && (
               <a className="meta" href={block.href} target="_blank" rel="noreferrer">
-                Open ↗
+                {t('task.openContext')}
               </a>
             )}
           </div>
@@ -144,58 +148,62 @@ export default async function TaskPage({
       ))}
 
       <form className="card stack" action={approveAndSend}>
-        <h2>{sent ? 'What went out' : 'The reply'}</h2>
+        <h2>{sent ? t('task.whatWentOut') : t('task.theReply')}</h2>
         <input type="hidden" name="taskId" value={task.id} />
         <textarea
           className="draft"
           name="draft"
           defaultValue={body}
           readOnly={sent}
-          placeholder="No draft yet. Run the queue, or write one here."
+          placeholder={t('task.draftPlaceholder')}
         />
         {/* The nearest thing here to a confirmation step: what you are about
             to send, in a language you read. */}
         {outgoing && (
           <details className="translation" open>
-            <summary>{sent ? 'What went out' : 'What you are about to send'} · {outgoing.language}</summary>
+            <summary>
+              {sent ? t('task.whatWentOut') : t('task.whatYouAreAboutToSend')} · {outgoing.language}
+            </summary>
             <pre className="email">{outgoing.content}</pre>
           </details>
         )}
         {language && !outgoing && body.trim() !== '' && (
-          <p className="meta">No current {language} translation — run the queue to render this draft.</p>
+          <p className="meta">{t('task.noTranslation', { language })}</p>
         )}
         <input
           type="text"
           name="notes"
           defaultValue={task.reviewerNotes ?? ''}
           readOnly={sent}
-          placeholder="Why you changed it — optional, and it goes to the rule extractor"
+          placeholder={t('task.notesPlaceholder')}
         />
         {!sent && (
           <div className="actions">
             <button className="primary" type="submit">
-              Approve &amp; send
+              {t('task.approveAndSend')}
             </button>
             <button type="submit" formAction={saveDraft}>
-              Save
+              {t('task.save')}
             </button>
             <button type="submit" formAction={redraftTask}>
-              Redraft
+              {t('task.redraft')}
             </button>
             <button className="danger" type="submit" formAction={dismissTask}>
-              Dismiss
+              {t('task.dismiss')}
             </button>
-            <span className="meta">Edits here become rules once it is sent.</span>
+            <span className="meta">{t('task.editsBecomeRules')}</span>
           </div>
         )}
         {sent && task.sentAt && (
-          <p className="meta">Sent {task.sentAt.slice(0, 16).replace('T', ' ')}.</p>
+          <p className="meta">
+            {t('task.sentAt', { time: task.sentAt.slice(0, 16).replace('T', ' ') })}
+          </p>
         )}
       </form>
 
       {sent && task.draft && task.draft !== task.finalReply && (
         <div className="card">
-          <h2>The draft you changed</h2>
+          <h2>{t('task.draftYouChanged')}</h2>
           <pre className="email">{task.draft}</pre>
         </div>
       )}

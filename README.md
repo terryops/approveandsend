@@ -208,6 +208,28 @@ one failure a reviewer in this position could never catch themselves. Empty is
 the default and turns the whole thing off: no job, no model call, nothing on
 screen. [docs/review-language.md](docs/review-language.md).
 
+## Three languages, and they are all different
+
+`"language": "zh-CN"` translates the interface — the buttons, the labels, the
+setup wizard. English, 简体中文, 日本語, Español, Français and Deutsch ship;
+pick one on the last setup screen or set `AAS_LANGUAGE`.
+
+That is the third language here, and none of the three implies the others. A
+team in Tokyo can run the UI in Japanese, read drafts in Japanese, and still
+answer a German customer in German:
+
+```
+language        zh-CN     what the buttons say
+reviewLanguage  Japanese  what the reviewer reads beside each email
+replyLanguage   match     what the customer gets
+```
+
+There is no i18n framework and no `Accept-Language` sniffing. A support desk is
+a room of people who share a language, and a UI that reshapes per laptop makes
+"the second field on the mailbox screen" impossible to say out loud to a
+colleague. Adding a language is one file in `src/lib/i18n/`, and TypeScript
+refuses to build if it misses a key.
+
 ## Tell it who it's writing to
 
 "Have you tried logging out?" to someone whose subscription lapsed yesterday is

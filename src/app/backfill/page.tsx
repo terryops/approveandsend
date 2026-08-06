@@ -5,18 +5,30 @@ import {
   totalRulesLearned,
 } from '@/lib/backfill/store';
 import { DEFAULT_SCAN_LIMIT } from '@/lib/backfill/scan';
+import { t } from '@/lib/i18n';
 
 import { clearBackfillHistory, startBackfill, stopBackfill } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
-const LABELS: Record<string, string> = {
-  pending: 'Queued',
-  learning: 'Working',
-  learned: 'Learned from',
-  skipped: 'Skipped',
-  failed: 'Failed',
-};
+const STATUSES = ['pending', 'learning', 'learned', 'skipped', 'failed'];
+
+function statusLabel(status: string): string | undefined {
+  switch (status) {
+    case 'pending':
+      return t('backfill.statusQueued');
+    case 'learning':
+      return t('backfill.statusWorking');
+    case 'learned':
+      return t('backfill.statusLearned');
+    case 'skipped':
+      return t('backfill.statusSkipped');
+    case 'failed':
+      return t('backfill.statusFailed');
+    default:
+      return undefined;
+  }
+}
 
 function when(iso: string | null): string {
   if (!iso) return '';
@@ -39,29 +51,22 @@ export default async function BackfillPage({
 
   const notice =
     typeof params.started === 'string'
-      ? 'Scanning. Run the queue, or wait for the scheduler — this takes a while and it is meant to.'
+      ? t('backfill.noticeStarted')
       : typeof params.stopped === 'string'
-        ? `Stopped. ${params.stopped} item(s) will not be read. Anything already generating will finish.`
+        ? t('backfill.noticeStopped', { n: params.stopped })
         : typeof params.cleared === 'string'
-          ? 'Cleared. The rules it taught are still in the rulebook.'
+          ? t('backfill.noticeCleared')
           : null;
 
   return (
     <>
-      <h1>Learn from the archive</h1>
+      <h1>{t('backfill.heading')}</h1>
 
-      <p className="prose">
-        The review loop learns from your edits, which means a fresh install knows nothing
-        until you have worked through a few weeks of mail. Your Sent folder already
-        contains the answers. This reads them.
-      </p>
+      <p className="prose">{t('backfill.intro')}</p>
 
       <p className="prose meta">
-        For each archived reply it drafts what the assistant <em>would</em> write today,
-        compares that against what you actually sent, and keeps only what the difference
-        teaches. Nothing is sent, nothing appears in your inbox, and every rule it
-        produces is listed on the Rules screen with the conversation behind it. Budget
-        two or three model calls per email.
+        {t('backfill.explainerBefore')} <em>{t('backfill.explainerWould')}</em>{' '}
+        {t('backfill.explainerAfter')}
       </p>
 
       {notice && <p className="banner">{notice}</p>}
@@ -69,16 +74,16 @@ export default async function BackfillPage({
       <div className="card">
         <form action={startBackfill} className="row">
           <label className="grow">
-            Look back
+            {t('backfill.lookBackLabel')}
             <input type="number" name="months" defaultValue={12} min={1} max={120} />
-            months
+            {t('backfill.monthsUnit')}
           </label>
           <label className="grow">
-            At most
+            {t('backfill.atMostLabel')}
             <input type="number" name="limit" defaultValue={DEFAULT_SCAN_LIMIT} min={1} max={5000} />
-            replies
+            {t('backfill.repliesUnit')}
           </label>
-          <button type="submit">Scan the Sent folder</button>
+          <button type="submit">{t('backfill.scanButton')}</button>
         </form>
       </div>
 
@@ -86,25 +91,23 @@ export default async function BackfillPage({
         <>
           <div className="row" style={{ margin: '16px 0' }}>
             <div className="grow">
-              {Object.keys(LABELS)
-                .filter((s) => counts[s])
-                .map((s) => (
-                  <span key={s} className="meta" style={{ marginRight: 14 }}>
-                    {LABELS[s]}: <strong>{counts[s]}</strong>
-                  </span>
-                ))}
+              {STATUSES.filter((s) => counts[s]).map((s) => (
+                <span key={s} className="meta" style={{ marginRight: 14 }}>
+                  {statusLabel(s)}: <strong>{counts[s]}</strong>
+                </span>
+              ))}
               <span className="meta">
-                Rules produced: <strong>{rules}</strong>
+                {t('backfill.rulesProduced')}: <strong>{rules}</strong>
               </span>
             </div>
             {counts.pending ? (
               <form action={stopBackfill}>
-                <button type="submit">Stop</button>
+                <button type="submit">{t('backfill.stopButton')}</button>
               </form>
             ) : null}
             <form action={clearBackfillHistory}>
               <button className="danger" type="submit">
-                Clear history
+                {t('backfill.clearHistoryButton')}
               </button>
             </form>
           </div>
@@ -114,10 +117,12 @@ export default async function BackfillPage({
               {items.map((item) => (
                 <li key={item.id}>
                   <div className="row">
-                    <span className="subject grow">{item.subject || '(no subject)'}</span>
+                    <span className="subject grow">{item.subject || t('backfill.noSubject')}</span>
                     <span className={`tag ${item.status === 'learned' ? 'sent' : item.status}`}>
-                      {LABELS[item.status] ?? item.status}
-                      {item.rulesLearned > 0 ? ` · ${item.rulesLearned} rule` : ''}
+                      {statusLabel(item.status) ?? item.status}
+                      {item.rulesLearned > 0
+                        ? ` · ${t('backfill.rulesLearnedCount', { n: item.rulesLearned })}`
+                        : ''}
                     </span>
                   </div>
                   <div className="meta">

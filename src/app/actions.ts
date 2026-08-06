@@ -9,6 +9,7 @@ import { cancelPendingBackfill, clearBackfill } from '@/lib/backfill/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { COOKIE_NAME, checkPassword } from '@/lib/auth/session';
+import { t } from '@/lib/i18n';
 import { syncInbox } from '@/lib/ingest/sync';
 import {
   DEFAULT_HANDLERS,
@@ -120,7 +121,7 @@ export async function addRule(form: FormData): Promise<void> {
       content,
       category: coerceCategory(field(form, 'category')),
       scope: field(form, 'scope') || null,
-      rationale: 'Written by hand in the rules screen',
+      rationale: t('actions.handWrittenRuleRationale'),
     });
   }
   revalidatePath('/rules');

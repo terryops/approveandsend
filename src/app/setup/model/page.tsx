@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n';
 import { envFilePath } from '@/lib/setup/env-file';
 
 import { saveModel, testModel } from '../actions';
@@ -19,24 +20,20 @@ export default async function ModelPage({ searchParams }: { searchParams: Promis
       <Notice query={query} path={envFilePath()} />
 
       <form className="card stack" action={saveModel}>
-        <h2>2. Pick a model</h2>
-        <p className="meta">
-          Anything that speaks the OpenAI chat API works — OpenAI, an Anthropic key, OpenRouter,
-          Together, or Ollama and vLLM on your own hardware. One model does all four jobs unless you
-          split them later.
-        </p>
+        <h2>{t('setup.model.title')}</h2>
+        <p className="meta">{t('setup.model.intro')}</p>
 
         <div className="row">
           <select name="provider" defaultValue={provider} style={{ width: 200 }}>
-            <option value="openai-compatible">OpenAI-compatible</option>
-            <option value="anthropic">Anthropic</option>
+            <option value="openai-compatible">{t('setup.model.providerOpenAiCompatible')}</option>
+            <option value="anthropic">{t('setup.model.providerAnthropic')}</option>
           </select>
           <input
             className="grow"
             type="text"
             name="model"
             defaultValue={model}
-            placeholder="Model name, e.g. gpt-4o-mini or claude-sonnet-4-5"
+            placeholder={t('setup.model.namePlaceholder')}
           />
         </div>
 
@@ -44,21 +41,19 @@ export default async function ModelPage({ searchParams }: { searchParams: Promis
           type="text"
           name="baseUrl"
           defaultValue={baseUrl}
-          placeholder="Base URL — blank for the provider default, or http://localhost:11434/v1 for Ollama"
+          placeholder={t('setup.model.baseUrlPlaceholder')}
         />
 
         <input
           type="password"
           name="apiKey"
           autoComplete="off"
-          placeholder={hasKey ? 'A key is saved — leave blank to keep it' : 'API key (blank for a local model)'}
+          placeholder={hasKey ? t('setup.model.apiKeySavedPlaceholder') : t('setup.model.apiKeyPlaceholder')}
         />
 
         <div className="row">
-          <span className="grow meta">
-            Saved keys are never sent back to this page, which is why the box looks empty.
-          </span>
-          <button type="submit">Save</button>
+          <span className="grow meta">{t('setup.model.savedKeyNote')}</span>
+          <button type="submit">{t('setup.model.save')}</button>
         </div>
       </form>
 
@@ -67,15 +62,12 @@ export default async function ModelPage({ searchParams }: { searchParams: Promis
       <div className="row">
         <form action={testModel}>
           <button type="submit" disabled={!model}>
-            Test it
+            {t('setup.model.test')}
           </button>
         </form>
-        <span className="grow meta">
-          Asks the model for one word, through the same code path that writes drafts. A pass here
-          means drafting will run.
-        </span>
+        <span className="grow meta">{t('setup.model.testNote')}</span>
         <a className="meta" href="/setup/mailbox">
-          Next: the mailbox →
+          {t('setup.model.next')}
         </a>
       </div>
     </>

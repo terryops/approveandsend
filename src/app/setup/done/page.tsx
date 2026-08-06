@@ -1,10 +1,19 @@
 import { APP_NAME } from '@/lib/brand';
-import { setupState } from '@/lib/setup/state';
+import { t, type MessageKey } from '@/lib/i18n';
+import { setupState, type SetupStep } from '@/lib/setup/state';
 
 import { loadDemo, syncNow } from '../../actions';
 import { finishSetup } from '../actions';
 
 export const dynamic = 'force-dynamic';
+
+/** The step titles live in the dictionary, keyed by step id. */
+const NAV_TITLES: Record<SetupStep, MessageKey> = {
+  access: 'setup.nav.access',
+  model: 'setup.nav.model',
+  mailbox: 'setup.nav.mailbox',
+  voice: 'setup.nav.voice',
+};
 
 /**
  * The last screen, and the one that has to be honest.
@@ -22,20 +31,17 @@ export default async function DonePage() {
   return (
     <>
       <div className="card stack">
-        <h2>{blocked.length > 0 ? 'Almost' : 'Ready'}</h2>
+        <h2>{blocked.length > 0 ? t('setup.done.almost') : t('setup.done.ready')}</h2>
         {missing.length === 0 ? (
-          <p className="meta">
-            Everything is configured. Fetch your mail and {APP_NAME} will draft a reply to each new
-            message — the drafts wait for you, and nothing is sent without a click.
-          </p>
+          <p className="meta">{t('setup.done.allConfigured', { app: APP_NAME })}</p>
         ) : (
           <>
-            <p className="meta">Still undone:</p>
+            <p className="meta">{t('setup.done.stillUndone')}</p>
             <ul className="meta" style={{ margin: 0, paddingLeft: 20 }}>
               {missing.map(step => (
                 <li key={step.step}>
-                  <a href={step.href}>{step.title}</a>
-                  {step.optional ? ' — optional' : ' — needed before anything can be drafted'}
+                  <a href={step.href}>{t(NAV_TITLES[step.step])}</a>
+                  {step.optional ? t('setup.done.optional') : t('setup.done.required')}
                 </li>
               ))}
             </ul>
@@ -44,11 +50,11 @@ export default async function DonePage() {
       </div>
 
       <div className="card stack">
-        <h2>Keep it running</h2>
+        <h2>{t('setup.done.cronTitle')}</h2>
         <p className="meta">
-          Both buttons on the inbox have a cron equivalent, so a real install does not need anyone
-          clicking. The token was generated when you set the password; it is <code>CRON_TOKEN</code>{' '}
-          in your <code>.env</code>.
+          {t('setup.done.cronBefore')} <code>CRON_TOKEN</code> {t('setup.done.cronMiddle')}{' '}
+          <code>.env</code>
+          {t('setup.done.cronAfter')}
         </p>
         <pre className="snippet">
           {'*/5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync\n' +
@@ -59,20 +65,21 @@ export default async function DonePage() {
 
       <div className="row">
         <form action={finishSetup}>
-          <button type="submit">Go to the inbox</button>
+          <button type="submit">{t('setup.done.goToInbox')}</button>
         </form>
         {blocked.length === 0 && (
           <form action={syncNow}>
-            <button type="submit">Fetch mail now</button>
+            <button type="submit">{t('setup.done.fetchMail')}</button>
           </form>
         )}
         {state.untouched && (
           <form action={loadDemo}>
-            <button type="submit">Load sample data instead</button>
+            <button type="submit">{t('setup.done.loadSample')}</button>
           </form>
         )}
         <span className="grow meta">
-          You can come back to any of this at <code>/setup</code>.
+          {t('setup.done.comeBackBefore')} <code>/setup</code>
+          {t('setup.done.comeBackAfter')}
         </span>
       </div>
     </>
