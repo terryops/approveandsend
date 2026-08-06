@@ -1,0 +1,20 @@
+# Keep the build context small and, more importantly, keep this machine's
+# secrets and mail out of it. Anything COPY'd into a layer is in the image
+# forever, including layers a later stage discards.
+.git
+.gitignore
+node_modules
+.next
+data
+.env
+.env.*
+!.env.example
+aas.config.json
+coverage
+*.log
+.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md
+DESIGN.md

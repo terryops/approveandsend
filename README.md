@@ -183,6 +183,53 @@ The whole UI is plain forms — it works with JavaScript off, and a half-written
 draft survives a reload because it was posted rather than kept in component
 state.
 
+## Deploying
+
+```bash
+cp .env.example .env
+cp aas.config.example.json aas.config.json
+docker compose up -d --build
+```
+
+That is the whole thing: the app on `127.0.0.1:3000`, and a second container
+that pokes the three endpoints on schedule so you do not need cron. The
+database is `./data/aas.db` on the host — back up that directory and you have
+backed up everything. Put a reverse proxy with a certificate in front before
+it is reachable from anywhere but localhost; it will be holding your mail.
+
+If your host already runs cron, delete the `ticker` service and point crontab
+at the published port instead. Same endpoints, one less container.
+
+Approve & Send needs two things from a host: **a writable disk** and **a
+process that stays running**. A $5 VPS has both. So do Fly with a volume,
+Railway, Render, Coolify, a Synology, or the spare machine under your desk.
+
+### It does not fit Vercel
+
+Worth stating plainly, because it is the first thing people try:
+
+- **Cron.** Vercel Hobby allows *one invocation per day*. `*/5 * * * *` is not
+  throttled there, it fails at deploy time. Per-minute needs Pro.
+- **Disk.** The filesystem is read-only apart from an ephemeral `/tmp` that
+  instances do not share. Vercel's own docs say SQLite can't be used.
+- **Time.** `AI_TIMEOUT_MS` defaults to fifteen minutes because a self-hosted
+  model on modest hardware genuinely takes that long. Vercel caps a function
+  at 300s on Hobby and 800s on Pro — so bring-your-own-local-model, which is
+  half the point of this project, is off the table there.
+- **The setup wizard** writes `.env`, which cannot work on a read-only
+  filesystem, and mirrors values into `process.env`, which does not survive
+  across instances. You would configure by dashboard and redeploy.
+- **IMAP** over raw TCP to port 993 is undocumented on Vercel. The Gmail API
+  path is plain HTTPS and would be fine.
+
+Postgres is sometimes proposed as the fix. It addresses the second bullet and
+none of the others, which is why this ships SQLite.
+
+If you want it there anyway the shape is: Vercel Pro, a hosted Postgres, the
+Gmail API rather than IMAP, a hosted model, and configuration by environment
+variable. That is a real deployment. It is just not one this repo goes out of
+its way to support.
+
 ## Design notes worth knowing
 
 Three things in here were learned the expensive way:

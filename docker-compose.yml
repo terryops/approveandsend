@@ -1,0 +1,43 @@
+# docker compose up -d --build
+#
+# Two services: the app, and a loop that pokes its three endpoints on a
+# schedule. Configuration comes from .env — the same file you would edit
+# without Docker, mounted rather than baked in, so changing a model does not
+# mean rebuilding an image.
+
+services:
+  app:
+    build: .
+    image: approveandsend
+    restart: unless-stopped
+    # Loopback only. Put a reverse proxy with a certificate in front before
+    # this is reachable from anywhere else — it will be holding your mail.
+    ports:
+      - '127.0.0.1:3000:3000'
+    env_file:
+      - .env
+    volumes:
+      # The database. Back this up and you have backed up everything.
+      - ./data:/app/data
+      # Persona and rules-of-engagement. Read-only: the setup wizard writes
+      # this file, and inside a container that write would land on a layer
+      # that the next build discards. Edit it here on the host instead.
+      - ./aas.config.json:/app/aas.config.json:ro
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  ticker:
+    image: curlimages/curl:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      APP_URL: http://app:3000
+      CRON_TOKEN: ${CRON_TOKEN:-}
+    volumes:
+      - ./docker/ticker.sh:/ticker.sh:ro
+    entrypoint: ['sh', '/ticker.sh']
