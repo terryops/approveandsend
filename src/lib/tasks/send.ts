@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { mailProvider } from '../mail/config';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
+import { markHandled } from './mark-read';
 import { getTask, updateTask } from './store';
 import type { Task } from './types';
 
@@ -13,6 +14,9 @@ import type { Task } from './types';
  * is marked sent second, the learning job is enqueued third. If enqueueing
  * fails we have still sent the right mail and recorded it; if it were the
  * other way round a queue hiccup would lose a customer reply.
+ *
+ * Clearing the mailbox's unread flag hangs off the end of that, after the row
+ * is safe and before the learning, and cannot fail the send — see markHandled.
  */
 
 export interface SendReplyInput {
@@ -77,6 +81,10 @@ export async function sendReply(
     },
     db,
   );
+
+  // Reusing the provider we just sent through rather than asking for another:
+  // on IMAP that is the difference between one connection and two.
+  await markHandled(task, { provider });
 
   if (options.learn !== false) {
     try {

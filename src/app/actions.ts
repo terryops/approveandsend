@@ -30,6 +30,7 @@ import {
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
+import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
 
@@ -131,7 +132,14 @@ export async function approveAndSend(form: FormData): Promise<void> {
 export async function dismissTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
-  updateTask(id, { status: 'dismissed', reviewerNotes: field(form, 'notes') || null });
+  const dismissed = updateTask(id, {
+    status: 'dismissed',
+    reviewerNotes: field(form, 'notes') || null,
+  });
+  // Dismissed is a decision, not an oversight: somebody looked at this and said
+  // it needs no reply. Leaving it bold in the mailbox would put it back in
+  // front of the next person to open Zoho as if nobody had.
+  if (dismissed) await markHandled(dismissed);
   revalidatePath('/');
   redirect('/');
 }

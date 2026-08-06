@@ -25,6 +25,44 @@ the literal name `Sent`; set `IMAP_SENT_MAILBOX` if that is wrong for yours.
 Use an app password, not your account password, anywhere the provider offers
 one.
 
+### Zoho Mail
+
+Zoho needs two things turned on before any of the above works, and neither
+failure says so:
+
+```bash
+MAIL_USER=support@yourcompany.com
+MAIL_PASSWORD=an-application-specific-password
+IMAP_HOST=imappro.zoho.com     # imap.zoho.com for a free account
+SMTP_HOST=smtp.zoho.com
+```
+
+1. **IMAP access is off by default.** Turn it on in Mail Settings → Mail
+   Accounts → IMAP. Until you do, every login is rejected as
+   `[AUTHENTICATIONFAILED] Invalid credentials`, which sends you hunting for a
+   password problem you do not have.
+2. **The account password will not work**; generate an application-specific
+   password under My Account → Security → App Passwords and use that as
+   `MAIL_PASSWORD`.
+
+Zoho's OAuth tokens are for its REST API and are not accepted over IMAP, so
+there is no XOAUTH2 shortcut around either step.
+
+## Unread flags
+
+When a task leaves the review queue — sent, or dismissed — the message it came
+from is marked read in the mailbox. That keeps unread meaning *nobody has dealt
+with this*, which is the only reading under which the mailbox stays useful once
+most replies go out from here.
+
+It is best-effort. A mail that went out and a flag that did not clear is
+cosmetic, so a failure is logged and otherwise ignored rather than reported to
+the reviewer as a failed send.
+
+Opening a task deliberately does not mark it read: reading something is not
+handling it, and hiding it from the next person because a colleague glanced at
+it is how mail gets dropped.
+
 ## Gmail API
 
 For Gmail and Google Workspace this is the better path: replies land in the

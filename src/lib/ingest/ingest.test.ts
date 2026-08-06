@@ -13,6 +13,7 @@ import { LEARN_FROM_SENT } from '../queue/handlers';
 import { listJobs } from '../queue/store';
 import { createTask, getTask, updateTask } from '../tasks/store';
 import { createOperator } from '../operators/store';
+import { markHandled } from '../tasks/mark-read';
 import { replySubject, sendReply } from '../tasks/send';
 import { syncInbox } from './sync';
 
@@ -28,7 +29,9 @@ class FakeMailbox implements MailProvider {
 
   sent: OutgoingMail[] = [];
   detailFetches: string[] = [];
+  marked: string[] = [];
   failNextSend: string | null = null;
+  failMarkAsRead: string | null = null;
 
   constructor(private readonly inbox: MailMessage[] = []) {}
 
@@ -61,7 +64,10 @@ class FakeMailbox implements MailProvider {
     return { messageId: `sent-${this.sent.length}` };
   }
 
-  async markAsRead(): Promise<void> {}
+  async markAsRead(id: string): Promise<void> {
+    if (this.failMarkAsRead) throw new Error(this.failMarkAsRead);
+    this.marked.push(id);
+  }
 
   async downloadAttachment(): Promise<DownloadedAttachment> {
     throw new Error('not used');
@@ -265,10 +271,62 @@ describe('sendReply', () => {
     expect(provider.sent).toHaveLength(0);
   });
 
+  it('clears the unread flag on the mail it just answered', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await sendReply(task.id, { finalReply: 'The edited reply' }, { provider, db });
+
+    expect(provider.marked).toEqual(['m1']);
+  });
+
+  it('still counts as sent when the unread flag will not clear', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+    provider.failMarkAsRead = 'IMAP dropped the connection';
+
+    // The mail is already gone. Throwing here would tell the reviewer the send
+    // failed and they would send it again.
+    const updated = await sendReply(task.id, { finalReply: 'The edited reply' }, { provider, db });
+
+    expect(updated.status).toBe('sent');
+    expect(provider.sent).toHaveLength(1);
+    expect(listJobs({ type: LEARN_FROM_SENT }, db)).toHaveLength(1);
+  });
+
   it('does not stack Re: prefixes', () => {
     expect(replySubject('Refund please')).toBe('Re: Refund please');
     expect(replySubject('Re: Refund please')).toBe('Re: Refund please');
     expect(replySubject('RE: Refund please')).toBe('RE: Refund please');
     expect(replySubject('   ')).toBe('Re:');
+  });
+});
+
+describe('markHandled', () => {
+  it('marks the message read and says it did', async () => {
+    const { task } = createTask({ messageId: 'm7', fromAddress: 'a@example.com' }, db);
+    const provider = new FakeMailbox();
+
+    expect(await markHandled(task, { provider })).toBe(true);
+    expect(provider.marked).toEqual(['m7']);
+  });
+
+  it('does not open a mailbox for a task that came from nowhere', async () => {
+    // Demo rows and hand-made tasks have no provider id — there is no message
+    // to mark, and connecting only to discover that would be a waste.
+    const { task } = createTask({ fromAddress: 'a@example.com' }, db);
+    const provider = new FakeMailbox();
+
+    expect(task.messageId).toBeNull();
+    expect(await markHandled(task, { provider })).toBe(false);
+    expect(provider.marked).toEqual([]);
+  });
+
+  it('reports failure instead of raising it', async () => {
+    const { task } = createTask({ messageId: 'm8', fromAddress: 'a@example.com' }, db);
+    const provider = new FakeMailbox();
+    provider.failMarkAsRead = 'mailbox gone';
+
+    expect(await markHandled(task, { provider })).toBe(false);
   });
 });
