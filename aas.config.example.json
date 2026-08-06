@@ -7,6 +7,24 @@
     "Support is staffed 09:00-18:00 UTC on weekdays.",
     "The free plan does not include API access."
   ],
+  "topics": [
+    {
+      "slug": "refund-and-cancellation",
+      "description": "Wants money back, disputes a charge, or is cancelling."
+    },
+    {
+      "slug": "bug-report",
+      "description": "Something is broken: an error, a failure, a result that never arrived."
+    },
+    {
+      "slug": "pre-sales",
+      "description": "Asking before buying: what a plan costs, what it includes, whether it can do X."
+    },
+    {
+      "slug": "api",
+      "description": "Using the product from code: keys, endpoints, quotas, webhooks."
+    }
+  ],
   "neverPromise": [
     "refund amounts or dates that have not been confirmed",
     "delivery dates for unreleased features"

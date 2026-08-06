@@ -4,7 +4,7 @@
  *
  * The whole design constraint: rules accumulate forever and every enabled one
  * is injected into every generation. So the interesting fields are the ones
- * that let a rule be *narrowed* (scope, category) or *retired* (enabled,
+ * that let a rule be *narrowed* (topics, category) or *retired* (enabled,
  * applied_count) rather than the ones that let more of them in.
  */
 
@@ -31,8 +31,12 @@ export interface Rule {
   seq: number;
   content: string;
   category: RuleCategory;
-  /** null = applies to every kind of mail. */
-  scope: string | null;
+  /**
+   * The subjects this rule is about, from the workspace's topic vocabulary.
+   * Sorted, and empty means it applies to every kind of mail — which is the
+   * right default for the rules that matter most.
+   */
+  topics: string[];
   enabled: boolean;
   /** The conversation this was learned from, when it was learned rather than typed. */
   sourceTaskId: string | null;
@@ -59,7 +63,8 @@ export type RuleChangeReason = 'manual' | 'learned' | 'merge' | 'replace' | 'con
 export interface NewRule {
   content: string;
   category?: RuleCategory;
-  scope?: string | null;
+  /** Omitted or empty makes the rule apply to every kind of mail. */
+  topics?: string[];
   sourceTaskId?: string | null;
   rationale?: string | null;
 }

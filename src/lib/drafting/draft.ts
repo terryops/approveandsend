@@ -1,5 +1,11 @@
 import { callAI } from '../ai';
-import { describeWorkspace, getWorkspaceConfig, type WorkspaceConfig } from '../config/workspace';
+import {
+  describeTopics,
+  describeWorkspace,
+  getWorkspaceConfig,
+  normaliseTopicSlug,
+  type WorkspaceConfig,
+} from '../config/workspace';
 import { contextForPrompt } from '../context/gather';
 import type { Db } from '../db';
 import { getDb } from '../db';
@@ -72,7 +78,7 @@ function buildPrompt(
 ): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
-  return `${describeWorkspace(workspace)}${rulesBlock}${contextBlock}
+  return `${describeWorkspace(workspace)}${describeTopics(workspace)}${rulesBlock}${contextBlock}
 
 ## The customer's email
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -86,14 +92,34 @@ JSON only, no prose around it:
   "intent": "one specific sentence about what this person wants and why — 'wants a refund because the export was silent', not 'refund'",
   "language": "ISO 639-1 code of the language they wrote in",
   "sentiment": "positive | neutral | negative | angry",
-  "scope": "a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to",
+  "scope": ${
+    workspace.topics.length > 0
+      ? '"the name of the kind of mail this is, from the list above, or an empty string if none of them fits"'
+      : '"a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to"'
+  },
   "keyPoints": ["what they actually said, in their terms"],
   "suggestedActions": ["what a human may need to do outside this reply, if anything"],
   "draft": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
 }`;
 }
 
-function parseDraft(raw: string): { analysis: Analysis; draft: string } | null {
+/**
+ * The classifier's answer, only if it is a name that exists.
+ *
+ * A vocabulary that is not enforced is not a vocabulary. Left unchecked the
+ * model returns `refunds` where the rules say `refund` — close enough to look
+ * right on the task page, and it routes the reply past every refund rule the
+ * desk has. An unrecognised name is dropped, which falls back to the rules
+ * that apply to everything.
+ */
+function acceptScope(value: unknown, workspace: WorkspaceConfig): string | undefined {
+  const slug = normaliseTopicSlug(value);
+  if (!slug) return undefined;
+  if (workspace.topics.length === 0) return slug;
+  return workspace.topics.some(topic => topic.slug === slug) ? slug : undefined;
+}
+
+function parseDraft(raw: string, workspace: WorkspaceConfig): { analysis: Analysis; draft: string } | null {
   const parsed = extractJson<Record<string, unknown>>(raw);
   if (!parsed) return null;
 
@@ -101,6 +127,8 @@ function parseDraft(raw: string): { analysis: Analysis; draft: string } | null {
   // A draft is the one field with no sensible default. Everything else can be
   // empty and the reviewer still has something to work with.
   if (!draft) return null;
+
+  const scope = acceptScope(parsed.scope, workspace);
 
   return {
     draft,
@@ -114,9 +142,7 @@ function parseDraft(raw: string): { analysis: Analysis; draft: string } | null {
       suggestedActions: Array.isArray(parsed.suggestedActions)
         ? parsed.suggestedActions.filter((p): p is string => typeof p === 'string')
         : [],
-      ...(typeof parsed.scope === 'string' && parsed.scope.trim()
-        ? { scope: parsed.scope.trim().toLowerCase() }
-        : {}),
+      ...(scope ? { scope } : {}),
     },
   };
 }
@@ -125,18 +151,18 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const db = options.db ?? getDb();
   const workspace = options.workspace ?? getWorkspaceConfig();
 
-  // Scope is not known until the analysis has run, so the first draft for a
-  // task sees the unscoped rules plus whichever scope the task already
-  // carries. A regeneration, which does know, sees the right set.
+  // The topic is not known until the analysis has run, so the first draft for
+  // a task sees the rules that apply to everything plus whichever topic the
+  // task already carries. A regeneration, which does know, sees the right set.
   const rules = listRules({ enabledOnly: true }, db);
-  const block = selectRules(rules, { ...(task.scope ? { scope: task.scope } : {}) });
+  const block = selectRules(rules, { ...(task.scope ? { topic: task.scope } : {}) });
 
   // Whatever the enrichment job found, if it ran. Empty when no sources are
   // configured, which is the default and costs nothing.
   const contextBlock = options.context ?? contextForPrompt(task.id, db);
 
   const raw = await callAI(buildPrompt(task, workspace, block.text, contextBlock), { role: 'drafter' });
-  const parsed = parseDraft(raw);
+  const parsed = parseDraft(raw, workspace);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
   }

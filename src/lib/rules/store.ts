@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { normaliseTopicSlug } from '../config/workspace';
 import { getDb, type Db } from '../db';
 import {
   coerceCategory,
@@ -15,7 +16,6 @@ interface RuleRow {
   id: string;
   content: string;
   category: string;
-  scope: string | null;
   enabled: number;
   source_task_id: string | null;
   rationale: string | null;
@@ -23,6 +23,25 @@ interface RuleRow {
   last_applied_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Comma-joined by the query below, because SQLite has no array type. */
+  topics: string | null;
+}
+
+/**
+ * Whatever was handed in, reduced to a set of real slugs in a fixed order.
+ *
+ * Sorted rather than as-given: a rule's topic list is rendered on a page and
+ * compared against another rule's in the deduper, and neither should depend
+ * on which order somebody happened to tick the boxes.
+ */
+export function normaliseTopics(values: readonly unknown[] | undefined): string[] {
+  if (!values) return [];
+  const slugs = new Set<string>();
+  for (const value of values) {
+    const slug = normaliseTopicSlug(value);
+    if (slug) slugs.add(slug);
+  }
+  return [...slugs].sort();
 }
 
 function toRule(row: RuleRow): Rule {
@@ -31,7 +50,7 @@ function toRule(row: RuleRow): Rule {
     seq: row.seq,
     content: row.content,
     category: coerceCategory(row.category),
-    scope: row.scope,
+    topics: row.topics ? row.topics.split(',').sort() : [],
     enabled: row.enabled === 1,
     sourceTaskId: row.source_task_id,
     rationale: row.rationale,
@@ -45,47 +64,65 @@ function toRule(row: RuleRow): Rule {
 export interface ListRulesOptions {
   enabledOnly?: boolean;
   /**
-   * Return rules that are unscoped *or* scoped to this value. Omit to return
-   * every scope — which is what an admin listing wants and what a drafting
+   * Return rules that carry no topic *or* carry this one. Omit to return
+   * every rule — which is what an admin listing wants and what a drafting
    * prompt does not.
    */
-  scope?: string;
+  topic?: string;
   category?: RuleCategory;
 }
+
+// SQLite's implicit rowid is the insertion counter and `rules` is not WITHOUT
+// ROWID, so it is exactly the stable ordering we need. The topic list comes
+// back joined rather than as extra rows: a rule with three topics must stay
+// one rule, and fanning it out here would mean de-duplicating it again in
+// every caller.
+const SELECT_RULE =
+  `SELECT r.rowid AS seq, r.*,
+          (SELECT group_concat(topic) FROM rule_topics WHERE rule_id = r.id) AS topics
+     FROM rules r`;
 
 export function listRules(options: ListRulesOptions = {}, db: Db = getDb()): Rule[] {
   const where: string[] = [];
   const params: unknown[] = [];
 
-  if (options.enabledOnly) where.push('enabled = 1');
+  if (options.enabledOnly) where.push('r.enabled = 1');
   if (options.category) {
-    where.push('category = ?');
+    where.push('r.category = ?');
     params.push(options.category);
   }
-  if (options.scope !== undefined) {
-    // An unscoped rule is global, so it belongs to every scope's result.
-    where.push('(scope IS NULL OR scope = ?)');
-    params.push(options.scope);
+  if (options.topic !== undefined) {
+    // A rule with no topics is about everything, so it belongs in every
+    // topic's result. This is the clause that does the actual routing.
+    where.push(
+      `(NOT EXISTS (SELECT 1 FROM rule_topics WHERE rule_id = r.id)
+        OR EXISTS (SELECT 1 FROM rule_topics WHERE rule_id = r.id AND topic = ?))`,
+    );
+    params.push(options.topic);
   }
 
   const sql =
-    // SQLite's implicit rowid is the insertion counter, and this table is not
-    // WITHOUT ROWID, so it is exactly the stable ordering we need.
-    'SELECT rowid AS seq, * FROM rules' +
+    SELECT_RULE +
     (where.length ? ` WHERE ${where.join(' AND ')}` : '') +
     // Insertion order. Not a quality signal, but it is stable, which matters
     // more than it sounds: reordering the rule block between two otherwise
     // identical generations makes their outputs impossible to compare.
-    ' ORDER BY rowid ASC';
+    ' ORDER BY r.rowid ASC';
 
   return db.prepare(sql).all(...params).map(row => toRule(row as RuleRow));
 }
 
 export function getRule(id: string, db: Db = getDb()): Rule | null {
-  const row = db.prepare('SELECT rowid AS seq, * FROM rules WHERE id = ?').get(id) as
-    | RuleRow
-    | undefined;
+  const row = db.prepare(`${SELECT_RULE} WHERE r.id = ?`).get(id) as RuleRow | undefined;
   return row ? toRule(row) : null;
+}
+
+/** Replaces a rule's topics wholesale. Callers pass the full intended set. */
+function setTopics(id: string, topics: string[], db: Db): void {
+  db.prepare('DELETE FROM rule_topics WHERE rule_id = ?').run(id);
+  if (topics.length === 0) return;
+  const stmt = db.prepare('INSERT OR IGNORE INTO rule_topics (rule_id, topic) VALUES (?, ?)');
+  for (const topic of topics) stmt.run(id, topic);
 }
 
 export function createRule(input: NewRule, db: Db = getDb()): Rule {
@@ -94,22 +131,26 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
 
   const now = new Date().toISOString();
   const id = randomUUID();
+  const topics = normaliseTopics(input.topics);
 
-  db.prepare(
-    `INSERT INTO rules
-       (id, content, category, scope, enabled, source_task_id, rationale,
-        applied_count, last_applied_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, ?, ?, 0, NULL, ?, ?)`,
-  ).run(
-    id,
-    content,
-    input.category ?? 'general',
-    input.scope ?? null,
-    input.sourceTaskId ?? null,
-    input.rationale ?? null,
-    now,
-    now,
-  );
+  const write = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO rules
+         (id, content, category, scope, enabled, source_task_id, rationale,
+          applied_count, last_applied_at, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, 1, ?, ?, 0, NULL, ?, ?)`,
+    ).run(
+      id,
+      content,
+      input.category ?? 'general',
+      input.sourceTaskId ?? null,
+      input.rationale ?? null,
+      now,
+      now,
+    );
+    setTopics(id, topics, db);
+  });
+  write();
 
   return getRule(id, db)!;
 }
@@ -117,7 +158,8 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
 export interface RuleUpdate {
   content?: string;
   category?: RuleCategory;
-  scope?: string | null;
+  /** The complete intended set, not an addition. Empty clears every topic. */
+  topics?: string[];
   enabled?: boolean;
 }
 
@@ -155,24 +197,32 @@ export function updateRule(
     sets.push('category = ?');
     params.push(update.category);
   }
-  if (update.scope !== undefined) {
-    sets.push('scope = ?');
-    params.push(update.scope);
-  }
   if (update.enabled !== undefined) {
     sets.push('enabled = ?');
     params.push(update.enabled ? 1 : 0);
   }
 
-  if (sets.length === 0) return existing;
+  // Topics live in their own table, so they are compared rather than pushed
+  // into the SET list — and compared as a set, so that saving a form without
+  // touching the checkboxes is not recorded as a change.
+  const topics = update.topics === undefined ? null : normaliseTopics(update.topics);
+  const topicsChanged = topics !== null && topics.join(',') !== existing.topics.join(',');
+
+  if (sets.length === 0 && !topicsChanged) return existing;
 
   const now = new Date().toISOString();
   const apply = db.transaction(() => {
-    db.prepare(`UPDATE rules SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(
-      ...params,
-      now,
-      id,
-    );
+    if (sets.length > 0) {
+      db.prepare(`UPDATE rules SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(
+        ...params,
+        now,
+        id,
+      );
+    } else {
+      db.prepare('UPDATE rules SET updated_at = ? WHERE id = ?').run(now, id);
+    }
+
+    if (topics && topicsChanged) setTopics(id, topics, db);
 
     if (content !== undefined && content !== '' && content !== existing.content) {
       db.prepare(
@@ -198,8 +248,14 @@ export function disableRule(id: string, db: Db = getDb()): Rule | null {
 
 /** Hard delete. Only for rules a human explicitly wants gone. */
 export function deleteRule(id: string, db: Db = getDb()): boolean {
-  const result = db.prepare('DELETE FROM rules WHERE id = ?').run(id);
-  return result.changes > 0;
+  // No foreign key on rule_topics — see the migration — so the tags are swept
+  // here. Left behind they would be invisible rows that a later rule reusing
+  // the id would silently inherit.
+  const remove = db.transaction(() => {
+    db.prepare('DELETE FROM rule_topics WHERE rule_id = ?').run(id);
+    return db.prepare('DELETE FROM rules WHERE id = ?').run(id).changes > 0;
+  });
+  return remove();
 }
 
 /**

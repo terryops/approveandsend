@@ -176,7 +176,7 @@ export async function runBackfillItem(
   const outcome = await learnFromSentReply(
     {
       taskId: task.id,
-      scope: shadow.analysis.scope ?? null,
+      topic: shadow.analysis.scope ?? null,
       incomingSubject: incoming.subject,
       incomingBody,
       originalDraft: shadow.draft,

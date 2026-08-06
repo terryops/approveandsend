@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resetAiConfig } from '../ai';
 import {
   DEFAULT_WORKSPACE,
+  describeTopics,
   describeWorkspace,
   loadWorkspaceConfig,
   resetWorkspaceConfig,
@@ -150,6 +151,40 @@ describe('workspace config', () => {
     expect(loadWorkspaceConfig().facts).toEqual(['real fact']);
   });
 
+  it('normalises the topic vocabulary and drops entries that are not topics', () => {
+    writeConfig({
+      topics: [
+        { slug: '  Refunds ', description: 'money back' },
+        { slug: 'refunds', description: 'money back, disputes' },
+        { slug: 'no description' },
+        { slug: '' },
+        'not an object',
+        { description: 'no slug' },
+      ],
+    });
+
+    // The duplicate is a correction, not an error: last one wins.
+    expect(loadWorkspaceConfig().topics).toEqual([
+      { slug: 'refunds', description: 'money back, disputes' },
+      { slug: 'no-description', description: '' },
+    ]);
+  });
+
+  it('tells the classifier to choose a name rather than invent one', () => {
+    const config: WorkspaceConfig = {
+      ...DEFAULT_WORKSPACE,
+      topics: [{ slug: 'refunds', description: 'money back' }],
+    };
+
+    const block = describeTopics(config);
+    expect(block).toContain('- refunds: money back');
+    expect(block).toContain('rather than inventing a name');
+
+    // No vocabulary configured is not "no topics" — it is the feature off,
+    // and the prompt must not grow an empty list.
+    expect(describeTopics(DEFAULT_WORKSPACE)).toBe('');
+  });
+
   it('puts the facts and the never-promise list into the persona block', () => {
     const config: WorkspaceConfig = {
       organization: 'Acme',
@@ -159,6 +194,7 @@ describe('workspace config', () => {
       replyLanguage: 'match',
       reviewLanguage: '',
     language: 'en',
+      topics: [],
       neverPromise: ['a refund date'],
       contextSources: [],
     };
@@ -273,6 +309,56 @@ describe('drafting', () => {
     expect(result.draft).toBe('We have escalated this and will update you shortly.');
     expect(result.analysis.scope).toBe('refund');
     expect(result.analysis.sentiment).toBe('negative');
+  });
+
+  it('refuses a scope the vocabulary does not contain', async () => {
+    // The failure this whole mechanism exists to stop. `refunds` is one
+    // letter from the configured `refund`, looks entirely correct on the task
+    // page, and routes the reply past every refund rule the desk has. Better
+    // to have no topic — which falls back to the rules that apply to
+    // everything — than a name nothing is filed under.
+    writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
+    queued.push(JSON.stringify({ ...JSON.parse(GOOD_DRAFT), scope: 'refunds' }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.scope).toBeUndefined();
+
+    // And the vocabulary was actually offered, so this is the model
+    // disobeying rather than the model never being told.
+    expect(prompts[0]).toContain('- refund: money back');
+  });
+
+  it('keeps a scope the vocabulary does contain', async () => {
+    writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
+    queued.push(GOOD_DRAFT);
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.scope).toBe('refund');
+  });
+
+  it('accepts any slug when no vocabulary is configured', async () => {
+    queued.push(JSON.stringify({ ...JSON.parse(GOOD_DRAFT), scope: 'Whatever It Wants' }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { db });
+    expect(result.analysis.scope).toBe('whatever-it-wants');
+  });
+
+  it('sends only the rules the mail is about, plus the ones about everything', async () => {
+    writeConfig({ topics: [{ slug: 'refund', description: 'money back' }] });
+    createRule({ content: 'Always sign off warmly.' }, db);
+    createRule({ content: 'Never promise a refund date.', topics: ['refund'] }, db);
+    createRule({ content: 'Quote the API rate limit exactly.', topics: ['api'] }, db);
+    queued.push(GOOD_DRAFT);
+
+    // The task already carries the topic, as a regeneration would.
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { scope: 'refund' }, db);
+    const result = await draftReply(getTask(task.id, db)!, { db });
+
+    expect(prompts[0]).toContain('Always sign off warmly.');
+    expect(prompts[0]).toContain('Never promise a refund date.');
+    expect(prompts[0]).not.toContain('Quote the API rate limit exactly.');
+    expect(result.appliedRuleIds).toHaveLength(2);
   });
 
   it('strips HTML out of the email before it reaches the model', async () => {

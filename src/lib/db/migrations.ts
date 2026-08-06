@@ -354,6 +354,44 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE tasks ADD COLUMN sent_by TEXT`);
     },
   },
+  {
+    version: 11,
+    name: 'rule_topics',
+    up: db => {
+      // What a rule is *about*, so that a rulebook can outgrow one prompt.
+      //
+      // Replaces `rules.scope`, which held one free-text label per rule and
+      // could not express the shape most rules actually have. Roughly one rule
+      // in six here belongs to two subjects at once — "subscribed but the plan
+      // did not activate" is read as an account problem and answered out of
+      // the refund policy — and a single column forces a choice that is wrong
+      // half the time it is read.
+      //
+      // A rule with no rows here applies to everything. That is the useful
+      // default rather than an unclassified state: the rules that must never
+      // be dropped — which language to reply in, how to open, what not to
+      // promise — are exactly the ones that belong to no subject.
+      db.exec(`
+        CREATE TABLE rule_topics (
+          rule_id TEXT NOT NULL,
+          topic   TEXT NOT NULL,
+          PRIMARY KEY (rule_id, topic)
+        ) WITHOUT ROWID;
+
+        -- The selection query asks "which rules are tagged with this topic",
+        -- not the other way round.
+        CREATE INDEX idx_rule_topics_topic ON rule_topics(topic);
+
+        INSERT OR IGNORE INTO rule_topics (rule_id, topic)
+          SELECT id, lower(trim(scope)) FROM rules
+          WHERE scope IS NOT NULL AND trim(scope) <> '';
+      `);
+
+      // `rules.scope` stays in the table, unread from here on. Dropping it
+      // would discard the only record of what a rule used to be confined to,
+      // and this is the migration most likely to be reverted by hand.
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

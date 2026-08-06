@@ -1,4 +1,5 @@
 import { requirePage } from '@/lib/auth/guard';
+import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
 import { listRules, revisionsByRule } from '@/lib/rules/store';
@@ -14,6 +15,39 @@ export const dynamic = 'force-dynamic';
  * keep changing", which the count in the summary already answers.
  */
 const HISTORY_SHOWN = 5;
+
+/**
+ * The topic checkboxes for one rule.
+ *
+ * Checkboxes rather than the free-text box this replaced, and that is the
+ * point of the whole change: a typed scope was a name nobody else used, so it
+ * quietly excluded the rule from every reply instead of narrowing it. Ticking
+ * nothing is a real and common answer — it means the rule applies to
+ * everything — so there is no "all mail" option to tick.
+ */
+function TopicPicker({
+  topics,
+  selected,
+}: {
+  topics: { slug: string; description: string }[];
+  selected: string[];
+}) {
+  return (
+    <div className="row" style={{ flexWrap: 'wrap', gap: '4px 12px' }}>
+      {topics.map((topic) => (
+        <label key={topic.slug} className="meta" title={topic.description}>
+          <input
+            type="checkbox"
+            name="topics"
+            value={topic.slug}
+            defaultChecked={selected.includes(topic.slug)}
+          />{' '}
+          {topic.slug}
+        </label>
+      ))}
+    </div>
+  );
+}
 
 /**
  * The rulebook, in the open.
@@ -34,6 +68,7 @@ export default async function RulesPage({
   const rules = listRules({ ...(showDisabled ? {} : { enabledOnly: true }) });
   const active = rules.filter((rule) => rule.enabled).length;
   const gate = consolidationGate();
+  const { topics } = getWorkspaceConfig();
   const history = revisionsByRule(rules.map((rule) => rule.id));
 
   return (
@@ -74,14 +109,14 @@ export default async function RulesPage({
               </option>
             ))}
           </select>
-          <input
-            type="text"
-            name="scope"
-            placeholder={t('rules.scopePlaceholder')}
-            style={{ width: 280 }}
-          />
           <button type="submit">{t('rules.addButton')}</button>
         </div>
+        {topics.length > 0 && (
+          <>
+            <p className="meta" style={{ margin: 0 }}>{t('rules.topicsHint')}</p>
+            <TopicPicker topics={topics} selected={[]} />
+          </>
+        )}
       </form>
 
       {rules.length === 0 ? (
@@ -99,13 +134,6 @@ export default async function RulesPage({
                   </option>
                 ))}
               </select>
-              <input
-                type="text"
-                name="scope"
-                defaultValue={rule.scope ?? ''}
-                placeholder={t('rules.scopeAllMail')}
-                style={{ width: 200 }}
-              />
               <span className="grow meta">
                 #{rule.seq} · {t('rules.usedTimes', { n: rule.appliedCount })}
                 {/* A backfill rule's source is an archived exchange, not a
@@ -134,6 +162,17 @@ export default async function RulesPage({
                 {t('rules.deleteButton')}
               </button>
             </div>
+            {topics.length > 0 ? (
+              <TopicPicker topics={topics} selected={rule.topics} />
+            ) : (
+              rule.topics.length > 0 && (
+                /* Tags left over from a vocabulary that has since been
+                   removed from the config. Shown, because they are still
+                   narrowing this rule, and not editable here — the fix is to
+                   put the topic back in the config or clear it in the DB. */
+                <p className="meta">{t('rules.topicsUnknown', { list: rule.topics.join(', ') })}</p>
+              )
+            )}
             {rule.rationale && <p className="meta">{rule.rationale}</p>}
             {/* Closed by default, and the only thing on this page that answers
                 "who changed this, and what did it say before". A rule that

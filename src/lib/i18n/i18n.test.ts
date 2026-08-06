@@ -23,8 +23,18 @@ function speak(tag: string | undefined): void {
   resetWorkspaceConfig();
 }
 
-beforeEach(() => speak(undefined));
-afterEach(() => speak(undefined));
+// "Nothing asks otherwise" has to mean nothing, and the config file is read
+// from the working directory — so without this the suite passes or fails
+// depending on whether whoever is running it has configured their own
+// checkout. It did fail that way, on a file added the same afternoon.
+beforeEach(() => {
+  process.env.AAS_CONFIG = '/nonexistent/aas.config.json';
+  speak(undefined);
+});
+afterEach(() => {
+  delete process.env.AAS_CONFIG;
+  speak(undefined);
+});
 
 describe('choosing a language', () => {
   it('speaks English when nothing asks otherwise', () => {

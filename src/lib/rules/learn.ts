@@ -28,7 +28,7 @@ export interface LearningInput {
   /** Identifies the conversation, recorded as the rule's provenance. */
   taskId: string;
   /** Confines what is learned to one kind of mail. Omit for global rules. */
-  scope?: string | null;
+  topic?: string | null;
 
   incomingSubject: string;
   incomingBody: string;
@@ -186,7 +186,11 @@ export async function learnFromSentReply(
 ): Promise<LearningOutcome> {
   const db = options.db ?? getDb();
   const maxNewRules = options.maxNewRules ?? 2;
-  const scope = input.scope ?? null;
+  // What the mail was about becomes what the rule is about. One topic, not a
+  // set: the extractor is looking at one conversation, and guessing that a
+  // rule learned from a refund thread also governs API questions is a guess
+  // nobody asked it to make.
+  const topics = input.topic ? [input.topic] : [];
 
   const empty: LearningOutcome = { attempted: false, results: [], amended: [], discarded: [] };
   if (!input.sentReply.trim()) return empty;
@@ -247,7 +251,7 @@ export async function learnFromSentReply(
       {
         content,
         category: coerceCategory(proposal.category),
-        scope,
+        topics,
         sourceTaskId: input.taskId,
         rationale: proposal.rationale?.trim() || null,
       },

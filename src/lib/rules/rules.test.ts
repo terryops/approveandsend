@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetAiConfig } from '../ai';
 import { openDb, type Db } from '../db';
-import { currentVersion, SCHEMA_VERSION } from '../db/migrations';
+import { currentVersion, migrate, MIGRATIONS, SCHEMA_VERSION } from '../db/migrations';
 import { dedupeAndApplyRule } from './dedup';
 import { diffSentences, diffSummary, splitSentences } from './diff';
 import { learnFromSentReply } from './learn';
@@ -85,6 +85,33 @@ describe('migrations', () => {
     expect(currentVersion(again)).toBe(before);
     again.close();
   });
+
+  it('carries an existing database\'s rule scopes over into topics', async () => {
+    // The upgrade this is really about. A desk that has been running for
+    // months has rules confined by `scope`, and a migration that created an
+    // empty join table would silently promote every one of them to
+    // applies-to-everything — which reads as nothing breaking, right up to
+    // the refund rules turning up in a reply about the API.
+    const { default: Database } = await import('better-sqlite3');
+    const old = new Database(':memory:');
+    for (const migration of MIGRATIONS.filter(m => m.version <= 10)) migration.up(old);
+    old.pragma('user_version = 10');
+
+    const insert = old.prepare(
+      `INSERT INTO rules (id, content, category, scope, enabled, applied_count,
+                          created_at, updated_at)
+       VALUES (?, ?, 'general', ?, 1, 0, '2020-01-01', '2020-01-01')`,
+    );
+    insert.run('a', 'Scoped.', '  Refunds ');
+    insert.run('b', 'Unscoped.', null);
+    insert.run('c', 'Blank scope.', '   ');
+
+    migrate(old);
+
+    const tagged = old.prepare('SELECT rule_id, topic FROM rule_topics ORDER BY rule_id').all();
+    expect(tagged).toEqual([{ rule_id: 'a', topic: 'refunds' }]);
+    old.close();
+  });
 });
 
 // --- store ----------------------------------------------------------------
@@ -100,7 +127,7 @@ describe('rule store', () => {
     expect(rule).toMatchObject({
       content: 'Do not promise a refund date.',
       category: 'policy',
-      scope: null,
+      topics: [],
       enabled: true,
       sourceTaskId: 'task-1',
       appliedCount: 0,
@@ -163,14 +190,14 @@ describe('rule store', () => {
     expect(deleteRule('nope', db)).toBe(false);
   });
 
-  it('filters by enabled, category and scope, with unscoped rules always included', () => {
+  it('filters by enabled, category and topic, with untagged rules always included', () => {
     const global = seed('Global rule.');
-    const refunds = seed('Refund rule.', { scope: 'refunds', category: 'policy' });
-    const onboarding = seed('Onboarding rule.', { scope: 'onboarding' });
+    const refunds = seed('Refund rule.', { topics: ['refunds'], category: 'policy' });
+    const onboarding = seed('Onboarding rule.', { topics: ['onboarding'] });
     const off = seed('Retired rule.');
     disableRule(off.id, db);
 
-    const forRefunds = listRules({ enabledOnly: true, scope: 'refunds' }, db).map(r => r.id);
+    const forRefunds = listRules({ enabledOnly: true, topic: 'refunds' }, db).map(r => r.id);
     expect(forRefunds).toContain(global.id);
     expect(forRefunds).toContain(refunds.id);
     expect(forRefunds).not.toContain(onboarding.id);
@@ -179,6 +206,47 @@ describe('rule store', () => {
     expect(listRules({ category: 'policy' }, db).map(r => r.id)).toEqual([refunds.id]);
     // Disabled rules are still listed for an admin view.
     expect(listRules({}, db)).toHaveLength(4);
+  });
+
+  it('routes a rule that is about two things to both of them', () => {
+    // The case a single scope column could not express, and the reason this
+    // is a join table: read as an account problem, answered out of the
+    // refund policy.
+    const both = seed('Check the subscription before offering a refund.', {
+      topics: ['refunds', 'account'],
+    });
+    const refundsOnly = seed('Refunds only.', { topics: ['refunds'] });
+
+    expect(getRule(both.id, db)?.topics).toEqual(['account', 'refunds']);
+    expect(listRules({ topic: 'account' }, db).map(r => r.id)).toEqual([both.id]);
+    expect(listRules({ topic: 'refunds' }, db).map(r => r.id)).toEqual([both.id, refundsOnly.id]);
+  });
+
+  it('normalises topic names on the way in, so one topic cannot become three', () => {
+    const rule = seed('Whatever.', { topics: [' Refunds ', 'REFUNDS', 'refunds', '', 'not a slug!'] });
+    expect(rule.topics).toEqual(['refunds']);
+  });
+
+  it('replaces a rule\'s topics wholesale rather than adding to them', () => {
+    const rule = seed('Whatever.', { topics: ['refunds', 'account'] });
+
+    expect(updateRule(rule.id, { topics: ['billing'] }, {}, db)?.topics).toEqual(['billing']);
+    expect(updateRule(rule.id, { topics: [] }, {}, db)?.topics).toEqual([]);
+  });
+
+  it('leaves the topics alone when an update does not mention them', () => {
+    const rule = seed('Whatever.', { topics: ['refunds'] });
+    expect(updateRule(rule.id, { enabled: false }, {}, db)?.topics).toEqual(['refunds']);
+  });
+
+  it('sweeps the tags when a rule is deleted, so a reused id cannot inherit them', () => {
+    const rule = seed('Whatever.', { topics: ['refunds'] });
+    deleteRule(rule.id, db);
+
+    const left = db
+      .prepare('SELECT COUNT(*) c FROM rule_topics WHERE rule_id = ?')
+      .get(rule.id) as { c: number };
+    expect(left.c).toBe(0);
   });
 
   it('counts applications so a rule that never fires can be found later', () => {
@@ -306,11 +374,24 @@ describe('rule block', () => {
     expect(selectRules([]).text).toBe('');
   });
 
-  it('excludes rules scoped to something else', () => {
-    seed('Global.');
-    seed('Refunds only.', { scope: 'refunds' });
+  it('keeps an untagged rule in every topic, and a tagged one only in its own', () => {
+    seed('Always.');
+    seed('Refunds and billing.', { topics: ['refunds', 'billing'] });
 
-    const block = selectRules(listRules({ enabledOnly: true }, db), { scope: 'onboarding' });
+    const billing = selectRules(listRules({ enabledOnly: true }, db), { topic: 'billing' });
+    expect(billing.text).toContain('Always.');
+    expect(billing.text).toContain('Refunds and billing.');
+
+    // No topic asked for at all — an admin listing, or a draft before the
+    // mail has been classified — still sees everything.
+    expect(selectRules(listRules({ enabledOnly: true }, db)).text).toContain('Refunds and billing.');
+  });
+
+  it('excludes rules about something else', () => {
+    seed('Global.');
+    seed('Refunds only.', { topics: ['refunds'] });
+
+    const block = selectRules(listRules({ enabledOnly: true }, db), { topic: 'onboarding' });
     expect(block.text).toContain('Global.');
     expect(block.text).not.toContain('Refunds only.');
   });
@@ -473,11 +554,11 @@ describe('dedupeAndApplyRule', () => {
     ).toBe('add');
   });
 
-  it('only compares rules within the same scope', async () => {
-    seed('Answer within one business day.', { scope: 'refunds' });
+  it('only compares rules about the same topics', async () => {
+    seed('Answer within one business day.', { topics: ['refunds'] });
 
     const result = await dedupeAndApplyRule(
-      { content: 'Answer within one business day.', scope: 'onboarding' },
+      { content: 'Answer within one business day.', topics: ['onboarding'] },
       { db },
     );
 
@@ -558,10 +639,10 @@ describe('learnFromSentReply', () => {
     });
   });
 
-  it('confines what it learns to the scope it was given', async () => {
+  it('confines what it learns to the topic it was given', async () => {
     queued.push(JSON.stringify({ newRules: [{ content: 'Escalate before promising a date.' }] }));
-    await learnFromSentReply({ ...sample, scope: 'refunds' }, { db });
-    expect(listRules({}, db)[0]?.scope).toBe('refunds');
+    await learnFromSentReply({ ...sample, topic: 'refunds' }, { db });
+    expect(listRules({}, db)[0]?.topics).toEqual(['refunds']);
   });
 
   it('tells the model an unedited draft is usually not a lesson', async () => {

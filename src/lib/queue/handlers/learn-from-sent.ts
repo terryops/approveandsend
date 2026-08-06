@@ -60,7 +60,7 @@ function parsePayload(payload: unknown): LearnFromSentPayload {
 
   return {
     taskId,
-    scope: typeof value.scope === 'string' ? value.scope : null,
+    topic: typeof value.topic === 'string' ? value.topic : null,
     incomingSubject: typeof value.incomingSubject === 'string' ? value.incomingSubject : '',
     incomingBody: typeof value.incomingBody === 'string' ? value.incomingBody : '',
     ...(typeof value.originalDraft === 'string' ? { originalDraft: value.originalDraft } : {}),

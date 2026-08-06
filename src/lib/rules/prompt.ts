@@ -29,8 +29,8 @@ const CATEGORY_PRIORITY: Record<RuleCategory, number> = {
 
 export interface RuleBlockOptions {
   maxChars?: number;
-  /** Only rules that are unscoped or match this scope. */
-  scope?: string;
+  /** Only rules that carry no topic, or carry this one. */
+  topic?: string;
   heading?: string;
 }
 
@@ -45,10 +45,14 @@ export interface RuleBlock {
 
 export function selectRules(rules: Rule[], options: RuleBlockOptions = {}): RuleBlock {
   const budget = options.maxChars ?? DEFAULT_RULE_BUDGET_CHARS;
-  const scope = options.scope;
+  const topic = options.topic;
 
   const eligible = rules.filter(
-    rule => rule.enabled && (rule.scope === null || scope === undefined || rule.scope === scope),
+    rule =>
+      rule.enabled &&
+      // No topics means the rule is about everything, so it survives every
+      // filter. Those are the rules whose absence is most expensive.
+      (rule.topics.length === 0 || topic === undefined || rule.topics.includes(topic)),
   );
 
   // Choose by priority, but emit in the original order: a stable rule block

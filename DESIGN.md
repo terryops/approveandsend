@@ -305,6 +305,40 @@ a dropped tone rule reads slightly wrong while a dropped policy rule promises a
 refund that does not exist. Drops are returned, not swallowed, so the caller
 can log them.
 
+### Topics, and why the vocabulary is fixed
+
+A budget alone only decides *which* rules to lose. Routing decides whether
+they need to be lost at all: the analysis names what the mail is about, and
+only the rules filed under that name — plus the ones filed under nothing —
+reach the prompt. On a rulebook of 136 that is roughly a tenfold cut, and the
+budget stops binding.
+
+Two things make it work, and neither is optional.
+
+**The names come from a list.** `topics` in the workspace config is a fixed
+vocabulary, and the classifier is told to choose from it and checked against
+it afterwards. Left to invent a label the model returns `refund`, then
+`refunds`, then `refund-request`, and a rule filed under any one of them
+matches almost nothing — which looks exactly like a correct scope on the task
+page while routing the reply past every refund rule the desk has. An
+unrecognised name is dropped rather than stored.
+
+**No topics means every topic.** The rules that must never be dropped — which
+language to reply in, how to open, what not to promise — are precisely the
+ones that belong to no subject, so the absence of a tag is a real answer and
+not an unclassified state. Roughly one rule in fourteen here.
+
+Rules are tagged through a join table rather than the single `scope` column
+this replaced. About one rule in six is genuinely about two subjects at once:
+"check whether the subscription activated before offering money back" is read
+as an access problem and answered out of the refund policy, and one column
+forces a choice that is wrong half the time it is read. The mail, by
+contrast, still carries one topic — a message that is genuinely two things is
+rarer than a rule that is, and the always-applies set absorbs the miss.
+
+Empty `topics` turns routing off entirely, which is the right behaviour for a
+desk with thirty rules and the wrong one for a desk with three hundred.
+
 Selection is by priority; *emission* is by insertion order. A rule block whose
 order shifts between two runs makes their outputs impossible to compare.
 
@@ -314,12 +348,20 @@ the same tick. A test caught this immediately.
 
 ### Schema choices the original could not make later
 
-`source_task_id`, `rationale`, `applied_count`, `last_applied_at` and `scope`
-are all cheap at schema-design time and impossible to backfill. Without
-provenance you cannot answer "why does the drafter believe this?", which is the
-first question asked when a rule produces a bad reply. Without usage counts
-there is no basis on which a rule could ever be retired. Without scope, a rule
-learned handling one kind of mail steers every other kind.
+`source_task_id`, `rationale`, `applied_count` and `last_applied_at` are all
+cheap at schema-design time and impossible to backfill. Without provenance you
+cannot answer "why does the drafter believe this?", which is the first question
+asked when a rule produces a bad reply. Without usage counts there is no basis
+on which a rule could ever be retired. Without a subject, a rule learned
+handling one kind of mail steers every other kind.
+
+The subject is the one that was got wrong first: a free-text `scope` column,
+holding one label per rule, chosen by whoever typed it. Migration 11 replaces
+it with `rule_topics` and carries the old values over — an empty join table
+would have promoted every confined rule to applies-to-everything, which reads
+as nothing breaking right up to the refund rules turning up in a reply about
+the API. The column is left in place, unread, because this is the migration
+most likely to be undone by hand.
 
 Migrations are numbered against `PRAGMA user_version`, each in its own
 transaction. The original ran `ALTER TABLE … ADD COLUMN` inside a try/catch on

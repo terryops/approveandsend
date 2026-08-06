@@ -15,6 +15,21 @@ import { resolve } from 'node:path';
  * start.
  */
 
+/**
+ * One kind of mail this desk gets, named once so that everything else can
+ * agree on the name.
+ */
+export interface Topic {
+  /** Lowercase, hyphenated. Stored on rules and on tasks. */
+  slug: string;
+  /**
+   * What lands here, in the words of someone who reads the mail. This is the
+   * only thing the classifier gets, so "asks for money back, disputes a
+   * charge, wants to cancel" beats "billing issues".
+   */
+  description: string;
+}
+
 export interface WorkspaceConfig {
   /** The organisation replying. Appears in the prompt as "you work for X". */
   organization: string;
@@ -60,6 +75,21 @@ export interface WorkspaceConfig {
    * drafts in English, and the reverse. `en` when unset.
    */
   language: string;
+  /**
+   * The kinds of mail this desk gets — a fixed vocabulary, not a free-text
+   * label.
+   *
+   * This is what makes a rulebook that has outgrown one prompt usable at all.
+   * Without it the classifier invents a slug per email — `refund`, then
+   * `refunds`, then `refund-request` — and a rule tagged with any one of them
+   * matches almost nothing, so every rule has to be injected every time and
+   * the character budget silently drops the ones that did not fit.
+   *
+   * Empty — the default — turns routing off: every enabled rule is a
+   * candidate, which is the right behaviour for a desk with thirty rules and
+   * the wrong one for a desk with three hundred.
+   */
+  topics: Topic[];
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
@@ -86,6 +116,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
   replyLanguage: 'match',
   reviewLanguage: '',
   language: 'en',
+  topics: [],
   neverPromise: [
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
@@ -119,6 +150,35 @@ function asSourceList(value: unknown): (string | Record<string, unknown>)[] | un
     if (entry && typeof entry === 'object' && !Array.isArray(entry)) return [entry as Record<string, unknown>];
     return [];
   });
+}
+
+/**
+ * The one spelling of a topic name.
+ *
+ * Everywhere a slug can enter — the config file, a form field, the
+ * classifier's JSON — it goes through here first, so `Refund `, `refund` and
+ * `REFUND` cannot become three topics that each match a third of the rules.
+ * Returns null for anything that is not a usable name.
+ */
+export function normaliseTopicSlug(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const slug = value.trim().toLowerCase().replace(/\s+/g, '-');
+  return /^[a-z0-9][a-z0-9-]*$/.test(slug) ? slug : null;
+}
+
+/** Later entries win, so a duplicated slug is a correction rather than an error. */
+function asTopicList(value: unknown): Topic[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const bySlug = new Map<string, Topic>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const record = entry as Record<string, unknown>;
+    const slug = normaliseTopicSlug(record.slug);
+    if (!slug) continue;
+    bySlug.set(slug, { slug, description: asString(record.description) ?? '' });
+  }
+  return [...bySlug.values()];
 }
 
 function asString(value: unknown): string | undefined {
@@ -167,6 +227,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       asString(process.env.AAS_LANGUAGE) ??
       asString(fromFile.language) ??
       DEFAULT_WORKSPACE.language,
+    topics: asTopicList(fromFile.topics) ?? DEFAULT_WORKSPACE.topics,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
     contextSources: asSourceList(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };
@@ -179,6 +240,32 @@ export function getWorkspaceConfig(): WorkspaceConfig {
 
 export function resetWorkspaceConfig(): void {
   cached = null;
+}
+
+/**
+ * How the classifier is told what it may answer.
+ *
+ * Deliberately an instruction to *choose from a list* rather than to invent a
+ * label. The difference is the whole feature: a chosen slug matches the rules
+ * tagged with it, and an invented one matches nothing while looking exactly
+ * as plausible in the UI.
+ *
+ * Empty when no vocabulary is configured, and the caller falls back to asking
+ * for a free-form slug — useful as a description of the mail, and honestly
+ * not much else.
+ */
+export function describeTopics(config: WorkspaceConfig): string {
+  if (config.topics.length === 0) return '';
+
+  const lines = config.topics.map(topic =>
+    topic.description ? `- ${topic.slug}: ${topic.description}` : `- ${topic.slug}`,
+  );
+
+  return (
+    `\n\n**The kinds of mail this desk gets:**\n${lines.join('\n')}\n\n` +
+    'Pick the one that fits best for "scope", copying the name exactly. ' +
+    'If none of them fits, return an empty string rather than inventing a name.'
+  );
 }
 
 /** The persona block that opens every drafting prompt. */

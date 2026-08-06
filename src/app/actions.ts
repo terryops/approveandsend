@@ -158,7 +158,7 @@ export async function addRule(form: FormData): Promise<void> {
     createRule({
       content,
       category: coerceCategory(field(form, 'category')),
-      scope: field(form, 'scope') || null,
+      topics: form.getAll('topics').map(String),
       rationale: t('actions.handWrittenRuleRationale'),
     });
   }
@@ -175,7 +175,7 @@ export async function editRule(form: FormData): Promise<void> {
     {
       content: field(form, 'content'),
       category: coerceCategory(field(form, 'category')),
-      scope: field(form, 'scope') || null,
+      topics: form.getAll('topics').map(String),
       ...(enabled === null ? {} : { enabled: enabled === 'on' || enabled === 'true' }),
     },
     { reason: 'manual', actor: await actorName() },

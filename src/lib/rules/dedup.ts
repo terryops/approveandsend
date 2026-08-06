@@ -3,7 +3,7 @@ import { extractJson } from '../json-repair';
 import type { Db } from '../db';
 import { getDb } from '../db';
 import { shortlist } from './similarity';
-import { createRule, listRules, updateRule } from './store';
+import { createRule, listRules, normaliseTopics, updateRule } from './store';
 import { coerceCategory, type NewRule, type Rule } from './types';
 
 /**
@@ -97,11 +97,11 @@ export async function dedupeAndApplyRule(
 
   const pool = options.against ?? listRules({ enabledOnly: true }, db);
 
-  // Only rules in the same scope can duplicate each other: the same sentence
-  // about refunds is not redundant with the same sentence about onboarding if
-  // each is confined to its own kind of mail.
-  const scope = input.scope ?? null;
-  const comparable = pool.filter(r => (r.scope ?? null) === scope);
+  // Only rules about the same subjects can duplicate each other: the same
+  // sentence about refunds is not redundant with the same sentence about
+  // onboarding if each is confined to its own kind of mail.
+  const topics = normaliseTopics(input.topics).join(',');
+  const comparable = pool.filter(r => r.topics.join(',') === topics);
 
   const candidates = shortlist(content, comparable, r => r.content, {
     limit: options.shortlistSize ?? 12,

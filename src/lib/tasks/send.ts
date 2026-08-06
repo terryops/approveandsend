@@ -83,7 +83,7 @@ export async function sendReply(
       enqueueLearnFromSent(
         {
           taskId,
-          scope: task.scope,
+          topic: task.scope,
           incomingSubject: task.subject,
           incomingBody: task.body,
           ...(task.draft ? { originalDraft: task.draft } : {}),
