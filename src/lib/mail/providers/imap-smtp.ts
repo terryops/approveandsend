@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import nodemailer, { type Transporter } from 'nodemailer';
 
 import { formatAddress, normalizeMessageId, parseAddressList, parseReferences } from '../address';
+import { pickHeaderBlock, pickHeaderLines, WANTED_HEADERS } from '../headers';
 import { buildReferences, findThreadFor } from '../threading';
 import {
   MailError,
@@ -159,7 +160,17 @@ export class ImapSmtpProvider implements MailProvider {
       const out: MailMessage[] = [];
       for await (const message of client.fetch(
         range,
-        { uid: true, flags: true, envelope: true, bodyStructure: true, size: true },
+        {
+          uid: true,
+          flags: true,
+          envelope: true,
+          bodyStructure: true,
+          size: true,
+          // Named headers, not the whole block. A listing of two hundred pulls
+          // five short lines each; `headers: true` would pull every Received:
+          // hop of every message to read the same five.
+          headers: [...WANTED_HEADERS],
+        },
         { uid: Boolean(uids) },
       )) {
         out.push(this.toSummary(message, mailbox, status.uidValidity));
@@ -215,6 +226,7 @@ export class ImapSmtpProvider implements MailProvider {
       receivedAt: (env?.date ?? new Date(0)).toISOString(),
       isRead: message.flags?.has('\\Seen') ?? false,
       hasAttachments: attachments.some(a => a.disposition === 'attachment'),
+      headers: pickHeaderBlock(message.headers?.toString('utf8') ?? ''),
     };
   }
 
@@ -251,6 +263,7 @@ export class ImapSmtpProvider implements MailProvider {
         receivedAt: (parsed.date ?? new Date(0)).toISOString(),
         isRead: true,
         hasAttachments: parsed.attachments.length > 0,
+        headers: pickHeaderLines(parsed.headerLines),
         html: typeof parsed.html === 'string' ? parsed.html : undefined,
         text: parsed.text ?? undefined,
         attachments: parsed.attachments.map((a, index) => ({

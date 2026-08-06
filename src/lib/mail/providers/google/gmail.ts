@@ -2,6 +2,7 @@ import { simpleParser } from 'mailparser';
 import nodemailer from 'nodemailer';
 
 import { formatAddress, normalizeMessageId, parseAddressList, parseReferences } from '../../address';
+import { pickHeaderLines, pickHeaders, WANTED_HEADERS } from '../../headers';
 import { buildReferences } from '../../threading';
 import {
   MailError,
@@ -18,6 +19,19 @@ import { GoogleAuth, type GoogleAuthConfig } from './auth';
 
 const PROVIDER_ID = 'gmail';
 const DEFAULT_API_BASE = 'https://gmail.googleapis.com';
+
+/**
+ * What a listing asks for, on top of the message metadata Gmail gives anyway.
+ *
+ * `format=metadata` returns nothing but what is named here, so a header left
+ * off this list is not "missing from this message" — it is invisible on every
+ * message forever, which is a hard bug to see from the outside.
+ */
+const METADATA_HEADERS =
+  ['Subject', 'From', 'To', 'Cc', 'Date', 'Message-ID', 'In-Reply-To', 'References']
+    .concat([...WANTED_HEADERS])
+    .map(name => `&metadataHeaders=${name}`)
+    .join('');
 
 export interface GmailConfig {
   auth: GoogleAuthConfig;
@@ -142,10 +156,7 @@ export class GmailProvider implements MailProvider {
 
     const messages = await this.mapLimit(ids, this.config.concurrency ?? 8, id =>
       this.request<GmailMessage>(
-        `/messages/${encodeURIComponent(id)}?format=metadata` +
-          '&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To' +
-          '&metadataHeaders=Cc&metadataHeaders=Date&metadataHeaders=Message-ID' +
-          '&metadataHeaders=In-Reply-To&metadataHeaders=References',
+        `/messages/${encodeURIComponent(id)}?format=metadata` + METADATA_HEADERS,
       ),
     );
 
@@ -181,6 +192,7 @@ export class GmailProvider implements MailProvider {
       receivedAt: internalDateToIso(message.internalDate, headers.get('date')),
       isRead: !(message.labelIds ?? []).includes('UNREAD'),
       hasAttachments: false, // Not knowable from metadata; getMessage fills it in.
+      headers: pickHeaders(name => headers.get(name)),
     };
   }
 
@@ -209,6 +221,7 @@ export class GmailProvider implements MailProvider {
       receivedAt: internalDateToIso(message.internalDate, parsed.date?.toISOString()),
       isRead: !(message.labelIds ?? []).includes('UNREAD'),
       hasAttachments: parsed.attachments.length > 0,
+      headers: pickHeaderLines(parsed.headerLines),
       html: typeof parsed.html === 'string' ? parsed.html : undefined,
       text: parsed.text ?? undefined,
       attachments: parsed.attachments.map((a, index) => ({

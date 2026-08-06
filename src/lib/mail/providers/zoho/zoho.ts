@@ -1,6 +1,7 @@
 import { replyHtml } from '../../render';
 import { htmlToText } from '../../../thread-context';
 import { normalizeMessageId, parseAddressList, parseReferences } from '../../address';
+import { pickHeaders } from '../../headers';
 import { findThreadFor } from '../../threading';
 import {
   MailError,
@@ -346,6 +347,10 @@ export class ZohoProvider implements MailProvider {
         ? { inReplyTo: normalizeMessageId(headers.get('in-reply-to')) }
         : {}),
       references: parseReferences(headers.get('references')),
+      // Only on the detail path. Zoho serves headers from a per-message
+      // endpoint, so putting them on a listing would mean one extra HTTP call
+      // per message to answer a question worth at most one call in total.
+      headers: pickHeaders(name => headers.get(name)),
       html,
       text: htmlToText(html),
       hasAttachments: attachments.length > 0 || summary.hasAttachments,

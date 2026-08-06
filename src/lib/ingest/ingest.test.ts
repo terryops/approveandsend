@@ -273,6 +273,90 @@ describe('syncInbox', () => {
     expect(getTask(older.id, db)?.draft).toBe('An answer to the first one');
   });
 
+  it('dismisses a newsletter instead of drafting a reply to it', async () => {
+    const news = message('m1', {
+      from: { address: 'news@vendor.example' },
+      headers: { 'list-unsubscribe': '<https://vendor.example/unsub>' },
+    });
+    const provider = new FakeMailbox([news]);
+
+    const result = await syncInbox({ provider, db, skipAnswered: false });
+
+    expect(result).toMatchObject({ created: 0, junk: 1 });
+    const task = getTask((db.prepare('SELECT id FROM tasks').get() as { id: string }).id, db)!;
+    expect(task.status).toBe('dismissed');
+    // The reason is on the row, not only in a log, so somebody who thinks this
+    // filter is eating their mail can see what it decided and why.
+    expect(task.error).toContain('List-Unsubscribe');
+
+    // The two things junk actually costs: a body fetch and three model calls.
+    expect(provider.detailFetches).toEqual([]);
+    expect(listJobs({}, db)).toEqual([]);
+  });
+
+  it('catches the bulk mail whose headers only arrive with the body', async () => {
+    // Zoho's listing carries no headers at all; they come from a separate
+    // endpoint on the detail fetch. The second check is what makes the filter
+    // work there, and this is the shape that proves it.
+    const news = message('m1', { from: { address: 'hello@vendor.example' } });
+    const provider = new FakeMailbox([news]);
+    const original = provider.getMessage.bind(provider);
+    provider.getMessage = async (id: string) => ({
+      ...(await original(id)),
+      headers: { precedence: 'bulk' },
+    });
+
+    const result = await syncInbox({ provider, db, skipAnswered: false });
+
+    expect(result).toMatchObject({ created: 0, junk: 1 });
+    expect(listJobs({}, db)).toEqual([]);
+  });
+
+  it('still drafts for a person, headers and all', async () => {
+    const real = message('m1', {
+      headers: { 'return-path': '<sam@example.com>', precedence: 'urgent' },
+    });
+    const result = await syncInbox({ provider: new FakeMailbox([real]), db, skipAnswered: false });
+
+    expect(result).toMatchObject({ created: 1, junk: 0 });
+    expect(listJobs({}, db)).toHaveLength(1);
+  });
+
+  it('drafts for the newsletter anyway when asked to', async () => {
+    const news = message('m1', { headers: { 'list-unsubscribe': '<https://x.example/u>' } });
+    const result = await syncInbox({
+      provider: new FakeMailbox([news]),
+      db,
+      skipAnswered: false,
+      skipJunk: false,
+    });
+
+    expect(result).toMatchObject({ created: 1, junk: 0 });
+    expect(listJobs({}, db)).toHaveLength(1);
+  });
+
+  it('does not let a newsletter retire a customer waiting for an answer', async () => {
+    const question = message('m1', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' });
+    const provider = new FakeMailbox([question]);
+    await syncInbox({ provider, db, skipAnswered: false });
+    const waiting = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
+    updateTask(waiting, { status: 'awaiting_review', draft: 'Here is the fix' }, db);
+
+    // A vendor's automated note filed under the same server-side thread. It
+    // is not a follow-up from the customer and must not cancel their reply.
+    const noise = message('m2', {
+      threadId: 'T1',
+      receivedAt: '2026-08-01T10:00:00.000Z',
+      headers: { 'auto-submitted': 'auto-generated' },
+    });
+    await syncInbox({ provider: new FakeMailbox([question, noise]), db, skipAnswered: false });
+
+    expect(getTask(waiting, db)).toMatchObject({
+      status: 'awaiting_review',
+      supersededBy: null,
+    });
+  });
+
   it('leaves a reply that already went out alone', async () => {
     const first = message('m1', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' });
     await syncInbox({ provider: new FakeMailbox([first]), db, skipAnswered: false });

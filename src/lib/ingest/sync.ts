@@ -8,6 +8,7 @@ import { addMessage } from '../tasks/messages';
 import { createTask, supersedeThread, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
 import { answeredMessageIds } from './answered';
+import { junkVerdict } from './junk';
 
 /**
  * Pulling the inbox into tasks.
@@ -46,6 +47,14 @@ export interface SyncOptions {
    * sync queues a draft for every message a human already dealt with.
    */
   skipAnswered?: boolean;
+  /**
+   * Off to draft a reply to newsletters and bounces as well.
+   *
+   * On by default. See `junk.ts` — nothing is deleted either way, so the cost
+   * of leaving it on is a dismissed row and the cost of turning it off is
+   * three model calls per newsletter.
+   */
+  skipJunk?: boolean;
 }
 
 export interface SyncResult {
@@ -59,6 +68,11 @@ export interface SyncResult {
    * and "we ignored 300 emails" needs to be visible instead of inferred.
    */
   answered: number;
+  /**
+   * Newsletters, bounces and the like. Dismissed on arrival rather than
+   * drafted; the row still exists, so a desk can check what it decided.
+   */
+  junk: number;
   /** Message ids we could not turn into a task, with the reason. */
   failures: { messageId: string; error: string }[];
 }
@@ -162,7 +176,8 @@ async function ingest(
   draft: boolean,
   thread: boolean,
   self: string | undefined,
-): Promise<'created' | 'skipped'> {
+  skipJunk: boolean,
+): Promise<'created' | 'skipped' | 'junk'> {
   // Created from the summary first: the detail fetch is the expensive call and
   // there is no point paying it for mail we have already seen.
   const { task, existed } = createTask(
@@ -181,13 +196,33 @@ async function ingest(
 
   if (existed) return 'skipped';
 
-  // Anything still waiting to be answered on this conversation was answering
-  // the message before this one. Done before the draft is queued, so the
-  // superseded task's own drafting job — which skips dismissed tasks — never
-  // spends the call.
-  if (message.threadId) supersedeThread(message.threadId, task.id, db);
+  // Before the detail fetch and before any job: everything below this line
+  // costs either a provider call or a model call.
+  const dismiss = (junk: { reason: string }): 'junk' => {
+    updateTask(task.id, { status: 'dismissed', error: junk.reason }, db);
+    return 'junk';
+  };
+
+  const early = skipJunk ? junkVerdict(message) : null;
+  if (early) return dismiss(early);
 
   const detail = await provider.getMessage(message.id);
+
+  // Again, now that the detail is in hand. Backends differ on where headers
+  // live — Zoho serves them from a separate per-message endpoint, so a listing
+  // there carries none and the first check only ever saw the address. Running
+  // it twice costs nothing the second time and is the difference between the
+  // bulk filter working everywhere and working on two providers out of three.
+  const late = skipJunk ? junkVerdict(detail) : null;
+  if (late) return dismiss(late);
+
+  // Anything still waiting to be answered on this conversation was answering
+  // the message before this one. After the junk checks, so a newsletter that
+  // happens to land in a thread cannot retire a real customer's draft; before
+  // the draft is queued, so the superseded task's own drafting job — which
+  // skips dismissed tasks — never spends the call.
+  if (message.threadId) supersedeThread(message.threadId, task.id, db);
+
   updateTask(task.id, { body: bodyOf(detail) }, db);
   captureAttachments(task.id, detail, db);
 
@@ -234,6 +269,7 @@ export async function syncInbox(options: SyncOptions = {}): Promise<SyncResult> 
     created: 0,
     skipped: 0,
     answered: 0,
+    junk: 0,
     failures: [],
   };
 
@@ -250,7 +286,11 @@ export async function syncInbox(options: SyncOptions = {}): Promise<SyncResult> 
     }
 
     try {
-      if ((await ingest(message, provider, db, draft, thread, self)) === 'created') result.created += 1;
+      const outcome = await ingest(
+        message, provider, db, draft, thread, self, options.skipJunk !== false,
+      );
+      if (outcome === 'created') result.created += 1;
+      else if (outcome === 'junk') result.junk += 1;
       else result.skipped += 1;
     } catch (error) {
       result.failures.push({

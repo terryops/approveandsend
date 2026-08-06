@@ -50,6 +50,17 @@ export interface MailMessage {
   snippet?: string;
   isRead: boolean;
   hasAttachments: boolean;
+
+  /**
+   * Raw headers, keys lowercased, when the backend exposes them.
+   *
+   * Only the ones nothing else on this interface covers. They exist for one
+   * reader — the bulk-mail check — which needs `list-unsubscribe`,
+   * `precedence` and `auto-submitted`, the three headers a sender uses to
+   * declare that a human did not write this and does not want a reply.
+   * Guessing that from the body costs a model call and gets it wrong.
+   */
+  headers?: Record<string, string>;
 }
 
 export interface MailMessageDetail extends MailMessage {
