@@ -72,6 +72,15 @@ export interface DraftOptions {
    * Override the conversation history block. '' forces a first-contact prompt.
    */
   thread?: string;
+  /**
+   * What the reviewer asked for on this particular reply. '' ignores the note.
+   *
+   * Defaults to the task's reviewer notes, which is what the box under the
+   * draft writes. Redraft without this is a coin flip: the reviewer's only
+   * options are to accept the same objection back or to write the reply
+   * themselves, and the second one is the product not working.
+   */
+  steer?: string;
   db?: Db;
 }
 
@@ -83,6 +92,30 @@ export interface Critique {
   revised?: string;
 }
 
+/**
+ * The reviewer's instruction for this reply, if they left one.
+ *
+ * Last in the prompt, immediately before the email, because it is the most
+ * specific thing in it: a human who has read this exact draft and said what is
+ * wrong with it outranks anything the desk knows in general. It does not
+ * outrank the rules — a note asking for something the rulebook forbids is the
+ * one case where a reviewer should have to change the rule — and the wording
+ * says so, rather than leaving the model to work out the precedence.
+ */
+function buildSteer(steer: string): string {
+  const trimmed = steer.trim();
+  if (!trimmed) return '';
+
+  return `
+
+## What the reviewer said about the last attempt
+A human read the previous draft and asked for this. Do what it says, unless a
+rule above forbids it — in which case follow the rule and leave the rest of the
+note honoured:
+
+${clip(trimmed, 2000)}`;
+}
+
 function buildPrompt(
   task: Task,
   workspace: WorkspaceConfig,
@@ -92,6 +125,8 @@ function buildPrompt(
   topic: string | undefined,
   /** Earlier messages in this conversation; '' for a first contact. */
   threadBlock: string,
+  /** What the reviewer asked for on the retry; '' on a first generation. */
+  steerBlock: string,
 ): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
@@ -107,7 +142,7 @@ function buildPrompt(
   // which is which. A drafter shown four messages and asked for "a reply" will
   // otherwise answer whichever one it found most interesting, which on a thread
   // where the customer has already been placated is the angry one.
-  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}
+  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
 
 ## ${threadBlock ? "The customer's latest message — this is what you are replying to" : "The customer's email"}
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -223,8 +258,13 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   // now, and the two are not the same conversation.
   const threadBlock = options.thread ?? threadContextFor(task.id, {}, db);
 
+  // Read off the task rather than passed in by the caller: a redraft that is
+  // retried by the queue, or requeued by the sweep, has to carry the same
+  // instruction, and a payload would have lost it on the first retry.
+  const steerBlock = buildSteer(options.steer ?? task.reviewerNotes ?? '');
+
   const raw = await callAI(
-    buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined, threadBlock),
+    buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined, threadBlock, steerBlock),
     { role: 'drafter' },
   );
   const parsed = parseDraft(raw, workspace, topic || undefined);
@@ -249,7 +289,9 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   };
 
   if (options.critic) {
-    const critique = await criticise(task, signed, workspace, rulesBlock, contextBlock, threadBlock);
+    const critique = await criticise(
+      task, signed, workspace, rulesBlock, contextBlock, threadBlock, steerBlock,
+    );
     if (critique) {
       result.critique = critique;
       if (critique.revised) result.draft = critique.revised;
@@ -284,10 +326,13 @@ async function criticise(
   // we already told them" is not a judgement it can make on a message in
   // isolation, and it is the mistake a follow-up reply actually makes.
   threadBlock: string,
+  // "Did it do what it was asked?" is the whole point of a redraft, and it is
+  // a question only something holding both the note and the new draft can ask.
+  steerBlock: string,
 ): Promise<Critique | undefined> {
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
-${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}
+${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
 
 ## The customer's ${threadBlock ? 'latest message' : 'email'}
 Subject: ${task.subject}
@@ -299,7 +344,7 @@ ${draft}
 
 Check it for: claims that are not supported by the facts above, anything on the
 never-promise list, breaches of the rules, the wrong language, tone that does
-not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}. Ignore matters of taste — a reply you would have phrased
+not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}. Ignore matters of taste — a reply you would have phrased
 differently is not a problem.
 
 JSON only:

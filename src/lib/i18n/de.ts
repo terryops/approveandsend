@@ -71,7 +71,7 @@ export const de: Dictionary = {
   "task.draftPlaceholder": "Noch kein Entwurf. Arbeite die Warteschlange ab, oder schreib hier einen.",
   "task.whatYouAreAboutToSend": "Was du gleich sendest",
   "task.noTranslation": "Keine aktuelle Übersetzung auf {language} — arbeite die Warteschlange ab, damit dieser Entwurf übersetzt wird.",
-  "task.notesPlaceholder": "Warum du es geändert hast — optional, und es geht an die Regelextraktion",
+  "task.notesPlaceholder": "Was zu ändern ist oder warum Sie es geändert haben — steuert „Neu schreiben\" und speist den Regelextraktor",
   "task.approveAndSend": "Freigeben & senden",
   "task.save": "Speichern",
   "task.redraft": "Neu entwerfen",

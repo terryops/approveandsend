@@ -71,7 +71,7 @@ export const fr: Dictionary = {
   "task.draftPlaceholder": "Pas encore de brouillon. Exécutez la file, ou écrivez-en un ici.",
   "task.whatYouAreAboutToSend": "Ce que vous êtes sur le point d'envoyer",
   "task.noTranslation": "Aucune traduction {language} à jour — exécutez la file pour rendre ce brouillon.",
-  "task.notesPlaceholder": "Pourquoi vous l'avez modifié — facultatif, et cela part vers l'extracteur de règles",
+  "task.notesPlaceholder": "Ce qu'il faut changer, ou pourquoi vous l'avez changé — oriente « Réécrire » et alimente l'extracteur de règles",
   "task.approveAndSend": "Approuver et envoyer",
   "task.save": "Enregistrer",
   "task.redraft": "Rédiger à nouveau",

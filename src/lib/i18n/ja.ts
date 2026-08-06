@@ -71,7 +71,7 @@ export const ja: Dictionary = {
   "task.draftPlaceholder": "まだ下書きがありません。キューを実行するか、ここに直接書いてください。",
   "task.whatYouAreAboutToSend": "これから送信する内容",
   "task.noTranslation": "この下書きの {language} 訳はまだありません。キューを実行すると生成されます。",
-  "task.notesPlaceholder": "直した理由。任意ですが、ルール抽出に渡されます",
+  "task.notesPlaceholder": "直してほしい点、または変更した理由 — 「書き直し」に反映され、ルール抽出にも使われます",
   "task.approveAndSend": "承認して送信",
   "task.save": "保存",
   "task.redraft": "下書きし直す",

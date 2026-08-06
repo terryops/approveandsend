@@ -89,7 +89,7 @@ export const en = {
   "task.draftPlaceholder": "No draft yet. Run the queue, or write one here.",
   "task.whatYouAreAboutToSend": "What you are about to send",
   "task.noTranslation": "No current {language} translation — run the queue to render this draft.",
-  "task.notesPlaceholder": "Why you changed it — optional, and it goes to the rule extractor",
+  "task.notesPlaceholder": "What to change, or why you changed it — steers Redraft, and feeds the rule extractor",
   "task.approveAndSend": "Approve & send",
   "task.save": "Save",
   "task.redraft": "Redraft",

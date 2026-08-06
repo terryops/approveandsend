@@ -71,7 +71,7 @@ export const es: Dictionary = {
   "task.draftPlaceholder": "Todavía no hay borrador. Ejecuta la cola o escribe uno aquí.",
   "task.whatYouAreAboutToSend": "Lo que estás a punto de enviar",
   "task.noTranslation": "No hay traducción actual al {language} — ejecuta la cola para generar este borrador.",
-  "task.notesPlaceholder": "Por qué lo cambiaste — opcional, y va al extractor de reglas",
+  "task.notesPlaceholder": "Qué cambiar, o por qué lo cambiaste: guía a «Volver a redactar» y alimenta el extractor de reglas",
   "task.approveAndSend": "Aprobar y enviar",
   "task.save": "Guardar",
   "task.redraft": "Redactar de nuevo",

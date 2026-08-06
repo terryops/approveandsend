@@ -152,7 +152,16 @@ export async function redraftTask(form: FormData): Promise<void> {
   if (task) {
     // Back to pending first, or the job's own guard would see a task that is
     // already awaiting review and the queue would dedupe the request away.
-    updateTask(id, { status: 'pending', error: null });
+    //
+    // The note goes with it. "Redraft" on its own asks the same model the same
+    // question and is entitled to the same answer; the box under the draft is
+    // where the reviewer already says what is wrong with it, and the drafter
+    // reads it from here.
+    updateTask(id, {
+      status: 'pending',
+      error: null,
+      reviewerNotes: field(form, 'notes') || null,
+    });
     // Through the enrichment path, not straight to drafting. Someone clicking
     // Redraft is often doing it because the reply was wrong about who this
     // person is, which is the case a stale — or failed — lookup produces.

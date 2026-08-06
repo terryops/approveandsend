@@ -299,6 +299,79 @@ describe('task store', () => {
   });
 });
 
+describe('the reviewer steering a redraft', () => {
+  it('puts the note in the prompt, after the rules and before the email', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { reviewerNotes: 'Too formal. Say the refund is already on its way.' }, db);
+
+    await draftReply(getTask(task.id, db)!, { db });
+
+    const prompt = prompts[0]!;
+    expect(prompt).toContain('What the reviewer said about the last attempt');
+    expect(prompt).toContain('the refund is already on its way');
+    // Precedence stated rather than inferred: a note cannot overrule a rule.
+    expect(prompt).toContain('unless a\nrule above forbids it');
+    // Last thing before the email, which is what makes it the most specific
+    // instruction in the prompt.
+    expect(prompt.indexOf('What the reviewer said')).toBeLessThan(
+      prompt.indexOf("The customer's email"),
+    );
+  });
+
+  it('says nothing at all when there is no note', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+
+    await draftReply(task, { db });
+
+    expect(prompts[0]!).not.toContain('What the reviewer said');
+  });
+
+  it('lets the caller suppress the note', async () => {
+    // The backfill's case: an archived reply was not written in response to
+    // anybody's review of a draft that did not exist.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { reviewerNotes: 'shorter please' }, db);
+
+    await draftReply(getTask(task.id, db)!, { db, steer: '' });
+
+    expect(prompts[0]!).not.toContain('What the reviewer said');
+  });
+
+  it('asks the critic whether the note was actually honoured', async () => {
+    queued.push(GOOD_DRAFT, JSON.stringify({ approved: true, issues: [] }));
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { reviewerNotes: 'Stop apologising twice.' }, db);
+
+    await draftReply(getTask(task.id, db)!, { db, critic: true });
+
+    const critic = prompts[1]!;
+    expect(critic).toContain('Stop apologising twice');
+    expect(critic).toContain('whether it actually did what the reviewer asked for');
+  });
+
+  it('survives a retry, because it is read off the task and not the payload', async () => {
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { reviewerNotes: 'Answer the second question too.' }, db);
+    enqueueDraftReply(task.id, { critic: false, db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+
+    queued.push('not json at all');
+    await worker.runOnce();
+    queued.push(GOOD_DRAFT);
+    await worker.runOnce();
+
+    expect(prompts[1]!).toContain('Answer the second question too');
+  });
+});
+
 describe('conversation history in the prompt', () => {
   it('shows earlier messages and names which one is being answered', async () => {
     queued.push(GOOD_DRAFT);

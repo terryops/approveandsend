@@ -71,7 +71,7 @@ export const zhCN: Dictionary = {
   "task.draftPlaceholder": "还没有草稿。运行队列，或者在这里自己写一份。",
   "task.whatYouAreAboutToSend": "你即将发出的内容",
   "task.noTranslation": "当前没有{language}译文——运行队列来生成这份草稿的译文。",
-  "task.notesPlaceholder": "你为什么这么改——可以不填，填了会交给规则提取器",
+  "task.notesPlaceholder": "要改什么，或者你为什么这么改——「重写」会照着做，也会交给规则提取器",
   "task.approveAndSend": "批准并发送",
   "task.save": "保存",
   "task.redraft": "重写",
