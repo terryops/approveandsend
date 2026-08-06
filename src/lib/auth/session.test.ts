@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { checkPassword, isProtected, issueToken, verifyToken } from './session';
+import { checkPassword, cookieSecure, isProtected, issueToken, verifyToken } from './session';
 
 const KEYS = ['ADMIN_PASSWORD', 'SESSION_SECRET'] as const;
 const saved = new Map<string, string | undefined>();
@@ -81,5 +81,49 @@ describe('sessions', () => {
   it('treats a whitespace-only password as no password at all', () => {
     setEnv({ ADMIN_PASSWORD: '   ' });
     expect(isProtected()).toBe(false);
+  });
+});
+
+describe('cookieSecure', () => {
+  afterEach(() => {
+    delete process.env.COOKIE_SECURE;
+  });
+
+  it('marks the cookie Secure on HTTPS', () => {
+    expect(cookieSecure('https')).toBe(true);
+  });
+
+  it('does not, on the plain-http address a self-hosted install usually has', () => {
+    // The regression this replaces: NODE_ENV=production forced Secure here,
+    // the browser dropped the cookie, and /login reloaded forever.
+    expect(cookieSecure('http')).toBe(false);
+  });
+
+  it('reads the client-facing scheme from a proxy chain', () => {
+    expect(cookieSecure('https, http')).toBe(true);
+    expect(cookieSecure('http, https')).toBe(false);
+  });
+
+  it('is not fooled by case or padding', () => {
+    expect(cookieSecure('  HTTPS ')).toBe(true);
+  });
+
+  it('defaults to not-Secure rather than guessing when there is no header', () => {
+    expect(cookieSecure(null)).toBe(false);
+    expect(cookieSecure(undefined)).toBe(false);
+  });
+
+  it('lets an operator force it either way', () => {
+    process.env.COOKIE_SECURE = 'true';
+    expect(cookieSecure('http')).toBe(true);
+
+    process.env.COOKIE_SECURE = 'false';
+    expect(cookieSecure('https')).toBe(false);
+  });
+
+  it('ignores a value that means neither', () => {
+    process.env.COOKIE_SECURE = 'maybe';
+    expect(cookieSecure('https')).toBe(true);
+    expect(cookieSecure('http')).toBe(false);
   });
 });

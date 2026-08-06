@@ -78,13 +78,35 @@ export function verifyToken(token: string | undefined | null): boolean {
   return Number.isFinite(expiry) && expiry > Date.now();
 }
 
-export const COOKIE_OPTIONS = {
-  httpOnly: true,
-  sameSite: 'lax',
-  path: '/',
-  maxAge: Math.floor(DEFAULT_TTL_MS / 1000),
-  // Not `secure: true` unconditionally: plenty of self-hosted installs sit on
-  // a Tailscale address with no certificate, and a cookie the browser refuses
-  // to store is an unfixable login loop.
-  secure: process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIE !== 'true',
-} as const;
+/**
+ * Whether the cookie should be marked `Secure`, from the scheme in use.
+ *
+ * This used to key off `NODE_ENV`, which meant every production install got
+ * `Secure: true` — including the many that sit on a Tailscale address or a LAN
+ * IP with no certificate, where the browser silently refuses to store the
+ * cookie and the login page just reloads forever. The escape hatch existed but
+ * you could only find it after being locked out by it, which is not an escape
+ * hatch. The scheme is a fact about the request and answers the question
+ * exactly: mark it `Secure` when the browser is actually on HTTPS.
+ *
+ * `COOKIE_SECURE` forces either answer, for a proxy that terminates TLS
+ * without saying so in `X-Forwarded-Proto`.
+ */
+export function cookieSecure(proto: string | null | undefined): boolean {
+  const override = process.env.COOKIE_SECURE?.trim().toLowerCase();
+  if (override === 'true' || override === '1') return true;
+  if (override === 'false' || override === '0') return false;
+
+  // A proxy chain appends, so the client-facing scheme is the first entry.
+  return (proto ?? '').split(',')[0]!.trim().toLowerCase() === 'https';
+}
+
+export function cookieOptions(secure: boolean) {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: Math.floor(DEFAULT_TTL_MS / 1000),
+    secure,
+  } as const;
+}

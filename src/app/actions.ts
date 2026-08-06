@@ -6,7 +6,8 @@ import { revalidatePath } from 'next/cache';
 
 import { requireApi } from '@/lib/auth/guard';
 import { seedDemoData } from '@/lib/demo/seed';
-import { COOKIE_NAME, COOKIE_OPTIONS, checkPassword, issueToken } from '@/lib/auth/session';
+import { setSessionCookie } from '@/lib/auth/cookie';
+import { COOKIE_NAME, checkPassword } from '@/lib/auth/session';
 import { syncInbox } from '@/lib/ingest/sync';
 import {
   DEFAULT_HANDLERS,
@@ -40,8 +41,7 @@ export async function login(form: FormData): Promise<void> {
   const password = field(form, 'password');
   if (!checkPassword(password)) redirect('/login?error=1');
 
-  const jar = await cookies();
-  jar.set(COOKIE_NAME, issueToken(), COOKIE_OPTIONS);
+  await setSessionCookie();
   redirect('/');
 }
 

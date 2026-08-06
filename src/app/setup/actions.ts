@@ -1,11 +1,10 @@
 'use server';
 
 import { randomBytes } from 'node:crypto';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { requireApi } from '@/lib/auth/guard';
-import { COOKIE_NAME, COOKIE_OPTIONS, issueToken } from '@/lib/auth/session';
+import { setSessionCookie } from '@/lib/auth/cookie';
 import { setMeta } from '@/lib/db/meta';
 import { checkAi, checkMailbox, type CheckResult } from '@/lib/setup/checks';
 import { saveEnv } from '@/lib/setup/env-file';
@@ -47,8 +46,7 @@ export async function saveAccess(form: FormData): Promise<void> {
   // Setting a password turns the login wall on, and the person who just set it
   // has no cookie — without this they are bounced to /login mid-wizard and
   // have to type the password they typed ten seconds ago.
-  const jar = await cookies();
-  jar.set(COOKIE_NAME, issueToken(), COOKIE_OPTIONS);
+  await setSessionCookie();
 
   redirect(`/setup?${outcome(result)}`);
 }
