@@ -24,6 +24,7 @@ export const en = {
   "nav.rules": "Rules",
   "nav.archive": "Archive",
   "nav.queue": "Queue",
+  "nav.operators": "People",
   "nav.setup": "Setup",
   "brand.tagline": "AI drafts it. You approve it. Every edit teaches it.",
   "brand.unprotectedLabel": "Unprotected.",
@@ -92,6 +93,8 @@ export const en = {
   "task.dismiss": "Dismiss",
   "task.editsBecomeRules": "Edits here become rules once it is sent.",
   "task.sentAt": "Sent {time}.",
+  "task.sentBy": "by {who}",
+  "task.sentByUnattributed": "unattributed",
   "task.draftYouChanged": "The draft you changed",
 
   // --- The queue ---
@@ -135,6 +138,32 @@ export const en = {
   "rules.restoreButton": "Restore",
   "rules.deleteButton": "Delete",
   "actions.handWrittenRuleRationale": "Written by hand in the rules screen",
+  "actions.actorSharedPassword": "the shared password",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "Everyone here can do everything. The point of a name is not what it stops — it is being able to say, later, who sent that.",
+  "operators.noneYet":
+    "Nobody has a name yet, so replies go out unattributed. Add one below.",
+  "operators.onlySharedPassword":
+    "The shared password still works, and signs in as nobody in particular. Add a name to put one on the replies you send.",
+  "operators.addHeading": "Add someone",
+  "operators.namePlaceholder": "Their name",
+  "operators.passwordPlaceholder": "A password for them",
+  "operators.addButton": "Add",
+  "operators.addNote": "They can change the password themselves once they are in.",
+  "operators.newPasswordPlaceholder": "New password",
+  "operators.changePasswordButton": "Change password",
+  "operators.retireButton": "Retire",
+  "operators.restoreButton": "Bring back",
+  "operators.retiredTag": "retired",
+  "operators.you": "you",
+  "operators.lastSeen": "last here {when}",
+  "operators.neverSignedIn": "has not signed in yet",
+  "operators.errorTaken": "Somebody here already has that name.",
+  "operators.errorBlank": "A name and a password, both.",
+  "operators.errorLast":
+    "That is the last person who can get in, and there is no shared password to fall back on. Retiring them would leave the door open, not locked.",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "Queued",

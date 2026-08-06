@@ -12,6 +12,7 @@ import type {
 import { LEARN_FROM_SENT } from '../queue/handlers';
 import { listJobs } from '../queue/store';
 import { createTask, getTask, updateTask } from '../tasks/store';
+import { createOperator } from '../operators/store';
 import { replySubject, sendReply } from '../tasks/send';
 import { syncInbox } from './sync';
 
@@ -189,6 +190,26 @@ describe('sendReply', () => {
     expect(updated.status).toBe('sent');
     expect(updated.finalReply).toBe('The edited reply');
     expect(updated.sentAt).toBeTruthy();
+  });
+
+  it('records who approved it, and that nobody did when nobody is named', async () => {
+    const sam = createOperator('Sam', 'hunter2', db);
+
+    const attributed = await sendReply(
+      seed().id,
+      { finalReply: 'Sam sent this', sentBy: sam.id },
+      { provider: new FakeMailbox(), db },
+    );
+    expect(attributed.sentBy).toBe(sam.id);
+
+    // The shared password is a real answer, and it is null.
+    const anonymous = await sendReply(
+      updateTask(createTask({ messageId: 'm2', fromAddress: 'b@example.com' }, db).task.id,
+        { status: 'awaiting_review' }, db)!.id,
+      { finalReply: 'Somebody with the password sent this' },
+      { provider: new FakeMailbox(), db },
+    );
+    expect(anonymous.sentBy).toBeNull();
   });
 
   it('queues the learning job with the draft and the sent text', async () => {

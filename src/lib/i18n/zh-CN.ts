@@ -6,6 +6,7 @@ export const zhCN: Dictionary = {
   "nav.rules": "规则",
   "nav.archive": "归档",
   "nav.queue": "队列",
+  "nav.operators": "成员",
   "nav.setup": "设置",
   "brand.tagline": "AI起草，你批准，你的每一次修改都在教它。",
   "brand.unprotectedLabel": "门没锁。",
@@ -74,6 +75,8 @@ export const zhCN: Dictionary = {
   "task.dismiss": "忽略",
   "task.editsBecomeRules": "邮件发出后，你在这里的修改会变成规则。",
   "task.sentAt": "发送于{time}。",
+  "task.sentBy": "由 {who} 发出",
+  "task.sentByUnattributed": "无署名",
   "task.draftYouChanged": "你改过的草稿",
 
   // --- The queue ---
@@ -117,6 +120,32 @@ export const zhCN: Dictionary = {
   "rules.restoreButton": "恢复",
   "rules.deleteButton": "删除",
   "actions.handWrittenRuleRationale": "在规则页手工写入",
+  "actions.actorSharedPassword": "共享密码",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "这里每个人都能做所有事。留名字不是为了拦住谁——是为了以后能说清楚，那封信是谁发的。",
+  "operators.noneYet":
+    "还没有人留下名字，所以回复都是匿名发出去的。在下面加一个吧。",
+  "operators.onlySharedPassword":
+    "共用密码依然能用，只是登录进来算不上任何人。加个名字，给你发出的回复署上名。",
+  "operators.addHeading": "添加成员",
+  "operators.namePlaceholder": "成员的名字",
+  "operators.passwordPlaceholder": "给这个成员设一个密码",
+  "operators.addButton": "添加",
+  "operators.addNote": "登录进来之后可以自己改密码。",
+  "operators.newPasswordPlaceholder": "新密码",
+  "operators.changePasswordButton": "修改密码",
+  "operators.retireButton": "停用",
+  "operators.restoreButton": "重新启用",
+  "operators.retiredTag": "已停用",
+  "operators.you": "你",
+  "operators.lastSeen": "上次出现是在 {when}",
+  "operators.neverSignedIn": "还没登录过",
+  "operators.errorTaken": "这里已经有人用这个名字了。",
+  "operators.errorBlank": "名字和密码，两个都得填。",
+  "operators.errorLast":
+    "这是最后一个能登录的人，也没有共用密码可以兜底。停用他，门就只会一直敞着，锁不上了。",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "已入队",

@@ -6,6 +6,7 @@ export const de: Dictionary = {
   "nav.rules": "Regeln",
   "nav.archive": "Archiv",
   "nav.queue": "Warteschlange",
+  "nav.operators": "Personen",
   "nav.setup": "Einrichtung",
   "brand.tagline": "Die KI entwirft. Du gibst frei. Jede Änderung bringt ihr etwas bei.",
   "brand.unprotectedLabel": "Ungeschützt.",
@@ -74,6 +75,8 @@ export const de: Dictionary = {
   "task.dismiss": "Verwerfen",
   "task.editsBecomeRules": "Änderungen hier werden zu Regeln, sobald gesendet wird.",
   "task.sentAt": "Gesendet {time}.",
+  "task.sentBy": "von {who}",
+  "task.sentByUnattributed": "ohne Namen",
   "task.draftYouChanged": "Der Entwurf, den du geändert hast",
 
   // --- The queue ---
@@ -117,6 +120,32 @@ export const de: Dictionary = {
   "rules.restoreButton": "Reaktivieren",
   "rules.deleteButton": "Löschen",
   "actions.handWrittenRuleRationale": "Von Hand im Regel-Screen geschrieben",
+  "actions.actorSharedPassword": "das geteilte Passwort",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "Hier kann jede und jeder alles. Ein Name hält niemanden auf — er sorgt dafür, dass man später sagen kann, wer das geschickt hat.",
+  "operators.noneYet":
+    "Noch hat niemand einen Namen, also gehen Antworten ohne Absender raus. Trag unten jemanden ein.",
+  "operators.onlySharedPassword":
+    "Das gemeinsame Passwort funktioniert weiterhin und meldet niemanden Bestimmten an. Trag einen Namen ein, damit deine Antworten einen tragen.",
+  "operators.addHeading": "Jemanden hinzufügen",
+  "operators.namePlaceholder": "Name der Person",
+  "operators.passwordPlaceholder": "Ein Passwort für sie",
+  "operators.addButton": "Hinzufügen",
+  "operators.addNote": "Das Passwort kann sie selbst ändern, sobald sie drin ist.",
+  "operators.newPasswordPlaceholder": "Neues Passwort",
+  "operators.changePasswordButton": "Passwort ändern",
+  "operators.retireButton": "Stilllegen",
+  "operators.restoreButton": "Zurückholen",
+  "operators.retiredTag": "stillgelegt",
+  "operators.you": "du",
+  "operators.lastSeen": "zuletzt hier {when}",
+  "operators.neverSignedIn": "war noch nie angemeldet",
+  "operators.errorTaken": "Diesen Namen trägt hier schon jemand.",
+  "operators.errorBlank": "Ein Name und ein Passwort, beides.",
+  "operators.errorLast":
+    "Das ist die letzte Person, die noch reinkommt, und es gibt kein gemeinsames Passwort als Rückfallebene. Sie stillzulegen ließe die Tür offen stehen, nicht abgeschlossen.",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "Eingereiht",

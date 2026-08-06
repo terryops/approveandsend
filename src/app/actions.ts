@@ -4,12 +4,19 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
-import { requireApi } from '@/lib/auth/guard';
+import { currentOperator, requireApi } from '@/lib/auth/guard';
 import { cancelPendingBackfill, clearBackfill } from '@/lib/backfill/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { COOKIE_NAME, adminPassword, checkPassword, isProtected } from '@/lib/auth/session';
-import { authenticate, touchOperator } from '@/lib/operators/store';
+import {
+  authenticate,
+  countActiveOperators,
+  createOperator,
+  setOperatorEnabled,
+  setOperatorPassword,
+  touchOperator,
+} from '@/lib/operators/store';
 import { t } from '@/lib/i18n';
 import { syncInbox } from '@/lib/ingest/sync';
 import {
@@ -35,6 +42,17 @@ import { getTask, updateTask } from '@/lib/tasks/store';
 function field(form: FormData, name: string): string {
   const value = form.get(name);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * Whose name goes in the revision history.
+ *
+ * The shared password is a real answer, not a missing one: somebody with the
+ * password made this change and the history should say so rather than name a
+ * person who may not have been there.
+ */
+async function actorName(): Promise<string> {
+  return (await currentOperator())?.name ?? t('actions.actorSharedPassword');
 }
 
 function message(error: unknown): string {
@@ -96,6 +114,7 @@ export async function approveAndSend(form: FormData): Promise<void> {
     await sendReply(id, {
       finalReply: field(form, 'draft'),
       ...(notes ? { reviewerNotes: notes } : {}),
+      sentBy: (await currentOperator())?.id ?? null,
     });
   } catch (error) {
     failure = message(error);
@@ -159,7 +178,7 @@ export async function editRule(form: FormData): Promise<void> {
       scope: field(form, 'scope') || null,
       ...(enabled === null ? {} : { enabled: enabled === 'on' || enabled === 'true' }),
     },
-    { reason: 'manual', actor: 'reviewer' },
+    { reason: 'manual', actor: await actorName() },
   );
   revalidatePath('/rules');
   redirect('/rules');
@@ -170,7 +189,7 @@ export async function toggleRule(form: FormData): Promise<void> {
   updateRule(
     field(form, 'ruleId'),
     { enabled: field(form, 'enabled') === 'true' },
-    { reason: 'manual', actor: 'reviewer' },
+    { reason: 'manual', actor: await actorName() },
   );
   revalidatePath('/rules');
   redirect('/rules');
@@ -181,6 +200,57 @@ export async function removeRule(form: FormData): Promise<void> {
   deleteRule(field(form, 'ruleId'));
   revalidatePath('/rules');
   redirect('/rules');
+}
+
+/**
+ * Adding someone to the desk.
+ *
+ * The failure cases are named in the URL rather than thrown, because the two
+ * that happen — a name already taken, a blank field — are things the person
+ * typing can fix in the form they are looking at.
+ */
+export async function addOperator(form: FormData): Promise<void> {
+  await requireApi();
+  const name = field(form, 'name');
+  const password = field(form, 'password');
+
+  if (!name || !password) redirect('/operators?error=blank');
+  try {
+    createOperator(name, password);
+  } catch {
+    // The unique index is the only thing that can reasonably fail here, and it
+    // fails for exactly one reason worth reporting.
+    redirect('/operators?error=taken');
+  }
+  revalidatePath('/operators');
+  redirect('/operators?added=1');
+}
+
+export async function changeOperatorPassword(form: FormData): Promise<void> {
+  await requireApi();
+  const password = field(form, 'password');
+  if (!password) redirect('/operators?error=blank');
+  setOperatorPassword(field(form, 'operatorId'), password);
+  revalidatePath('/operators');
+  redirect('/operators?changed=1');
+}
+
+export async function setOperatorAccess(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'operatorId');
+  const enabled = field(form, 'enabled') === 'true';
+
+  // Disabling the last active operator on an install with no shared password
+  // does not lock the door — it removes it, and the next visitor walks in
+  // unauthenticated. Refusing here is the difference between a mistake and an
+  // exposed inbox.
+  if (!enabled && adminPassword() === null && countActiveOperators() <= 1) {
+    redirect('/operators?error=last');
+  }
+
+  setOperatorEnabled(id, enabled);
+  revalidatePath('/operators');
+  redirect('/operators');
 }
 
 export async function syncNow(): Promise<void> {

@@ -336,6 +336,24 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 10,
+    name: 'sent_by',
+    up: db => {
+      // Whose name went out with the reply.
+      //
+      // Nullable, and null is a real answer rather than missing data: it means
+      // the shared password sent it, or that this row predates operators
+      // existing. The screen says "unattributed" for both, which is honest —
+      // the alternative is inventing a person.
+      //
+      // No foreign key, deliberately. The operators table never deletes rows,
+      // so the reference cannot dangle in normal use, and a constraint here
+      // would make a hand-repaired database refuse to open rather than show a
+      // slightly worse byline.
+      db.exec(`ALTER TABLE tasks ADD COLUMN sent_by TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

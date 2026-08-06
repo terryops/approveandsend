@@ -19,6 +19,11 @@ export interface SendReplyInput {
   /** What the reviewer actually approved, edits included. */
   finalReply: string;
   reviewerNotes?: string;
+  /**
+   * Who approved it. Omitted means nobody in particular — the shared password,
+   * or a caller with no session at all, like the demo seed.
+   */
+  sentBy?: string | null;
 }
 
 export interface SendReplyOptions {
@@ -67,6 +72,7 @@ export async function sendReply(
       finalReply: reply,
       reviewerNotes: input.reviewerNotes ?? task.reviewerNotes,
       sentAt: new Date().toISOString(),
+      sentBy: input.sentBy ?? null,
       error: null,
     },
     db,

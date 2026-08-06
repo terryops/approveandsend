@@ -6,6 +6,7 @@ export const es: Dictionary = {
   "nav.rules": "Reglas",
   "nav.archive": "Archivo",
   "nav.queue": "Cola",
+  "nav.operators": "Personas",
   "nav.setup": "Configuración",
   "brand.tagline": "La IA lo redacta. Tú lo apruebas. Cada corrección le enseña.",
   "brand.unprotectedLabel": "Sin protección.",
@@ -74,6 +75,8 @@ export const es: Dictionary = {
   "task.dismiss": "Descartar",
   "task.editsBecomeRules": "Lo que corrijas aquí se convierte en reglas en cuanto se envíe.",
   "task.sentAt": "Enviado {time}.",
+  "task.sentBy": "por {who}",
+  "task.sentByUnattributed": "sin atribuir",
   "task.draftYouChanged": "El borrador que cambiaste",
 
   // --- The queue ---
@@ -117,6 +120,32 @@ export const es: Dictionary = {
   "rules.restoreButton": "Restaurar",
   "rules.deleteButton": "Eliminar",
   "actions.handWrittenRuleRationale": "Escrita a mano en la pantalla de reglas",
+  "actions.actorSharedPassword": "la contraseña compartida",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "Aquí todo el mundo puede hacer de todo. Un nombre no sirve para limitar a nadie: sirve para poder decir, más adelante, quién envió eso.",
+  "operators.noneYet":
+    "Todavía nadie tiene nombre, así que las respuestas salen sin firma. Añade uno aquí abajo.",
+  "operators.onlySharedPassword":
+    "La contraseña compartida sigue funcionando, y entra sin ser nadie en concreto. Añade un nombre para firmar las respuestas que envíes.",
+  "operators.addHeading": "Añadir a alguien",
+  "operators.namePlaceholder": "Su nombre",
+  "operators.passwordPlaceholder": "Una contraseña para esa persona",
+  "operators.addButton": "Añadir",
+  "operators.addNote": "Podrá cambiar la contraseña por su cuenta una vez dentro.",
+  "operators.newPasswordPlaceholder": "Contraseña nueva",
+  "operators.changePasswordButton": "Cambiar contraseña",
+  "operators.retireButton": "Dar de baja",
+  "operators.restoreButton": "Readmitir",
+  "operators.retiredTag": "de baja",
+  "operators.you": "tú",
+  "operators.lastSeen": "por aquí por última vez {when}",
+  "operators.neverSignedIn": "aún no ha entrado nunca",
+  "operators.errorTaken": "Ya hay alguien aquí con ese nombre.",
+  "operators.errorBlank": "Un nombre y una contraseña, las dos cosas.",
+  "operators.errorLast":
+    "Es la última persona que puede entrar, y no hay contraseña compartida a la que recurrir. Darla de baja dejaría la puerta abierta, no cerrada.",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "En la cola",

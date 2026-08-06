@@ -25,6 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <a href="/rules">{t('nav.rules')}</a>
               <a href="/backfill">{t('nav.archive')}</a>
               <a href="/queue">{t('nav.queue')}</a>
+              <a href="/operators">{t('nav.operators')}</a>
               <a href="/setup">{t('nav.setup')}</a>
             </nav>
           </header>

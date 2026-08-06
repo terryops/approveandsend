@@ -6,6 +6,7 @@ export const ja: Dictionary = {
   "nav.rules": "ルール",
   "nav.archive": "アーカイブ",
   "nav.queue": "キュー",
+  "nav.operators": "メンバー",
   "nav.setup": "セットアップ",
   "brand.tagline": "AI が下書きし、あなたが承認する。直したぶんだけ賢くなる。",
   "brand.unprotectedLabel": "無防備です。",
@@ -74,6 +75,8 @@ export const ja: Dictionary = {
   "task.dismiss": "見送る",
   "task.editsBecomeRules": "ここでの修正は、送信した時点でルールになります。",
   "task.sentAt": "{time} に送信しました。",
+  "task.sentBy": "送信者は {who}",
+  "task.sentByUnattributed": "送信者は記録なし",
   "task.draftYouChanged": "あなたが直した下書き",
 
   // --- The queue ---
@@ -117,6 +120,32 @@ export const ja: Dictionary = {
   "rules.restoreButton": "復元",
   "rules.deleteButton": "削除",
   "actions.handWrittenRuleRationale": "ルール画面で手書きしたもの",
+  "actions.actorSharedPassword": "共有パスワード",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "ここにいる全員が、すべての操作をできます。名前を登録する意味は、何かを制限することではありません。あとから「これは誰が送ったのか」と言えるようにすることです。",
+  "operators.noneYet":
+    "まだ誰の名前も登録されていないので、返信は送信者不明のまま出ていきます。下から追加してください。",
+  "operators.onlySharedPassword":
+    "共有パスワードは今も使えますが、それでログインしても「誰でもない人」のままです。名前を追加すれば、送った返信に送信者が残ります。",
+  "operators.addHeading": "メンバーを追加",
+  "operators.namePlaceholder": "その人の名前",
+  "operators.passwordPlaceholder": "その人用のパスワード",
+  "operators.addButton": "追加",
+  "operators.addNote": "パスワードは、ログインしたあと本人が変更できます。",
+  "operators.newPasswordPlaceholder": "新しいパスワード",
+  "operators.changePasswordButton": "パスワードを変更",
+  "operators.retireButton": "停止",
+  "operators.restoreButton": "復帰させる",
+  "operators.retiredTag": "停止中",
+  "operators.you": "あなた",
+  "operators.lastSeen": "最後にここに来たのは {when}",
+  "operators.neverSignedIn": "まだ一度もログインしていません",
+  "operators.errorTaken": "その名前は、すでにここの誰かが使っています。",
+  "operators.errorBlank": "名前とパスワード、その両方が必要です。",
+  "operators.errorLast":
+    "この人が、ここに入れる最後の一人です。しかも代わりに使える共有パスワードもありません。停止すると、鍵がかかるどころか、扉が開けっ放しになります。",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "キュー待ち",

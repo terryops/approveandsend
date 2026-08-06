@@ -74,6 +74,9 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     finalReply: null,
     reviewerNotes: null,
     sentAt: null,
+    // The archived reply was sent long before this tool existed, by somebody
+    // this database has never heard of.
+    sentBy: null,
     error: null,
     createdAt: now,
     updatedAt: now,

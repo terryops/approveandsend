@@ -6,6 +6,7 @@ export const fr: Dictionary = {
   "nav.rules": "Règles",
   "nav.archive": "Archives",
   "nav.queue": "File d'attente",
+  "nav.operators": "Équipe",
   "nav.setup": "Configuration",
   "brand.tagline": "L'IA rédige. Vous approuvez. Chaque correction lui apprend.",
   "brand.unprotectedLabel": "Sans protection.",
@@ -74,6 +75,8 @@ export const fr: Dictionary = {
   "task.dismiss": "Écarter",
   "task.editsBecomeRules": "Les corrections faites ici deviennent des règles une fois l'envoi effectué.",
   "task.sentAt": "Envoyé {time}.",
+  "task.sentBy": "par {who}",
+  "task.sentByUnattributed": "sans nom",
   "task.draftYouChanged": "Le brouillon que vous avez modifié",
 
   // --- The queue ---
@@ -117,6 +120,32 @@ export const fr: Dictionary = {
   "rules.restoreButton": "Restaurer",
   "rules.deleteButton": "Supprimer",
   "actions.handWrittenRuleRationale": "Écrite à la main dans l'écran Règles",
+  "actions.actorSharedPassword": "le mot de passe partagé",
+
+  // --- The people on the desk ---
+  "operators.intro":
+    "Ici, tout le monde peut tout faire. Un nom ne sert pas à empêcher quoi que ce soit — il sert à pouvoir dire, plus tard, qui a envoyé ça.",
+  "operators.noneYet":
+    "Personne n'a encore de nom, donc les réponses partent sans signature. Ajoutez-en un ci-dessous.",
+  "operators.onlySharedPassword":
+    "Le mot de passe partagé fonctionne toujours, et connecte sans identité particulière. Ajoutez un nom pour signer les réponses que vous envoyez.",
+  "operators.addHeading": "Ajouter quelqu'un",
+  "operators.namePlaceholder": "Son nom",
+  "operators.passwordPlaceholder": "Un mot de passe pour cette personne",
+  "operators.addButton": "Ajouter",
+  "operators.addNote": "Elle pourra changer son mot de passe elle-même une fois connectée.",
+  "operators.newPasswordPlaceholder": "Nouveau mot de passe",
+  "operators.changePasswordButton": "Changer le mot de passe",
+  "operators.retireButton": "Retirer",
+  "operators.restoreButton": "Réintégrer",
+  "operators.retiredTag": "retirée",
+  "operators.you": "vous",
+  "operators.lastSeen": "dernière visite {when}",
+  "operators.neverSignedIn": "ne s'est encore jamais connectée",
+  "operators.errorTaken": "Quelqu'un ici porte déjà ce nom.",
+  "operators.errorBlank": "Un nom et un mot de passe, les deux.",
+  "operators.errorLast":
+    "C'est la dernière personne qui peut entrer, et il n'y a aucun mot de passe partagé pour prendre le relais. La retirer laisserait la porte ouverte, pas fermée.",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "En file d'attente",

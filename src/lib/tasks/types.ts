@@ -56,6 +56,9 @@ export interface Task {
   finalReply: string | null;
   reviewerNotes: string | null;
   sentAt: string | null;
+  /** The operator who approved it. Null means the shared password did, which
+   * is nobody in particular, or that the row predates operators. */
+  sentBy: string | null;
   error: string | null;
 
   createdAt: string;

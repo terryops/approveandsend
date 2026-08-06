@@ -21,6 +21,7 @@ interface TaskRow {
   final_reply: string | null;
   reviewer_notes: string | null;
   sent_at: string | null;
+  sent_by: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -65,6 +66,7 @@ function mapTask(row: TaskRow): Task {
     finalReply: row.final_reply,
     reviewerNotes: row.reviewer_notes,
     sentAt: row.sent_at,
+    sentBy: row.sent_by,
     error: row.error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -174,6 +176,7 @@ export interface TaskUpdate {
   finalReply?: string | null;
   reviewerNotes?: string | null;
   sentAt?: string | null;
+  sentBy?: string | null;
   error?: string | null;
 }
 
@@ -187,6 +190,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   finalReply: 'final_reply',
   reviewerNotes: 'reviewer_notes',
   sentAt: 'sent_at',
+  sentBy: 'sent_by',
   error: 'error',
 };
 

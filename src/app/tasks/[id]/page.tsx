@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
+import { getOperator } from '@/lib/operators/store';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
@@ -34,6 +35,7 @@ export default async function TaskPage({
   if (!task) notFound();
 
   const sent = task.status === 'sent';
+  const sender = task.sentBy ? getOperator(task.sentBy) : null;
   const body = task.finalReply ?? task.draft ?? '';
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
@@ -197,6 +199,12 @@ export default async function TaskPage({
         {sent && task.sentAt && (
           <p className="meta">
             {t('task.sentAt', { time: task.sentAt.slice(0, 16).replace('T', ' ') })}
+            {/* The byline reads from the operators table rather than a name
+                copied onto the task, so a retired colleague still resolves —
+                which is the whole reason that table never deletes rows. */}
+            {` · ${
+              sender ? t('task.sentBy', { who: sender.name }) : t('task.sentByUnattributed')
+            }`}
           </p>
         )}
       </form>
