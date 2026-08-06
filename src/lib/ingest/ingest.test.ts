@@ -344,6 +344,38 @@ describe('sendReply', () => {
     return updateTask(task.id, { status: 'awaiting_review', draft: 'A draft', ...overrides }, db)!;
   }
 
+  it('sends an HTML part saying exactly what the text part says', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await sendReply(
+      task.id,
+      { finalReply: 'Hi,\n\nThe refund is on its way.' },
+      { provider, db },
+    );
+
+    const mail = provider.sent[0]!;
+    expect(mail.text).toBe('Hi,\n\nThe refund is on its way.');
+    expect(mail.html).toBe('<p>Hi,</p>\n<p>The refund is on its way.</p>');
+  });
+
+  it('sends text only when the desk has asked for text only', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+    process.env.MAIL_REPLY_HTML = 'false';
+
+    try {
+      await sendReply(task.id, { finalReply: 'Plain and deliberate.' }, { provider, db });
+    } finally {
+      delete process.env.MAIL_REPLY_HTML;
+    }
+
+    expect(provider.sent[0]!.text).toBe('Plain and deliberate.');
+    // Absent, not empty: an empty html part is still a multipart/alternative
+    // mail, and some clients will render the empty half.
+    expect(provider.sent[0]!.html).toBeUndefined();
+  });
+
   it('sends the reply, threads it, and records what went out', async () => {
     const task = seed();
     const provider = new FakeMailbox();

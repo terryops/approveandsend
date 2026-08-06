@@ -40,6 +40,17 @@ function secure(name: string, fallback: boolean): boolean {
   throw new Error(`${name} must be true or false, got ${JSON.stringify(raw)}`);
 }
 
+/**
+ * Whether replies carry an HTML part alongside the text one.
+ *
+ * On unless someone turns it off. A desk with a house style of plain text —
+ * they exist, and they are usually right — sets `MAIL_REPLY_HTML=false` and
+ * gets exactly what the reviewer approved and nothing else.
+ */
+export function sendsHtmlReplies(): boolean {
+  return secure('MAIL_REPLY_HTML', true);
+}
+
 export function loadImapSmtpConfig(): ImapSmtpConfig {
   const user = required('MAIL_USER');
   // SMTP credentials default to the IMAP ones; most providers use one login,

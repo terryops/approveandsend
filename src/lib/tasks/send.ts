@@ -1,6 +1,7 @@
 import type { Db } from '../db';
 import { getDb } from '../db';
-import { mailProvider } from '../mail/config';
+import { mailProvider, sendsHtmlReplies } from '../mail/config';
+import { replyHtml } from '../mail/render';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
 import { markHandled } from './mark-read';
@@ -60,10 +61,15 @@ export async function sendReply(
 
   const provider = options.provider ?? mailProvider();
 
+  // Both parts, from the same string. `text` is what the reviewer read; the
+  // HTML is that text with paragraph breaks in it, so the two cannot disagree.
+  const html = sendsHtmlReplies() ? replyHtml(reply) : '';
+
   await provider.send({
     to: [{ address: task.fromAddress, ...(task.fromName ? { name: task.fromName } : {}) }],
     subject: replySubject(task.subject),
     text: reply,
+    ...(html ? { html } : {}),
     ...(task.messageIdHeader
       ? { inReplyTo: task.messageIdHeader, references: [task.messageIdHeader] }
       : {}),

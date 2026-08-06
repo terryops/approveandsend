@@ -1,3 +1,4 @@
+import { replyHtml } from '../../render';
 import { htmlToText } from '../../../thread-context';
 import { normalizeMessageId, parseAddressList, parseReferences } from '../../address';
 import { findThreadFor } from '../../threading';
@@ -394,7 +395,7 @@ export class ZohoProvider implements MailProvider {
     }
     const stored = await this.uploadAll(mail.attachments ?? []);
 
-    const html = mail.html ?? textToHtml(mail.text ?? '');
+    const html = mail.html ?? replyHtml(mail.text ?? '');
     const payload = {
       fromAddress: this.config.from.address,
       toAddress: mail.to.map(a => a.address).join(','),
@@ -582,14 +583,6 @@ function parseHeaders(raw: string): Map<string, string> {
     if (!out.has(name)) out.set(name, line.slice(at + 1).trim());
   }
   return out;
-}
-
-function textToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  return escaped.replace(/\r?\n/g, '<br>');
 }
 
 function errText(err: unknown): string {

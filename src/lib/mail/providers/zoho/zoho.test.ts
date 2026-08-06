@@ -407,7 +407,10 @@ describe('ZohoProvider writing', () => {
 
     const post = fake.requests.find(r => r.method === 'POST' && r.url.includes('/messages'))!;
     const { content } = JSON.parse(post.body);
-    expect(content).toBe('Use &lt;b&gt; tags &amp; such<br>second line');
+    // Through the shared renderer, so a caller that passes only text gets the
+    // same markup as one that asked for HTML — there is no second, subtly
+    // different converter living in this provider any more.
+    expect(content).toBe('<p>Use &lt;b&gt; tags &amp; such<br>second line</p>');
   });
 
   it('refuses an empty body or no recipients', async () => {
