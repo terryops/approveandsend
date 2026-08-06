@@ -191,12 +191,21 @@ export const fr: Dictionary = {
   "setup.access.privacy": "Tout ce que vous tapez ici est écrit dans les mêmes fichiers que vous auriez modifiés à la main, sur cette machine. Rien n'est envoyé nulle part.",
   "setup.access.title": "1. Fermer la porte",
   "setup.access.hasPassword": "Un mot de passe est défini. En taper un nouveau le remplace et déconnecte tous les autres navigateurs — la clé de session dérive du mot de passe, donc c'est gratuit.",
-  "setup.access.noPassword": "Il n'y a pas encore de mot de passe : quiconque peut atteindre ce port peut lire et envoyer votre courrier. Un seul mot de passe, pas de comptes.",
+  "setup.access.noPassword": "Il n'y a pas encore de mot de passe : quiconque peut atteindre ce port peut lire et envoyer votre courrier. Un seul mot de passe, partagé, si cela vous suffit.",
   "setup.access.passwordPlaceholder": "Au moins 8 caractères",
   "setup.access.cronTokenBefore": "Un",
   "setup.access.cronTokenAfter": "est généré en même temps, pour que le planificateur n'ait jamais besoin de ce mot de passe.",
   "setup.access.replaceButton": "Remplacer le mot de passe",
   "setup.access.setButton": "Définir le mot de passe",
+  "setup.access.operatorTitle": "Ou se connecter par son nom",
+  "setup.access.operatorNone":
+    "Personne n'a encore de nom ici. Ajoutez-en un et les réponses que vous approuvez partiront signées — le mot de passe partagé, lui, envoie sans identité particulière.",
+  "setup.access.operatorSome":
+    "{n} peuvent déjà se connecter par leur nom. Ajoutez quelqu'un d'autre ici, ou gérez tout cela plus tard sur la page Équipe.",
+  "setup.access.operatorNamePlaceholder": "Son nom",
+  "setup.access.operatorPasswordPlaceholder": "Au moins 8 caractères",
+  "setup.access.operatorNote": "Ici, tout le monde peut tout faire ; le nom sert à garder la trace, pas à verrouiller.",
+  "setup.access.operatorButton": "Ajouter",
   "setup.access.next": "Suivant : choisir un modèle →",
 
   // --- Setup — model, mailbox, voice ---
@@ -265,6 +274,8 @@ export const fr: Dictionary = {
   "setup.done.comeBackBefore": "Vous pouvez revenir sur tout cela depuis",
   "setup.done.comeBackAfter": ".",
   "setup.actions.passwordTooShort": "Utilisez au moins 8 caractères.",
+  "setup.actions.operatorNeedsName": "Un nom, pour que la réponse puisse en porter un.",
+  "setup.actions.operatorNameTaken": "Quelqu'un ici porte déjà ce nom.",
   "setup.actions.modelRequired": "Un nom de modèle est requis.",
   "setup.actions.mailboxFieldsRequired": "L'adresse, l'hôte IMAP et l'hôte SMTP sont tous nécessaires.",
   "setup.actions.organizationRequired": "Qui répond ?",

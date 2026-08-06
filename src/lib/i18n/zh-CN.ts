@@ -145,7 +145,7 @@ export const zhCN: Dictionary = {
   "operators.errorTaken": "这里已经有人用这个名字了。",
   "operators.errorBlank": "名字和密码，两个都得填。",
   "operators.errorLast":
-    "这是最后一个能登录的人，也没有共用密码可以兜底。停用他，门就只会一直敞着，锁不上了。",
+    "这是最后一个能登录的人，也没有共用密码可以兜底。把这位停用，门就只会一直敞着，锁不上了。",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "已入队",
@@ -191,12 +191,21 @@ export const zhCN: Dictionary = {
   "setup.access.privacy": "你在这里填的每一样东西，都写进本机上那些你本来要手动编辑的文件。什么都不会传出去。",
   "setup.access.title": "1. 把门锁上",
   "setup.access.hasPassword": "已经设了密码。输入一个新的会覆盖它，并让其他所有浏览器都退出登录——会话密钥是从密码推出来的，这是顺带的。",
-  "setup.access.noPassword": "现在还没有密码，所以任何能连上这个端口的人都能读你的邮件、用它发信。一个密码，没有账号这回事。",
+  "setup.access.noPassword": "现在还没有密码，所以任何能连上这个端口的人都能读你的邮件、用它发信。一份共用的密码，如果你只需要这些的话。",
   "setup.access.passwordPlaceholder": "至少8个字符",
   "setup.access.cronTokenBefore": "同时会生成一个",
   "setup.access.cronTokenAfter": "给定时任务用，它永远不需要这个密码。",
   "setup.access.replaceButton": "更换密码",
   "setup.access.setButton": "设置密码",
+  "setup.access.operatorTitle": "或者，用名字登录",
+  "setup.access.operatorNone":
+    "还没有人在这里留下名字。加一个，你批准发出的回复就会署上它——共用密码发出去的信，不算在谁头上。",
+  "setup.access.operatorSome":
+    "已经有 {n} 位成员可以用名字登录。可以在这里再加一位，也可以之后去成员页管理。",
+  "setup.access.operatorNamePlaceholder": "成员的名字",
+  "setup.access.operatorPasswordPlaceholder": "至少8个字符",
+  "setup.access.operatorNote": "每个人都能做所有事；名字是为了留个记录，不是为了上锁。",
+  "setup.access.operatorButton": "添加",
   "setup.access.next": "下一步：挑一个模型 →",
 
   // --- Setup — model, mailbox, voice ---
@@ -265,6 +274,8 @@ export const zhCN: Dictionary = {
   "setup.done.comeBackBefore": "这些随时都可以回到",
   "setup.done.comeBackAfter": "再改。",
   "setup.actions.passwordTooShort": "至少要8个字符。",
+  "setup.actions.operatorNeedsName": "得有个名字，回复才好署上。",
+  "setup.actions.operatorNameTaken": "这里已经有人用这个名字了。",
   "setup.actions.modelRequired": "必须填模型名。",
   "setup.actions.mailboxFieldsRequired": "邮箱地址、IMAP主机和SMTP主机，三个都得填。",
   "setup.actions.organizationRequired": "是谁在回复？",

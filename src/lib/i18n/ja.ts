@@ -191,12 +191,21 @@ export const ja: Dictionary = {
   "setup.access.privacy": "ここに入力した内容はすべて、手で編集したはずのファイルにこのマシン上で書き込まれます。どこにも送信されません。",
   "setup.access.title": "1. 鍵をかける",
   "setup.access.hasPassword": "パスワードは設定済みです。新しく入力すると置き換わり、他のブラウザはすべてサインアウトされます。セッションキーはパスワードから導出しているので、これは自動的にそうなります。",
-  "setup.access.noPassword": "まだパスワードがないので、このポートに届く人なら誰でもあなたのメールを読み、送信できます。パスワードは1つだけ、アカウントはありません。",
+  "setup.access.noPassword": "まだパスワードがないので、このポートに届く人なら誰でもあなたのメールを読み、送信できます。それで足りるなら、みんなで共有するパスワードを1つ決めるだけで構いません。",
   "setup.access.passwordPlaceholder": "8文字以上",
   "setup.access.cronTokenBefore": "同時に",
   "setup.access.cronTokenAfter": "も生成されるので、スケジューラーがこのパスワードを使うことはありません。",
   "setup.access.replaceButton": "パスワードを変更",
   "setup.access.setButton": "パスワードを設定",
+  "setup.access.operatorTitle": "または名前でサインインする",
+  "setup.access.operatorNone":
+    "まだ名前を登録した人がいません。追加すると、承認した返信にその名前が乗ります。共有パスワードのままだと、誰の名前も付きません。",
+  "setup.access.operatorSome":
+    "{n} 人が名前でサインインできます。ここでもう1人追加するか、あとで「メンバー」ページで管理できます。",
+  "setup.access.operatorNamePlaceholder": "その人の名前",
+  "setup.access.operatorPasswordPlaceholder": "8文字以上",
+  "setup.access.operatorNote": "できることは全員同じです。名前は記録のためのもので、権限を分けるものではありません。",
+  "setup.access.operatorButton": "追加",
   "setup.access.next": "次: モデルを選ぶ →",
 
   // --- Setup — model, mailbox, voice ---
@@ -265,6 +274,8 @@ export const ja: Dictionary = {
   "setup.done.comeBackBefore": "ここでの設定はいつでも",
   "setup.done.comeBackAfter": "からやり直せます。",
   "setup.actions.passwordTooShort": "8文字以上にしてください。",
+  "setup.actions.operatorNeedsName": "返信に載せる名前を入力してください。",
+  "setup.actions.operatorNameTaken": "その名前はすでに使われています。",
   "setup.actions.modelRequired": "モデル名は必須です。",
   "setup.actions.mailboxFieldsRequired": "アドレス、IMAP ホスト、SMTP ホストはすべて必要です。",
   "setup.actions.organizationRequired": "返信するのは誰ですか。",

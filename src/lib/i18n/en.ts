@@ -209,12 +209,21 @@ export const en = {
   "setup.access.privacy": "Everything you type here is written to the same files you would have edited by hand, on this machine. Nothing is sent anywhere.",
   "setup.access.title": "1. Lock the door",
   "setup.access.hasPassword": "A password is set. Typing a new one replaces it and signs out every other browser — the session key is derived from the password, so that comes free.",
-  "setup.access.noPassword": "There is no password yet, so anyone who can reach this port can read and send your mail. One password, no accounts.",
+  "setup.access.noPassword": "There is no password yet, so anyone who can reach this port can read and send your mail. One password, shared, if that is all you need.",
   "setup.access.passwordPlaceholder": "At least 8 characters",
   "setup.access.cronTokenBefore": "A",
   "setup.access.cronTokenAfter": "is generated at the same time, so the scheduler never needs this password.",
   "setup.access.replaceButton": "Replace password",
   "setup.access.setButton": "Set password",
+  "setup.access.operatorTitle": "Or sign in by name",
+  "setup.access.operatorNone":
+    "Nobody has a name here yet. Add one and the replies you approve go out with it on them — the shared password sends as nobody in particular.",
+  "setup.access.operatorSome":
+    "{n} can sign in by name. Add another here, or manage them later on the People page.",
+  "setup.access.operatorNamePlaceholder": "Their name",
+  "setup.access.operatorPasswordPlaceholder": "At least 8 characters",
+  "setup.access.operatorNote": "Everyone can do everything; the name is for the record, not the lock.",
+  "setup.access.operatorButton": "Add",
   "setup.access.next": "Next: pick a model →",
 
   // --- Setup — model, mailbox, voice ---
@@ -283,6 +292,8 @@ export const en = {
   "setup.done.comeBackBefore": "You can come back to any of this at",
   "setup.done.comeBackAfter": ".",
   "setup.actions.passwordTooShort": "Use at least 8 characters.",
+  "setup.actions.operatorNeedsName": "A name, so the reply can carry one.",
+  "setup.actions.operatorNameTaken": "Somebody here already has that name.",
   "setup.actions.modelRequired": "A model name is required.",
   "setup.actions.mailboxFieldsRequired": "Address, IMAP host and SMTP host are all needed.",
   "setup.actions.organizationRequired": "Who is replying?",

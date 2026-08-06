@@ -191,12 +191,21 @@ export const de: Dictionary = {
   "setup.access.privacy": "Alles, was du hier eintippst, landet in denselben Dateien, die du sonst von Hand bearbeitet hättest, auf dieser Maschine. Es geht nichts irgendwohin raus.",
   "setup.access.title": "1. Tür abschließen",
   "setup.access.hasPassword": "Ein Passwort ist gesetzt. Tippst du ein neues, ersetzt es das alte und meldet jeden anderen Browser ab — der Sitzungsschlüssel wird aus dem Passwort abgeleitet, das gibt es also gratis dazu.",
-  "setup.access.noPassword": "Es gibt noch kein Passwort, also kann jeder, der diesen Port erreicht, deine Mail lesen und senden. Ein Passwort, keine Konten.",
+  "setup.access.noPassword": "Es gibt noch kein Passwort, also kann jeder, der diesen Port erreicht, deine Mail lesen und senden. Ein Passwort für alle, wenn dir das reicht.",
   "setup.access.passwordPlaceholder": "Mindestens 8 Zeichen",
   "setup.access.cronTokenBefore": "Gleichzeitig wird ein",
   "setup.access.cronTokenAfter": "erzeugt — der Scheduler braucht dieses Passwort also nie.",
   "setup.access.replaceButton": "Passwort ersetzen",
   "setup.access.setButton": "Passwort setzen",
+  "setup.access.operatorTitle": "Oder mit Namen anmelden",
+  "setup.access.operatorNone":
+    "Hier hat noch niemand einen Namen. Leg einen an, dann gehen die Antworten, die du freigibst, mit diesem Namen raus — über das gemeinsame Passwort senden sie als niemand Bestimmtes.",
+  "setup.access.operatorSome":
+    "{n} können sich mit Namen anmelden. Leg hier noch jemanden an oder verwalte das später unter Personen.",
+  "setup.access.operatorNamePlaceholder": "Name der Person",
+  "setup.access.operatorPasswordPlaceholder": "Mindestens 8 Zeichen",
+  "setup.access.operatorNote": "Alle dürfen alles; der Name steht fürs Protokoll, nicht fürs Schloss.",
+  "setup.access.operatorButton": "Hinzufügen",
   "setup.access.next": "Weiter: Modell wählen →",
 
   // --- Setup — model, mailbox, voice ---
@@ -265,6 +274,8 @@ export const de: Dictionary = {
   "setup.done.comeBackBefore": "Zu all dem kommst du jederzeit zurück unter",
   "setup.done.comeBackAfter": ".",
   "setup.actions.passwordTooShort": "Nimm mindestens 8 Zeichen.",
+  "setup.actions.operatorNeedsName": "Ein Name, damit die Antwort einen tragen kann.",
+  "setup.actions.operatorNameTaken": "Diesen Namen hat hier schon jemand.",
   "setup.actions.modelRequired": "Ein Modellname ist Pflicht.",
   "setup.actions.mailboxFieldsRequired": "Adresse, IMAP-Host und SMTP-Host werden alle gebraucht.",
   "setup.actions.organizationRequired": "Wer antwortet hier?",

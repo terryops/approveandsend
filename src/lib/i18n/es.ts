@@ -191,12 +191,21 @@ export const es: Dictionary = {
   "setup.access.privacy": "Todo lo que escribes aquí va a los mismos archivos que habrías editado a mano, en esta máquina. No se envía nada a ninguna parte.",
   "setup.access.title": "1. Cierra la puerta",
   "setup.access.hasPassword": "Hay una contraseña puesta. Si escribes una nueva la reemplaza y cierra la sesión en todos los demás navegadores — la clave de sesión se deriva de la contraseña, así que eso sale gratis.",
-  "setup.access.noPassword": "Todavía no hay contraseña, así que cualquiera que llegue a este puerto puede leer y enviar tu correo. Una sola contraseña, sin cuentas.",
+  "setup.access.noPassword": "Todavía no hay contraseña, así que cualquiera que llegue a este puerto puede leer y enviar tu correo. Una sola contraseña, compartida, si con eso te basta.",
   "setup.access.passwordPlaceholder": "Al menos 8 caracteres",
   "setup.access.cronTokenBefore": "Al mismo tiempo se genera un",
   "setup.access.cronTokenAfter": ", así que el programador nunca necesita esta contraseña.",
   "setup.access.replaceButton": "Reemplazar la contraseña",
   "setup.access.setButton": "Poner la contraseña",
+  "setup.access.operatorTitle": "O entra con tu nombre",
+  "setup.access.operatorNone":
+    "Todavía nadie tiene nombre aquí. Añade uno y las respuestas que apruebes saldrán firmadas con él — la contraseña compartida envía sin ser nadie en concreto.",
+  "setup.access.operatorSome":
+    "Personas que ya entran con su nombre: {n}. Añade a alguien más aquí, o gestiónalo luego en la página Personas.",
+  "setup.access.operatorNamePlaceholder": "Su nombre",
+  "setup.access.operatorPasswordPlaceholder": "Al menos 8 caracteres",
+  "setup.access.operatorNote": "Aquí todo el mundo puede hacer de todo; el nombre es para dejar constancia, no para cerrar nada.",
+  "setup.access.operatorButton": "Añadir",
   "setup.access.next": "Siguiente: elige un modelo →",
 
   // --- Setup — model, mailbox, voice ---
@@ -265,6 +274,8 @@ export const es: Dictionary = {
   "setup.done.comeBackBefore": "Puedes volver a todo esto en",
   "setup.done.comeBackAfter": ".",
   "setup.actions.passwordTooShort": "Usa al menos 8 caracteres.",
+  "setup.actions.operatorNeedsName": "Un nombre, para que la respuesta pueda llevar uno.",
+  "setup.actions.operatorNameTaken": "Ya hay alguien aquí con ese nombre.",
   "setup.actions.modelRequired": "Hace falta un nombre de modelo.",
   "setup.actions.mailboxFieldsRequired": "Hacen falta la dirección, el servidor IMAP y el servidor SMTP.",
   "setup.actions.organizationRequired": "¿Quién responde?",

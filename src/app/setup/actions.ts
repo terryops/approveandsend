@@ -7,6 +7,7 @@ import { requireApi } from '@/lib/auth/guard';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { setMeta } from '@/lib/db/meta';
 import { isLocale, t } from '@/lib/i18n';
+import { createOperator } from '@/lib/operators/store';
 import { checkAi, checkMailbox, type CheckResult } from '@/lib/setup/checks';
 import { saveEnv } from '@/lib/setup/env-file';
 import { markSetupDone } from '@/lib/setup/state';
@@ -50,6 +51,40 @@ export async function saveAccess(form: FormData): Promise<void> {
   await setSessionCookie();
 
   redirect(`/setup?${outcome(result)}`);
+}
+
+/**
+ * The other way to lock the door: put a name on it.
+ *
+ * Same step as the shared password rather than a fifth one, because they
+ * answer the same question. This one answers it better — a reply that went out
+ * under a name can be traced back to a person — so it is offered here rather
+ * than hidden on a page nobody visits until something has already gone wrong.
+ */
+export async function saveFirstOperator(form: FormData): Promise<void> {
+  await requireApi();
+
+  const name = text(form, 'name');
+  const password = text(form, 'password');
+
+  if (!name) redirect('/setup?error=' + encodeURIComponent(t('setup.actions.operatorNeedsName')));
+  if (password.length < 8) {
+    redirect('/setup?error=' + encodeURIComponent(t('setup.actions.passwordTooShort')));
+  }
+
+  let operator;
+  try {
+    operator = createOperator(name, password);
+  } catch {
+    redirect('/setup?error=' + encodeURIComponent(t('setup.actions.operatorNameTaken')));
+  }
+
+  // Same reason the password step does it: adding the first operator turns the
+  // login wall on, and the person who just typed their password should not be
+  // asked for it again ten seconds later.
+  await setSessionCookie(operator.id);
+
+  redirect('/setup?saved=1');
 }
 
 export async function saveModel(form: FormData): Promise<void> {

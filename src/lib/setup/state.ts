@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { getDb, type Db } from '../db';
 import { getMeta, setMeta } from '../db/meta';
+import { countActiveOperators } from '../operators/store';
 import { listRules } from '../rules/store';
 import { listTasks } from '../tasks/store';
 
@@ -78,7 +79,10 @@ export function setupState(db: Db = getDb()): SetupState {
       step: 'access',
       title: 'Lock the door',
       href: '/setup',
-      done: set('ADMIN_PASSWORD'),
+      // Either way of locking it counts. An install where four people sign in
+      // by name and no shared password exists is not half-configured, and a
+      // wizard that keeps insisting otherwise is a wizard people stop reading.
+      done: set('ADMIN_PASSWORD') || countActiveOperators(db) > 0,
       optional: true,
     },
     { step: 'model', title: 'Pick a model', href: '/setup/model', done: set('AI_MODEL'), optional: false },
