@@ -66,6 +66,9 @@ export async function sendReply(
     ...(task.messageIdHeader
       ? { inReplyTo: task.messageIdHeader, references: [task.messageIdHeader] }
       : {}),
+    // Backends that reply by their own id rather than by header need this one
+    // instead; the ones that build their own MIME ignore it.
+    ...(task.messageId ? { inReplyToProviderId: task.messageId } : {}),
     ...(task.threadId ? { threadId: task.threadId } : {}),
   });
 

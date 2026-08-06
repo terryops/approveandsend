@@ -51,6 +51,11 @@ function hasMailbox(): boolean {
   if (provider.startsWith('g')) {
     return set('GOOGLE_REFRESH_TOKEN') || set('GOOGLE_PRIVATE_KEY');
   }
+  // Zoho is configured by hand — its OAuth consent is not in the wizard — but
+  // a desk that has done it must not be told for ever that it has no mailbox.
+  if (provider === 'zoho') {
+    return set('ZOHO_REFRESH_TOKEN') && set('ZOHO_CLIENT_ID') && set('MAIL_USER');
+  }
   return set('IMAP_HOST') && set('MAIL_USER') && set('MAIL_PASSWORD');
 }
 

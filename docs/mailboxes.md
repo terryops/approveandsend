@@ -25,28 +25,39 @@ the literal name `Sent`; set `IMAP_SENT_MAILBOX` if that is wrong for yours.
 Use an app password, not your account password, anywhere the provider offers
 one.
 
-### Zoho Mail
-
-Zoho needs two things turned on before any of the above works, and neither
-failure says so:
+## Zoho Mail API
 
 ```bash
+MAIL_PROVIDER=zoho
 MAIL_USER=support@yourcompany.com
-MAIL_PASSWORD=an-application-specific-password
-IMAP_HOST=imappro.zoho.com     # imap.zoho.com for a free account
-SMTP_HOST=smtp.zoho.com
+ZOHO_CLIENT_ID=...
+ZOHO_CLIENT_SECRET=...
+ZOHO_REFRESH_TOKEN=...
+ZOHO_REGION=com          # com | eu | in | com.au | jp | ca
 ```
 
-1. **IMAP access is off by default.** Turn it on in Mail Settings → Mail
-   Accounts → IMAP. Until you do, every login is rejected as
-   `[AUTHENTICATIONFAILED] Invalid credentials`, which sends you hunting for a
-   password problem you do not have.
-2. **The account password will not work**; generate an application-specific
-   password under My Account → Security → App Passwords and use that as
-   `MAIL_PASSWORD`.
+Preferred over IMAP for Zoho, because IMAP needs two settings changes that an
+admin has to make and that both fail as `Invalid credentials` — IMAP access is
+off by default (Mail Settings → Mail Accounts → IMAP), and the account password
+is refused in favour of an application-specific one. The API needs neither.
 
-Zoho's OAuth tokens are for its REST API and are not accepted over IMAP, so
-there is no XOAUTH2 shortcut around either step.
+Get the refresh token from [Zoho's API console](https://api-console.zoho.com):
+create a Self Client, request the scopes exported as `ZOHO_SCOPES` from
+`src/lib/mail/providers/zoho/auth.ts`, and exchange the code once. The refresh
+token does not rotate, so it is never written back to disk.
+
+`ZOHO_REGION` matters. Zoho's data centres are separate installations that
+share no credentials, so a token minted in the wrong one is rejected exactly
+like a bad secret. It is the first thing to check when auth fails.
+
+The account id is discovered from `MAIL_USER`; set `ZOHO_ACCOUNT_ID` only if
+this account owns several mailboxes and the wrong one is picked. Non-English
+mailboxes can name their folders with `ZOHO_INBOX_FOLDER` / `ZOHO_SENT_FOLDER`.
+
+Two limits worth knowing before you switch: **outgoing attachments are not
+supported** (a reply carrying one fails rather than sending without it), and
+the setup wizard cannot configure this provider — it writes IMAP settings only,
+so these variables go in `.env` by hand.
 
 ## Unread flags
 

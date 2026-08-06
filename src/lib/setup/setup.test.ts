@@ -21,6 +21,8 @@ const KEYS = [
   'MAIL_PASSWORD',
   'IMAP_HOST',
   'MAIL_PROVIDER',
+  'ZOHO_CLIENT_ID',
+  'ZOHO_REFRESH_TOKEN',
   'AAS_ORGANIZATION',
 ];
 const saved = new Map<string, string | undefined>();
@@ -188,6 +190,14 @@ describe('setupState', () => {
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(false);
 
     saveEnv({ MAIL_USER: 'support@example.com', MAIL_PASSWORD: 'app-password' });
+    expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(true);
+  });
+
+  it('counts a hand-configured Zoho mailbox, which the wizard cannot set up', () => {
+    saveEnv({ MAIL_PROVIDER: 'zoho', MAIL_USER: 'support@example.com' });
+    expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(false);
+
+    saveEnv({ ZOHO_CLIENT_ID: 'id', ZOHO_REFRESH_TOKEN: 'refresh' });
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(true);
   });
 

@@ -2,6 +2,8 @@ import { parseAddress } from './address';
 import { normalizePrivateKey, type GoogleAuthConfig } from './providers/google/auth';
 import { GmailProvider, type GmailConfig } from './providers/google/gmail';
 import { ImapSmtpProvider, type ImapSmtpConfig } from './providers/imap-smtp';
+import { isZohoRegion, ZOHO_REGIONS } from './providers/zoho/auth';
+import { ZohoProvider, type ZohoConfig } from './providers/zoho/zoho';
 import type { MailProvider } from './types';
 
 function env(name: string): string | undefined {
@@ -131,6 +133,43 @@ export function loadGmailConfig(): GmailConfig {
   return { auth, from };
 }
 
+/**
+ * Zoho Mail.
+ *
+ * The region is asked for rather than probed. Zoho's data centres are separate
+ * installations that do not share credentials, so a token from the wrong one
+ * fails as "invalid" — indistinguishable from a bad secret, and people spend
+ * an afternoon on it. One required variable is cheaper than that afternoon.
+ */
+export function loadZohoConfig(): ZohoConfig {
+  const region = (env('ZOHO_REGION') ?? 'com').toLowerCase();
+  if (!isZohoRegion(region)) {
+    throw new Error(
+      `ZOHO_REGION must be one of ${Object.keys(ZOHO_REGIONS).join(', ')}, got ${JSON.stringify(region)}`,
+    );
+  }
+
+  const mailbox = required('MAIL_USER');
+  const fromRaw = env('MAIL_FROM') ?? mailbox;
+  const from = parseAddress(fromRaw);
+  if (!from) {
+    throw new Error(`MAIL_FROM is not a usable address: ${JSON.stringify(fromRaw)}`);
+  }
+
+  return {
+    auth: {
+      clientId: required('ZOHO_CLIENT_ID'),
+      clientSecret: required('ZOHO_CLIENT_SECRET'),
+      refreshToken: required('ZOHO_REFRESH_TOKEN'),
+      region,
+    },
+    from,
+    ...(env('ZOHO_ACCOUNT_ID') ? { accountId: env('ZOHO_ACCOUNT_ID')! } : {}),
+    ...(env('ZOHO_INBOX_FOLDER') ? { inboxFolder: env('ZOHO_INBOX_FOLDER')! } : {}),
+    ...(env('ZOHO_SENT_FOLDER') ? { sentFolder: env('ZOHO_SENT_FOLDER')! } : {}),
+  };
+}
+
 export function buildMailProvider(): MailProvider {
   const kind = (env('MAIL_PROVIDER') ?? 'imap-smtp').toLowerCase();
 
@@ -144,8 +183,12 @@ export function buildMailProvider(): MailProvider {
     return new GmailProvider(loadGmailConfig());
   }
 
+  if (kind === 'zoho') {
+    return new ZohoProvider(loadZohoConfig());
+  }
+
   throw new Error(
-    `Unknown MAIL_PROVIDER ${JSON.stringify(kind)}. Supported: imap-smtp, gmail.`,
+    `Unknown MAIL_PROVIDER ${JSON.stringify(kind)}. Supported: imap-smtp, gmail, zoho.`,
   );
 }
 

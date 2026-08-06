@@ -76,6 +76,15 @@ export interface OutgoingMail {
   /** Message-ID being replied to; sets In-Reply-To and extends References. */
   inReplyTo?: string;
   references?: string[];
+  /**
+   * The provider's own id for the message being replied to.
+   *
+   * For backends that compose the reply themselves — Zoho takes a "reply to
+   * this message" action rather than a MIME blob — this is the only way to get
+   * In-Reply-To right, because the id they want is theirs and not the RFC 5322
+   * header. Ignored by backends that build their own MIME.
+   */
+  inReplyToProviderId?: string;
   attachments?: OutgoingAttachment[];
   /**
    * Server-side thread to file the reply under. Ignored by backends without

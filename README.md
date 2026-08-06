@@ -171,9 +171,12 @@ SMTP_HOST=smtp.yourcompany.com
 ```
 
 Ports default to 993/465 with implicit TLS, and setting `SMTP_PORT=587`
-switches to STARTTLS on its own. Gmail and Google Workspace can go through the
-Gmail API instead, which gets you real threads and no app password — see
-[docs/mailboxes.md](docs/mailboxes.md).
+switches to STARTTLS on its own.
+
+Gmail, Google Workspace and Zoho can go through their own APIs instead
+(`MAIL_PROVIDER=gmail` or `zoho`), which gets you real threads and no app
+password — worth it for Zoho in particular, where IMAP is off until an admin
+turns it on. See [docs/mailboxes.md](docs/mailboxes.md).
 
 ## Tell it who it is
 
