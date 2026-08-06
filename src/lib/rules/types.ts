@@ -82,4 +82,13 @@ export interface NewRule {
   topics?: string[];
   sourceTaskId?: string | null;
   rationale?: string | null;
+  /**
+   * When this rule was first written, if that is not now.
+   *
+   * Only an import has an answer here. A rulebook carried over from another
+   * system is fifteen months of decisions, and stamping all of it with the
+   * afternoon of the migration throws away the one thing that says which
+   * rules have been surviving contact with customers the longest.
+   */
+  createdAt?: string;
 }

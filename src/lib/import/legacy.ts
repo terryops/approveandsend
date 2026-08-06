@@ -31,10 +31,10 @@ export interface LegacyImportOptions {
    *
    * The old system stored Zoho's message id on its own. This one stores
    * `folderId:messageId`, because a bare Zoho id cannot be fetched at all —
-   * every read endpoint needs the folder. Without the prefix the ids are
-   * imported as null, which costs the one thing they are for: the next sync
-   * seeing an archived conversation, not recognising it, and re-ingesting a
-   * year-old answered email as a new task to review.
+   * every read endpoint needs the folder. Without the prefix every row falls
+   * back to a `legacy:` id, which costs the one thing these ids are for: the
+   * next sync seeing an archived conversation, not recognising it, and
+   * re-ingesting a year-old answered email as a new task to review.
    */
   messagePrefix?: string;
   /** For a trial run over the first few rows. */
@@ -49,7 +49,13 @@ export interface LegacyImportResult {
   alreadyThere: number;
   /** Unreadable rows. The archive is fifteen months of a moving schema. */
   failed: number;
-  /** How many carry a provider id the mail sync will recognise. */
+  /**
+   * How many carry a real provider id the mail sync will recognise.
+   *
+   * Not the same as `imported`. A third of the archive predates the old desk
+   * recording a message id at all, and those rows go in under a `legacy:` id
+   * that keeps a re-run idempotent but will never match a synced mail.
+   */
   addressable: number;
   /** The first few failures, by old id, so a bad run can be diagnosed. */
   problems: string[];
@@ -83,6 +89,7 @@ interface LegacyMessage {
 interface LegacyEvent {
   action?: string;
   timestamp?: string;
+  actor?: string;
 }
 
 const MAX_PROBLEMS = 10;
@@ -113,10 +120,32 @@ export function parseSender(raw: string | null | undefined): { address: string; 
   return { address: (angled[2] ?? '').trim(), name: name || null };
 }
 
-/** When the old desk considered the answer sent. */
-function sentAt(history: LegacyEvent[], fallback: string): string {
-  const closing = history.filter(event => event.action === 'approved' || event.action === 'closed');
-  return closing[closing.length - 1]?.timestamp ?? fallback;
+/** The entry where the old desk considered the answer sent. */
+function closing(history: LegacyEvent[]): LegacyEvent | undefined {
+  const done = history.filter(event => event.action === 'approved' || event.action === 'closed');
+  return done[done.length - 1];
+}
+
+/**
+ * Who approved it, if a person did.
+ *
+ * The old rows record an actor on every history entry, and most of them are
+ * machinery — `system`, the queue worker, the drafting assistant. Those are not
+ * signatures and importing them as one would put a name against a decision
+ * nobody made. What is left is the person who pressed approve, and that is
+ * worth carrying: the value of an audit trail is entirely in the human end
+ * of it.
+ *
+ * The name goes across as a name, not as an operator id, because it has to
+ * survive an install where that person was never given a login. Create the
+ * operators with the same names and the two line up on the page; do not and
+ * the archive still says who it was.
+ */
+const MACHINERY = new Set(['system', 'queue worker', '队列 worker', 'worker', 'cron', '']);
+
+function approver(event: LegacyEvent | undefined): string | null {
+  const actor = (event?.actor ?? '').trim();
+  return actor && !MACHINERY.has(actor.toLowerCase()) ? actor : null;
 }
 
 /**
@@ -162,9 +191,10 @@ export function importLegacy(options: LegacyImportOptions): LegacyImportResult {
     for (const row of rows) {
       result.read += 1;
       try {
-        if (importOne(row, options, db)) result.imported += 1;
+        const outcome = importOne(row, options, db);
+        if (outcome.created) result.imported += 1;
         else result.alreadyThere += 1;
-        if (options.messagePrefix) result.addressable += 1;
+        if (outcome.addressable) result.addressable += 1;
       } catch (error) {
         result.failed += 1;
         if (result.problems.length < MAX_PROBLEMS) {
@@ -179,8 +209,38 @@ export function importLegacy(options: LegacyImportOptions): LegacyImportResult {
   return result;
 }
 
-/** True when a task was created, false when this row was already imported. */
-function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): boolean {
+/**
+ * The id this conversation will be known by, which is not always a mail id.
+ *
+ * `message_id` is what makes a re-import find the row it already wrote, and a
+ * third of the archive has no mail id to put there: the old desk did not start
+ * recording one until months in. Left null those rows are not deduplicated at
+ * all — the second run of a two-run migration silently doubles them, which is
+ * how an import quietly becomes the thing you have to recover from.
+ *
+ * So they go in under `legacy:<old row id>`, which is stable, unique, and
+ * cannot be mistaken for a provider id by anything looking for one. The sync
+ * will never match it. That is correct: there is nothing in the mailbox for it
+ * to match, and saying so in the id is better than an empty column that reads
+ * like an oversight.
+ */
+function messageIdFor(
+  row: LegacyRow,
+  current: LegacyMessage,
+  prefix: string | undefined,
+): string {
+  if (prefix && current.messageId) return `${prefix}:${current.messageId}`;
+  return `legacy:${row.id}`;
+}
+
+interface RowOutcome {
+  /** False when this row was already imported by an earlier run. */
+  created: boolean;
+  /** Whether the id it carries is one the mail sync could match. */
+  addressable: boolean;
+}
+
+function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): RowOutcome {
   const email = parse<{ current?: LegacyMessage; thread?: LegacyMessage[] }>(row.original_email, {});
   const current = email.current ?? {};
   const reply = parse<{ body?: string }>(row.draft_reply, {});
@@ -189,11 +249,12 @@ function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): boolea
   const sender = parseSender(row.sender || current.from);
   const receivedAt = row.email_received_at ?? current.receivedAt ?? row.created_at;
 
+  const messageId = messageIdFor(row, current, options.messagePrefix);
+  const addressable = !messageId.startsWith('legacy:');
+
   const { task, existed } = createTask(
     {
-      ...(options.messagePrefix && current.messageId
-        ? { messageId: `${options.messagePrefix}:${current.messageId}` }
-        : {}),
+      messageId,
       ...(current.threadId ? { threadId: current.threadId } : {}),
       subject: row.subject ?? current.subject ?? '',
       fromAddress: sender.address,
@@ -204,9 +265,10 @@ function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): boolea
     db,
   );
 
-  if (existed) return false;
+  if (existed) return { created: false, addressable };
 
   const body = (reply.body ?? '').trim();
+  const done = closing(history);
 
   updateTask(
     task.id,
@@ -215,7 +277,7 @@ function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): boolea
       // as anything else would put fifteen months of answered mail into the
       // review queue on the morning of the cutover.
       status: 'sent',
-      sentAt: sentAt(history, row.updated_at),
+      sentAt: done?.timestamp ?? row.updated_at,
       finalReply: body || null,
       draft: body && !wasEdited(history) ? body : null,
       reviewerNotes: row.revision_notes,
@@ -232,10 +294,15 @@ function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): boolea
   // One event, stamped now, saying what it is. The old history has real
   // timestamps but the actions do not map — and an audit trail that quietly
   // gives today's date to a conversation from February is worse than a short
-  // one that is true.
-  recordEvent(task.id, 'sent', { detail: 'imported from the previous system', db });
+  // one that is true. The name on it is the exception: that one does map, and
+  // it is the only part of the trail anybody looks up.
+  recordEvent(task.id, 'sent', {
+    detail: 'imported from the previous system',
+    actor: approver(done),
+    db,
+  });
 
-  return true;
+  return { created: true, addressable };
 }
 
 function threadOf(

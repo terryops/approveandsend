@@ -35,6 +35,8 @@ interface RowOptions {
   id?: string;
   sender?: string;
   messageId?: string;
+  /** The rows from before the old desk recorded one. */
+  noMessageId?: boolean;
   history?: unknown[];
   thread?: unknown[];
   reply?: string;
@@ -55,7 +57,7 @@ function insert(old: Database.Database, options: RowOptions = {}): void {
       received: '2026-02-04T16:28:22.590Z',
       email: JSON.stringify({
         current: {
-          messageId: options.messageId ?? '1784236614442153000',
+          ...(options.noMessageId ? {} : { messageId: options.messageId ?? '1784236614442153000' }),
           threadId: '1750210243330123900',
           from: options.sender ?? 'Lin Chen <lin@example.com>',
           to: '&lt;support@example.com&gt;',
@@ -163,15 +165,32 @@ describe('importLegacy', () => {
     expect(listTasks({}, db)[0]!.messageId).toBe('4243000000008002:1784236614442153000');
   });
 
-  it('leaves the id off entirely rather than storing one that cannot be used', () => {
+  it('marks an id it cannot make usable rather than leaving the column empty', () => {
     const old = legacyDb();
     insert(old);
     old.close();
 
     const result = importLegacy({ path: oldPath, db });
 
-    expect(listTasks({}, db)[0]!.messageId).toBeNull();
+    // Namespaced so nothing looking for a provider id can mistake it for one,
+    // and present so that a second run recognises the row.
+    expect(listTasks({}, db)[0]!.messageId).toBe('legacy:old-1');
     expect(result.addressable).toBe(0);
+  });
+
+  it('deduplicates the rows that never had a message id', () => {
+    // A third of the real archive predates the old desk recording one. Left
+    // null they are not deduplicated at all, and the second run of a two-run
+    // migration silently doubles them.
+    const old = legacyDb();
+    insert(old, { id: 'no-id', messageId: undefined, noMessageId: true });
+    old.close();
+
+    importLegacy({ path: oldPath, messagePrefix: 'f1', db });
+    const second = importLegacy({ path: oldPath, messagePrefix: 'f1', db });
+
+    expect(second).toMatchObject({ imported: 0, alreadyThere: 1, addressable: 0 });
+    expect(listTasks({}, db)).toHaveLength(1);
   });
 
   it('imports the same file twice without doubling the archive', () => {
@@ -233,6 +252,35 @@ describe('importLegacy', () => {
     expect(listEvents(listTasks({}, db)[0]!.id, db)[1]).toMatchObject({
       detail: 'imported from the previous system',
     });
+  });
+
+  it('signs the imported reply with whoever approved it', () => {
+    const old = legacyDb();
+    insert(old, {
+      history: [
+        { action: 'ai_analysis', timestamp: '2026-02-05T12:00:00.000Z', actor: '队列 Worker' },
+        { action: 'approved', timestamp: '2026-02-06T09:00:00.000Z', actor: 'GoviChen' },
+      ],
+    });
+    old.close();
+
+    importLegacy({ path: oldPath, db });
+
+    expect(listEvents(listTasks({}, db)[0]!.id, db)[1]).toMatchObject({ actor: 'GoviChen' });
+  });
+
+  it('does not put a name against a decision the machinery made', () => {
+    // Most actors in the old history are plumbing. Importing "system" as a
+    // signature is worse than leaving the line blank, which is honest.
+    const old = legacyDb();
+    insert(old, {
+      history: [{ action: 'closed', timestamp: '2026-02-06T09:00:00.000Z', actor: 'system' }],
+    });
+    old.close();
+
+    importLegacy({ path: oldPath, db });
+
+    expect(listEvents(listTasks({}, db)[0]!.id, db)[1]).toMatchObject({ actor: null });
   });
 
   it('is what makes the history lookup know anybody on day one', () => {

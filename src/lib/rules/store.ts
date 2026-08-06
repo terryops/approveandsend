@@ -140,7 +140,7 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
   const content = input.content.trim();
   if (!content) throw new Error('A rule needs content');
 
-  const now = new Date().toISOString();
+  const now = input.createdAt ?? new Date().toISOString();
   const id = randomUUID();
   const topics = normaliseTopics(input.topics);
 

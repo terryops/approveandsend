@@ -81,7 +81,23 @@ before" is the fact a reviewer most reliably has and a model most reliably
 lacks, and on the morning of a cutover it is a fact the new database does not
 have about anybody.
 
-There is an importer for the desk this project grew out of:
+### The people first
+
+Do this before the import, not after.
+
+Create an operator on the operators page for each person who used the old
+system, **named exactly as the old system named them**. The importer signs each
+archived conversation with whoever approved it, by name, and matching names are
+what turn that into a face on the page rather than a string.
+
+Give them new passwords. Do not carry the old ones across — a system with a
+hardcoded user table has those passwords in its git history, on every machine
+that ever cloned it, which is the reason they are being left behind. This
+project stores a scrypt hash and signs its session cookie; importing a
+credential that has been sitting in a source file since February would keep the
+one part worth replacing.
+
+### Then the archive
 
 ```bash
 curl -H "Authorization: Bearer $CRON_TOKEN" -XPOST localhost:3000/api/import/legacy \
@@ -89,18 +105,33 @@ curl -H "Authorization: Bearer $CRON_TOKEN" -XPOST localhost:3000/api/import/leg
 ```
 
 Start with the `limit` and read what comes back. It snapshots first, reads the
-old file read-only, imports every row as already sent, and matches on message id
-so a second full run adds nothing.
+old file read-only, and brings across two things:
+
+- **The mail**, every row as already sent, matched on message id so a second
+  full run adds nothing.
+- **The rulebook**, matched on what each rule says, keeping its category and
+  keeping the ones somebody had turned off turned off. Summaries are left to
+  the indexing job, which is queued once at the end. `"rules": false` skips
+  this half.
+
+The rules are the half people forget, and they are the more valuable one.
+Answered mail is context. A rule is a decision somebody made after getting a
+reply wrong, and there is no way to regenerate it from the mail.
 
 `messagePrefix` is the folder id your mailbox uses. The old desk stored a bare
 message id, which cannot be fetched — every read endpoint needs the folder — so
-without the prefix the ids are dropped, and the next sync meets a year of
+without the prefix nothing is addressable, and the next sync meets a year of
 answered conversations it does not recognise and files them as new work. The
 response says so when you leave it out.
 
-If you are coming from something else, `src/lib/import/legacy.ts` is about two
-hundred lines and is the shape to copy: read rows, `createTask`, `updateTask` to
-`sent`, `addMessage` per thread entry.
+Watch `addressable` in the response. It is not the same as `imported`: rows
+from before the old desk recorded a message id at all go in under a `legacy:`
+id, which keeps a re-run idempotent but will never match a synced mail. In the
+archive this was written against that was 299 rows of 937.
+
+If you are coming from something else, `src/lib/import/legacy.ts` is the shape
+to copy: read rows, `createTask`, `updateTask` to `sent`, `addMessage` per
+thread entry.
 
 ## It does not fit Vercel
 
