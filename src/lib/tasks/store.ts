@@ -166,6 +166,9 @@ export interface TaskUpdate {
   status?: TaskStatus;
   scope?: string | null;
   priority?: number;
+  /** Ingestion writes the summary first and fills the real body in after the
+   * detail fetch, so this is updatable even though nothing else rewrites it. */
+  body?: string;
   analysis?: Analysis | null;
   draft?: string | null;
   finalReply?: string | null;
@@ -178,6 +181,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   status: 'status',
   scope: 'scope',
   priority: 'priority',
+  body: 'body',
   analysis: 'analysis',
   draft: 'draft',
   finalReply: 'final_reply',

@@ -79,7 +79,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
   let fromFile: Record<string, unknown> = {};
 
   try {
-    fromFile = JSON.parse(readFileSync(configPath(), 'utf8')) as Record<string, unknown>;
+    fromFile = JSON.parse(readFileSync(/* turbopackIgnore: true */ configPath(), 'utf8')) as Record<string, unknown>;
   } catch (error) {
     // A missing file is the normal first-run state. A malformed one is not —
     // silently falling back to defaults there would mean a deployment quietly

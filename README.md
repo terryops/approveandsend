@@ -12,9 +12,9 @@ The instance this was extracted from has processed **929 emails**, of which
 active**. The drafts get closer to sendable over time, and you can read exactly
 why: every rule is inspectable, editable and switch-off-able.
 
-> Status: v0.1 in progress. The AI layer, the mail layer, the rules engine, the
-> learning loop, the job queue and the drafting pipeline are done and tested.
-> The review UI is still being ported, so it is not yet usable end to end.
+> Status: v0.1. End to end and usable — fetch mail, draft, review, send, learn.
+> Still to come before a release: a weekly pass that consolidates the rulebook,
+> and demo seed data.
 
 ## Why it exists
 
@@ -129,6 +129,34 @@ so. The rulebook is meant to stay small enough to read.
 Extraction runs in the background — clicking Send never waits on a model — on a
 job queue that is one SQLite table, because "self-hosted" should not mean
 "also run Redis".
+
+## Running it
+
+```bash
+npm install
+cp .env.example .env            # model + mailbox
+cp replyloop.config.example.json replyloop.config.json
+npm run build && npm start      # http://localhost:3000
+```
+
+Set `ADMIN_PASSWORD` before you expose the port. There are no accounts — one
+password, one signed cookie. Leaving it unset disables the login wall and every
+page says so in red.
+
+Two endpoints drive it from cron:
+
+```cron
+*/5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
+*/2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
+```
+
+`/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs.
+Both have buttons in the UI too, so you can run without a scheduler while you
+are trying it out.
+
+The whole UI is plain forms — it works with JavaScript off, and a half-written
+draft survives a reload because it was posted rather than kept in component
+state.
 
 ## Design notes worth knowing
 

@@ -1,0 +1,188 @@
+'use server';
+
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+
+import { requireApi } from '@/lib/auth/guard';
+import { COOKIE_NAME, COOKIE_OPTIONS, checkPassword, issueToken } from '@/lib/auth/session';
+import { syncInbox } from '@/lib/ingest/sync';
+import { DEFAULT_HANDLERS, createWorker, enqueueDraftReply } from '@/lib/queue';
+import { coerceCategory } from '@/lib/rules/types';
+import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
+import { sendReply } from '@/lib/tasks/send';
+import { getTask, updateTask } from '@/lib/tasks/store';
+
+/**
+ * Every mutation the UI can perform.
+ *
+ * These are plain form actions, so the review screen works with JavaScript
+ * disabled and — more usefully — a half-written draft survives a page reload
+ * because it was posted rather than held in component state.
+ */
+
+function field(form: FormData, name: string): string {
+  const value = form.get(name);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function login(form: FormData): Promise<void> {
+  const password = field(form, 'password');
+  if (!checkPassword(password)) redirect('/login?error=1');
+
+  const jar = await cookies();
+  jar.set(COOKIE_NAME, issueToken(), COOKIE_OPTIONS);
+  redirect('/');
+}
+
+export async function logout(): Promise<void> {
+  const jar = await cookies();
+  jar.delete(COOKIE_NAME);
+  redirect('/login');
+}
+
+/** Saving without sending. The reviewer's edits are the training signal, so
+ * losing them to a closed tab loses more than the typing. */
+export async function saveDraft(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  updateTask(id, { draft: field(form, 'draft'), reviewerNotes: field(form, 'notes') || null });
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?saved=1`);
+}
+
+export async function approveAndSend(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const notes = field(form, 'notes');
+
+  let failure: string | null = null;
+  try {
+    // The edited text is saved before the send is attempted: if the provider
+    // is down, the reviewer's work is still on disk when they come back.
+    updateTask(id, { draft: field(form, 'draft'), reviewerNotes: notes || null });
+    await sendReply(id, {
+      finalReply: field(form, 'draft'),
+      ...(notes ? { reviewerNotes: notes } : {}),
+    });
+  } catch (error) {
+    failure = message(error);
+  }
+
+  revalidatePath('/');
+  revalidatePath(`/tasks/${id}`);
+  if (failure) redirect(`/tasks/${id}?error=${encodeURIComponent(failure)}`);
+  redirect('/?sent=1');
+}
+
+export async function dismissTask(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  updateTask(id, { status: 'dismissed', reviewerNotes: field(form, 'notes') || null });
+  revalidatePath('/');
+  redirect('/');
+}
+
+export async function redraftTask(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const task = getTask(id);
+  if (task) {
+    // Back to pending first, or the job's own guard would see a task that is
+    // already awaiting review and the queue would dedupe the request away.
+    updateTask(id, { status: 'pending', error: null });
+    enqueueDraftReply(id);
+  }
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?queued=1`);
+}
+
+export async function addRule(form: FormData): Promise<void> {
+  await requireApi();
+  const content = field(form, 'content');
+  if (content) {
+    createRule({
+      content,
+      category: coerceCategory(field(form, 'category')),
+      scope: field(form, 'scope') || null,
+      rationale: 'Written by hand in the rules screen',
+    });
+  }
+  revalidatePath('/rules');
+  redirect('/rules');
+}
+
+export async function editRule(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'ruleId');
+  const enabled = form.get('enabled');
+  updateRule(
+    id,
+    {
+      content: field(form, 'content'),
+      category: coerceCategory(field(form, 'category')),
+      scope: field(form, 'scope') || null,
+      ...(enabled === null ? {} : { enabled: enabled === 'on' || enabled === 'true' }),
+    },
+    { reason: 'manual', actor: 'reviewer' },
+  );
+  revalidatePath('/rules');
+  redirect('/rules');
+}
+
+export async function toggleRule(form: FormData): Promise<void> {
+  await requireApi();
+  updateRule(
+    field(form, 'ruleId'),
+    { enabled: field(form, 'enabled') === 'true' },
+    { reason: 'manual', actor: 'reviewer' },
+  );
+  revalidatePath('/rules');
+  redirect('/rules');
+}
+
+export async function removeRule(form: FormData): Promise<void> {
+  await requireApi();
+  deleteRule(field(form, 'ruleId'));
+  revalidatePath('/rules');
+  redirect('/rules');
+}
+
+export async function syncNow(): Promise<void> {
+  await requireApi();
+  let query = '';
+  try {
+    const result = await syncInbox();
+    query = `?synced=${result.created}`;
+  } catch (error) {
+    query = `?error=${encodeURIComponent(message(error))}`;
+  }
+  revalidatePath('/');
+  redirect(`/${query}`);
+}
+
+/**
+ * Draining the queue from a button.
+ *
+ * A self-hosted install with no cron still has to get its drafts written
+ * somehow, and "click this when you want work to happen" is an honest answer
+ * for v0.1 — see `/api/worker` for the scheduled one.
+ */
+export async function runQueue(): Promise<void> {
+  await requireApi();
+  const worker = createWorker({ handlers: DEFAULT_HANDLERS });
+  let query = '';
+  try {
+    const processed = await worker.drain(25);
+    query = `?ran=${processed.length}`;
+  } catch (error) {
+    query = `?error=${encodeURIComponent(message(error))}`;
+  }
+  revalidatePath('/queue');
+  revalidatePath('/');
+  redirect(`/queue${query}`);
+}

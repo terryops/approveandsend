@@ -339,6 +339,49 @@ values. `extractJson` tries plain parse → outermost `{...}` → the same with
 quotes repaired, and returns `null` rather than throwing. Given a generation
 can take minutes, repairing a missing backslash beats re-running the call.
 
+## The review UI
+
+Six screens, no client-side state, no CSS framework. Every mutation is a plain
+`<form action={serverAction}>`, which buys three things that a React form does
+not: it works before the JavaScript has loaded, a half-written draft survives a
+reload because it was posted rather than held in component state, and there is
+no client copy of the draft that can disagree with the one on disk about what
+is being sent.
+
+The review screen puts the textarea and the Send button in the same form, so
+what goes out is exactly what is on screen. Save, Redraft and Dismiss are
+`formAction` buttons on that same form, which means they all see the reviewer's
+current edits rather than the last saved version.
+
+Approve does three things in a fixed order: write the edited text to the task,
+send the mail, then enqueue the learning job. If the provider is down the edits
+are still on disk and the task stays `awaiting_review` — the reviewer comes
+back to their own words and an error message, not to a blank box. If enqueueing
+the learning job fails, that is logged and swallowed: the mail has already gone,
+and telling the reviewer the send failed would get the customer two copies.
+
+## Auth
+
+One password, one signed cookie, no user table.
+
+The system this came from had a hardcoded array of plaintext credentials and a
+session token of the form `user:timestamp:random` that nothing verified — so
+anyone could mint one by typing it into the cookie jar. Both problems are
+solved by removing the thing that caused them. There are no accounts, so there
+is nothing to store; the cookie is an expiry plus an HMAC over it, and the key
+is derived from the password, so changing the password logs everyone out
+without a session table to clear.
+
+The check lives in a function that pages and route handlers call, not in
+middleware. Middleware runs on the edge runtime and this needs `node:crypto`,
+but the real reason is that a security check which depends on keeping a matcher
+pattern up to date is a security check that will eventually miss a route.
+
+An unset `ADMIN_PASSWORD` disables auth rather than bricking the app, because
+the first thing anyone does is `npm run dev` on loopback and a login wall with
+no credentials to type helps nobody. Every page renders a red banner in that
+state.
+
 ## Licensing
 
 MIT. The AGPL case was that it keeps a hosted-SaaS fork honest, and it was
