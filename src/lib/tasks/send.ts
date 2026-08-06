@@ -4,6 +4,7 @@ import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml } from '../mail/render';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
+import { recordEvent } from './events';
 import { enqueueForTranslation } from '../queue/handlers/translate-task';
 import { markHandled } from './mark-read';
 import { addMessage } from './messages';
@@ -113,6 +114,8 @@ export async function sendReply(
     // Cosmetic next to a mail that has already gone out.
     console.warn('[tasks] could not record the sent reply against the thread:', error);
   }
+
+  recordEvent(taskId, 'sent', { ...(input.sentBy ? { actor: input.sentBy } : {}), db });
 
   // Reusing the provider we just sent through rather than asking for another:
   // on IMAP that is the difference between one connection and two.

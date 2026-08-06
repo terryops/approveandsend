@@ -6,6 +6,7 @@ import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
 import { listAttachments } from '@/lib/tasks/attachments';
+import { listEvents } from '@/lib/tasks/events';
 import { listMessages } from '@/lib/tasks/messages';
 import { getTask, markOpened } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
@@ -58,6 +59,17 @@ export default async function TaskPage({
   const bodyText = task.body || '';
   const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
   const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+
+  // Names, not ids, and resolved once each — a task drafted and edited six
+  // times by the same person is six rows pointing at one operator.
+  const history = listEvents(task.id);
+  const names = new Map<string, string>();
+  for (const event of history) {
+    if (event.actor && !names.has(event.actor)) {
+      names.set(event.actor, getOperator(event.actor)?.name ?? event.actor);
+    }
+  }
+  const who = (actor: string) => names.get(actor) ?? actor;
 
   return (
     <>
@@ -298,6 +310,27 @@ export default async function TaskPage({
           <h2>{t('task.draftYouChanged')}</h2>
           <pre className="email">{task.draft}</pre>
         </div>
+      )}
+
+      {/* Last on the page and collapsed, because the reviewer's job is the
+          draft above it and this is only ever consulted — usually when
+          somebody asks how a customer came to be told something. */}
+      {history.length > 0 && (
+        <details className="card">
+          <summary>{t('task.history', { n: history.length })}</summary>
+          <ol className="history">
+            {history.map(event => (
+              <li key={event.id}>
+                <span className="meta">
+                  {event.createdAt.slice(0, 16).replace('T', ' ')}
+                </span>{' '}
+                {t(`task.event.${event.action}`)}
+                {event.actor ? ` · ${who(event.actor)}` : ''}
+                {event.detail ? <span className="detail">{event.detail}</span> : null}
+              </li>
+            ))}
+          </ol>
+        </details>
       )}
     </>
   );

@@ -35,6 +35,7 @@ import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
 import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
+import { recordEvent } from '@/lib/tasks/events';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
@@ -119,6 +120,10 @@ export async function saveDraft(form: FormData): Promise<void> {
   // twice, and saving is what people do while thinking.
   if (draft.trim() !== (before?.draft ?? '').trim()) {
     enqueueForTranslation(id);
+    // Only a real change to the text. Saving is what people do while
+    // thinking, and a history of six identical "edited" lines says less than
+    // one does.
+    recordEvent(id, 'edited', { actor: (await currentOperator())?.id ?? null });
   }
 
   revalidatePath(`/tasks/${id}`);
@@ -156,6 +161,7 @@ export async function dismissTask(form: FormData): Promise<void> {
   const dismissed = rejectTask(id, {
     reason: field(form, 'reason'),
     notes: field(form, 'notes'),
+    actor: (await currentOperator())?.id ?? null,
   });
   // Dismissed is a decision, not an oversight: somebody looked at this and said
   // it needs no reply. Leaving it bold in the mailbox would put it back in
@@ -181,7 +187,7 @@ export async function dismissTask(form: FormData): Promise<void> {
 export async function reopenTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
-  await reopen(id);
+  await reopen(id, { actor: (await currentOperator())?.id ?? null });
 
   revalidatePath('/');
   revalidatePath(`/tasks/${id}`);
@@ -204,6 +210,10 @@ export async function redraftTask(form: FormData): Promise<void> {
       status: 'pending',
       error: null,
       reviewerNotes: field(form, 'notes') || null,
+    });
+    recordEvent(id, 'redraft', {
+      detail: field(form, 'notes'),
+      actor: (await currentOperator())?.id ?? null,
     });
     // Through the enrichment path, not straight to drafting. Someone clicking
     // Redraft is often doing it because the reply was wrong about who this
@@ -236,8 +246,9 @@ function selected(form: FormData): string[] {
 export async function bulkDismiss(form: FormData): Promise<void> {
   await requireApi();
   const ids = selected(form);
+  const actor = (await currentOperator())?.id ?? null;
   for (const id of ids) {
-    const task = rejectTask(id);
+    const task = rejectTask(id, { actor });
     // Same reasoning as the single dismiss: a decision made here should not
     // leave the mail bold for whoever opens the mailbox next.
     if (task) await markHandled(task);
@@ -249,9 +260,10 @@ export async function bulkDismiss(form: FormData): Promise<void> {
 export async function bulkReopen(form: FormData): Promise<void> {
   await requireApi();
   const ids = selected(form);
+  const actor = (await currentOperator())?.id ?? null;
   let reopened = 0;
   for (const id of ids) {
-    if (await reopen(id)) reopened += 1;
+    if (await reopen(id, { actor })) reopened += 1;
   }
   revalidatePath('/');
   redirect(`/?bulk=${reopened}`);

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { getDb, type Db } from '../db';
+import { recordEvent } from './events';
 import { isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
 
 interface TaskRow {
@@ -122,6 +123,10 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
       now,
       now,
     ) as TaskRow;
+
+  // Every task's history starts here, whatever created it — a sync, the demo
+  // seed, an import from an older install.
+  recordEvent(row.id, 'received', { db });
 
   return { task: mapTask(row), existed: false };
 }
@@ -295,6 +300,7 @@ export function supersedeThread(threadId: string, newerTaskId: string, db: Db = 
     // Dismissed, so it leaves the queue the way a human dismissal does, and
     // `superseded_by` so a month from now the row explains itself.
     updateTask(row.id, { status: 'dismissed', supersededBy: newerTaskId }, db);
+    recordEvent(row.id, 'superseded', { detail: newerTaskId, db });
   }
 
   return rows.map(row => row.id);

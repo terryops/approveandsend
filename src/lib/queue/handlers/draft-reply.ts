@@ -1,5 +1,6 @@
 import { getDb, type Db } from '../../db';
 import { draftReply } from '../../drafting/draft';
+import { recordEvent } from '../../tasks/events';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
@@ -77,6 +78,8 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
       context.db,
     );
 
+    recordEvent(taskId, 'drafted', { db: context.db });
+
     // Now that both halves exist — their mail and our answer — one job can
     // render the pair for whoever has to read it.
     enqueueForTranslation(taskId, { db: context.db });
@@ -94,6 +97,9 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     // its state and the UI does not show a scary red row for thirty seconds
     // during a routine 429.
     updateTask(taskId, { status: lastAttempt ? 'failed' : 'pending', error: message }, context.db);
+    // Only the attempt that gave up. A history full of "failed, retrying" for
+    // a 429 that resolved itself is noise over the events that mattered.
+    if (lastAttempt) recordEvent(taskId, 'failed', { detail: message, db: context.db });
     throw error;
   }
 };

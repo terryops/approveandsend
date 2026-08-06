@@ -553,6 +553,34 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE tasks ADD COLUMN rejection_reason TEXT`);
     },
   },
+  {
+    version: 18,
+    name: 'task_events',
+    up: db => {
+      // What happened to this task, in order.
+      //
+      // The columns on `tasks` say where it ended up — sent, dismissed, and by
+      // whom. They cannot say it was drafted twice, rejected, reopened a day
+      // later and then sent by somebody else, which is exactly the sequence
+      // anybody asking "why did the customer get this?" needs to see.
+      //
+      // Append-only by convention: nothing in the codebase updates or deletes
+      // a row here except the cascade when the task itself goes.
+      db.exec(`
+        CREATE TABLE task_events (
+          id         TEXT PRIMARY KEY,
+          task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          action     TEXT NOT NULL,
+          detail     TEXT,
+          -- An operator id where one is known. Null means the shared password,
+          -- or the machine acting on its own.
+          actor      TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_task_events_task ON task_events(task_id, created_at);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

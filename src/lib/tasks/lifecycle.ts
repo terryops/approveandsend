@@ -15,6 +15,7 @@ import { getDb, type Db } from '../db';
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { enqueueLearnFromRejection } from '../queue/handlers/learn-from-rejection';
 
+import { recordEvent } from './events';
 import { deleteTask, getTask, updateTask } from './store';
 import type { Task } from './types';
 
@@ -30,13 +31,14 @@ import type { Task } from './types';
  */
 export function rejectTask(
   id: string,
-  input: { reason?: string; notes?: string } = {},
+  input: { reason?: string; notes?: string; actor?: string | null } = {},
   db: Db = getDb(),
 ): Task | null {
   const before = getTask(id, db);
   if (!before) return null;
 
   const reason = input.reason?.trim() ?? '';
+  const actor = input.actor ?? null;
   const task = updateTask(
     id,
     {
@@ -50,6 +52,8 @@ export function rejectTask(
     },
     db,
   );
+
+  recordEvent(id, 'dismissed', { detail: reason, ...(actor ? { actor } : {}), db });
 
   // Only with both a reason and a draft to attach it to. "Wrong" about nothing
   // in particular is not a lesson, and a dismissal with no draft behind it is
@@ -87,7 +91,12 @@ export function rejectTask(
  * no draft goes to `pending` and is queued, because an empty review screen is
  * not a thing anybody can act on.
  */
-export async function reopenTask(id: string, db: Db = getDb()): Promise<boolean> {
+export async function reopenTask(
+  id: string,
+  options: { actor?: string | null; db?: Db } = {},
+): Promise<boolean> {
+  const db = options.db ?? getDb();
+  const actor = options.actor ?? null;
   const task = getTask(id, db);
 
   // Sent is the one status with no way back. The customer has the reply; the
@@ -109,6 +118,8 @@ export async function reopenTask(id: string, db: Db = getDb()): Promise<boolean>
     },
     db,
   );
+
+  recordEvent(id, 'reopened', { ...(actor ? { actor } : {}), db });
 
   if (!hasDraft) await enqueueForDrafting(id, { db });
   return true;

@@ -333,6 +333,22 @@ input[type='text'].reason {
   font-size: 13px;
 }
 
+/* The audit trail. Numbered, because the order is the information. */
+ol.history {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+ol.history .detail {
+  display: block;
+  color: var(--muted);
+  /* A rejection reason is a sentence somebody typed, and wrapping it under
+     the event it belongs to keeps the timestamps in one column. */
+  white-space: pre-wrap;
+}
+
 .stack > * + * {
   margin-top: 10px;
 }
