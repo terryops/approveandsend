@@ -33,3 +33,4 @@ yarn-error.log*
 
 data/
 aas.config.json
+*.aas.config.json

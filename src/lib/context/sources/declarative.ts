@@ -38,7 +38,12 @@ export interface DeclarativeField {
    * spares the model from guessing what level 2 is.
    */
   map?: Record<string, string>;
-  /** Appended to the mapped value. "credits", "days left". */
+  /**
+   * Appended to the mapped value. "credits", "days left".
+   *
+   * A suffix that starts with punctuation is joined without a space, because
+   * `95 %` is not how anyone writes a percentage.
+   */
   suffix?: string;
 }
 
@@ -250,7 +255,7 @@ function buildFields(spec: DeclarativeSpec, data: unknown, subject: LookupSubjec
     if (raw === null) return [];
 
     const mapped = field.map?.[raw] ?? raw;
-    const value = field.suffix ? `${mapped} ${field.suffix}` : mapped;
+    const value = field.suffix ? `${mapped}${/^[A-Za-z0-9]/.test(field.suffix) ? ' ' : ''}${field.suffix}` : mapped;
     const href = field.href ? fill(field.href, data, subject) : null;
 
     return [{ label: field.label, value, ...(href?.complete && href.text ? { href: href.text } : {}) }];

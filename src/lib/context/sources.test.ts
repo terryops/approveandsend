@@ -185,6 +185,24 @@ describe('a lookup declared against an HTTP endpoint', () => {
     expect(block!.prompt).toBe('They are on the 2 plan.');
   });
 
+  it('joins a punctuation suffix tight, because nobody writes 95 %', async () => {
+    respond = () => ({ status: 200, body: { rate: 95, days: 3 } });
+
+    const block = await buildDeclarativeSource(
+      spec({
+        fields: [
+          { label: 'Success rate', path: 'rate', suffix: '%' },
+          { label: 'Trial', path: 'days', suffix: 'days left' },
+        ],
+      }),
+    ).lookup(SUBJECT);
+
+    expect(block!.fields).toEqual([
+      { label: 'Success rate', value: '95%' },
+      { label: 'Trial', value: '3 days left' },
+    ]);
+  });
+
   it('drops a sentence whose facts are missing instead of leaving a hole in it', async () => {
     respond = () => ({ status: 200, body: { plan: 'pro' } });
 
