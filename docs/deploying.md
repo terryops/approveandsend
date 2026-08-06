@@ -73,6 +73,35 @@ forty button presses but a file.
 They are a restore point for one operation, not a backup — the file the tidy
 copies is the file you should already be backing up.
 
+## Bringing an archive with you
+
+If you are replacing something, the answered mail in it is worth carrying over.
+Not for the record — for the drafting. "We have replied to them three times
+before" is the fact a reviewer most reliably has and a model most reliably
+lacks, and on the morning of a cutover it is a fact the new database does not
+have about anybody.
+
+There is an importer for the desk this project grew out of:
+
+```bash
+curl -H "Authorization: Bearer $CRON_TOKEN" -XPOST localhost:3000/api/import/legacy \
+  -d '{"path":"/srv/old/data/tasks.db","messagePrefix":"4243000000008002","limit":5}'
+```
+
+Start with the `limit` and read what comes back. It snapshots first, reads the
+old file read-only, imports every row as already sent, and matches on message id
+so a second full run adds nothing.
+
+`messagePrefix` is the folder id your mailbox uses. The old desk stored a bare
+message id, which cannot be fetched — every read endpoint needs the folder — so
+without the prefix the ids are dropped, and the next sync meets a year of
+answered conversations it does not recognise and files them as new work. The
+response says so when you leave it out.
+
+If you are coming from something else, `src/lib/import/legacy.ts` is about two
+hundred lines and is the shape to copy: read rows, `createTask`, `updateTask` to
+`sent`, `addMessage` per thread entry.
+
 ## It does not fit Vercel
 
 Worth stating plainly, because it is the first thing people try.
