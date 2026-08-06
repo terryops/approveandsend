@@ -33,6 +33,12 @@ export const ja: Dictionary = {
   "inbox.noSubject": "（件名なし）",
   "inbox.unread": "（未読 {count} 件）",
   "inbox.unreadOne": "まだ開いていません",
+  "inbox.bulkHint": "チェックするとまとめて処理できます",
+  "inbox.bulkDismiss": "見送る",
+  "inbox.bulkReopen": "再開",
+  "inbox.bulkDelete": "削除",
+  "inbox.bulkDone": "{count} 件を更新しました。",
+  "inbox.bulkDeleted": "{count} 件を削除しました。次の同期で戻ってきます。",
 
   // --- Signing in ---
   "login.title": "{app} にサインイン",
@@ -82,6 +88,7 @@ export const ja: Dictionary = {
   "task.save": "保存",
   "task.redraft": "下書きし直す",
   "task.dismiss": "見送る",
+  "task.reopen": "再開",
   "task.editsBecomeRules": "ここでの修正は、送信した時点でルールになります。",
   "task.sentAt": "{time} に送信しました。",
   "task.sentBy": "送信者は {who}",

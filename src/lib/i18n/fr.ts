@@ -33,6 +33,12 @@ export const fr: Dictionary = {
   "inbox.noSubject": "(sans objet)",
   "inbox.unread": "({count} non ouverts)",
   "inbox.unreadOne": "Vous n'avez pas encore ouvert celui-ci",
+  "inbox.bulkHint": "Cochez pour traiter plusieurs tâches à la fois",
+  "inbox.bulkDismiss": "Écarter",
+  "inbox.bulkReopen": "Rouvrir",
+  "inbox.bulkDelete": "Supprimer",
+  "inbox.bulkDone": "{count} tâche(s) mise(s) à jour.",
+  "inbox.bulkDeleted": "{count} tâche(s) supprimée(s). Elles reviendront à la prochaine synchronisation.",
 
   // --- Signing in ---
   "login.title": "Connexion à {app}",
@@ -82,6 +88,7 @@ export const fr: Dictionary = {
   "task.save": "Enregistrer",
   "task.redraft": "Rédiger à nouveau",
   "task.dismiss": "Écarter",
+  "task.reopen": "Rouvrir",
   "task.editsBecomeRules": "Les corrections faites ici deviennent des règles une fois l'envoi effectué.",
   "task.sentAt": "Envoyé {time}.",
   "task.sentBy": "par {who}",

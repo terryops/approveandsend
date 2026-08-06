@@ -33,6 +33,12 @@ export const zhCN: Dictionary = {
   "inbox.noSubject": "（无主题）",
   "inbox.unread": "（{count} 封未读）",
   "inbox.unreadOne": "你还没打开过这封",
+  "inbox.bulkHint": "勾选可批量处理",
+  "inbox.bulkDismiss": "忽略",
+  "inbox.bulkReopen": "重新打开",
+  "inbox.bulkDelete": "删除",
+  "inbox.bulkDone": "已更新 {count} 条。",
+  "inbox.bulkDeleted": "已删除 {count} 条。下次同步会重新收进来。",
 
   // --- Signing in ---
   "login.title": "登录{app}",
@@ -82,6 +88,7 @@ export const zhCN: Dictionary = {
   "task.save": "保存",
   "task.redraft": "重写",
   "task.dismiss": "忽略",
+  "task.reopen": "重新打开",
   "task.editsBecomeRules": "邮件发出后，你在这里的修改会变成规则。",
   "task.sentAt": "发送于{time}。",
   "task.sentBy": "由 {who} 发出",

@@ -33,6 +33,12 @@ export const de: Dictionary = {
   "inbox.noSubject": "(kein Betreff)",
   "inbox.unread": "({count} ungelesen)",
   "inbox.unreadOne": "Diesen hast du noch nicht geöffnet",
+  "inbox.bulkHint": "Ankreuzen, um mehrere auf einmal zu bearbeiten",
+  "inbox.bulkDismiss": "Verwerfen",
+  "inbox.bulkReopen": "Wieder öffnen",
+  "inbox.bulkDelete": "Löschen",
+  "inbox.bulkDone": "{count} Aufgabe(n) aktualisiert.",
+  "inbox.bulkDeleted": "{count} Aufgabe(n) gelöscht. Beim nächsten Abgleich kommen sie zurück.",
 
   // --- Signing in ---
   "login.title": "Bei {app} anmelden",
@@ -82,6 +88,7 @@ export const de: Dictionary = {
   "task.save": "Speichern",
   "task.redraft": "Neu entwerfen",
   "task.dismiss": "Verwerfen",
+  "task.reopen": "Wieder öffnen",
   "task.editsBecomeRules": "Änderungen hier werden zu Regeln, sobald gesendet wird.",
   "task.sentAt": "Gesendet {time}.",
   "task.sentBy": "von {who}",

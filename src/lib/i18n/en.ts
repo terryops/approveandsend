@@ -51,6 +51,12 @@ export const en = {
   "inbox.noSubject": "(no subject)",
   "inbox.unread": "({count} new)",
   "inbox.unreadOne": "You have not opened this one yet",
+  "inbox.bulkHint": "Tick to act on several at once",
+  "inbox.bulkDismiss": "Dismiss",
+  "inbox.bulkReopen": "Reopen",
+  "inbox.bulkDelete": "Delete",
+  "inbox.bulkDone": "{count} task(s) updated.",
+  "inbox.bulkDeleted": "{count} task(s) deleted. They will come back on the next sync.",
 
   // --- Signing in ---
   "login.title": "Sign in to {app}",
@@ -100,6 +106,7 @@ export const en = {
   "task.save": "Save",
   "task.redraft": "Redraft",
   "task.dismiss": "Dismiss",
+  "task.reopen": "Reopen",
   "task.editsBecomeRules": "Edits here become rules once it is sent.",
   "task.sentAt": "Sent {time}.",
   "task.sentBy": "by {who}",

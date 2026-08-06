@@ -6,7 +6,15 @@ import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
 import { TASK_STATUSES, isTaskStatus, type TaskStatus } from '@/lib/tasks/types';
 
-import { loadDemo, logout, runQueue, syncNow } from './actions';
+import {
+  bulkDelete,
+  bulkDismiss,
+  bulkReopen,
+  loadDemo,
+  logout,
+  runQueue,
+  syncNow,
+} from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,12 +69,16 @@ export default async function InboxPage({
         ? { kind: 'ok', text: t('inbox.sentLearningQueued') }
         : typeof params.synced === 'string'
           ? { kind: 'ok', text: t('inbox.synced', { count: params.synced }) }
-          : typeof params.demo === 'string'
-            ? {
-                kind: 'ok',
-                text: t('inbox.demoLoaded', { count: params.demo }),
-              }
-            : null;
+          : typeof params.bulk === 'string'
+            ? { kind: 'ok', text: t('inbox.bulkDone', { count: params.bulk }) }
+            : typeof params.deleted === 'string'
+              ? { kind: 'ok', text: t('inbox.bulkDeleted', { count: params.deleted }) }
+              : typeof params.demo === 'string'
+                ? {
+                    kind: 'ok',
+                    text: t('inbox.demoLoaded', { count: params.demo }),
+                  }
+                : null;
 
   return (
     <>
@@ -122,10 +134,20 @@ export default async function InboxPage({
             </form>
           </div>
         ) : (
-          <ul className="list">
+          // One form around the whole list. The checkboxes share a name, so
+          // the post carries every ticked id and nothing else — no client
+          // state, and no way for the screen and the request to disagree.
+          <form className="list-form">
+            <ul className="list">
             {tasks.map((task) => (
               <li key={task.id}>
                 <div className="row">
+                  <input
+                    type="checkbox"
+                    name="taskId"
+                    value={task.id}
+                    aria-label={task.subject || t('inbox.noSubject')}
+                  />
                   <a className="subject grow" href={`/tasks/${task.id}`}>
                     {/* Only where it means something. Every pending task is
                         unread by definition, and a dot on all of them is a dot
@@ -145,7 +167,23 @@ export default async function InboxPage({
                 {task.analysis?.intent && <div className="snippet">{task.analysis.intent}</div>}
               </li>
             ))}
-          </ul>
+            </ul>
+            <div className="row bulk">
+              <span className="meta grow">{t('inbox.bulkHint')}</span>
+              <button type="submit" formAction={bulkDismiss}>
+                {t('inbox.bulkDismiss')}
+              </button>
+              <button type="submit" formAction={bulkReopen}>
+                {t('inbox.bulkReopen')}
+              </button>
+              {/* Last, and the only one that is not reversible: deleting drops
+                  the note that this message was ever seen, so the next sync
+                  ingests it again and drafts it again. */}
+              <button className="danger" type="submit" formAction={bulkDelete}>
+                {t('inbox.bulkDelete')}
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </>

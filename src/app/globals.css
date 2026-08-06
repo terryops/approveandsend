@@ -168,6 +168,22 @@ nav a.active {
   font-size: 13px;
 }
 
+/* The bulk bar sits under the list rather than above it, and carries no count:
+   it is a footer to what you have been reading, not a toolbar you have to get
+   past to read anything. */
+.list-form .bulk {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+  align-items: center;
+}
+
+.list-form input[type='checkbox'] {
+  accent-color: var(--accent);
+  flex: none;
+  margin: 0;
+}
+
 .snippet {
   color: var(--muted);
   font-size: 13px;

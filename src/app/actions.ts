@@ -34,6 +34,7 @@ import {
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
+import { deleteUnlessSent, reopenTask as reopen } from '@/lib/tasks/lifecycle';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
@@ -164,6 +165,29 @@ export async function dismissTask(form: FormData): Promise<void> {
   redirect('/');
 }
 
+/**
+ * Undoing a dismissal.
+ *
+ * The bulk filter and the dismiss button are both allowed to be wrong, and
+ * without this the only remedy is asking the customer to write again. A task
+ * that already has a draft goes straight back to review — the text is still
+ * there and still applies. One that never got that far goes back to pending
+ * and is queued, because "reopened" with nothing in it is just a row.
+ *
+ * Sent tasks are not reopenable, here or anywhere. What went out went out, and
+ * a status that could travel backwards from `sent` would make "how many did we
+ * answer this week" a question with no answer.
+ */
+export async function reopenTask(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await reopen(id);
+
+  revalidatePath('/');
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}`);
+}
+
 export async function redraftTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
@@ -188,6 +212,64 @@ export async function redraftTask(form: FormData): Promise<void> {
   }
   revalidatePath(`/tasks/${id}`);
   redirect(`/tasks/${id}?queued=1`);
+}
+
+/**
+ * Doing one thing to a screenful of tasks.
+ *
+ * The first sync of an established mailbox produces a hundred tasks nobody
+ * will ever answer, and clearing them one page at a time is how a tool gets
+ * abandoned in week one. The selection is a set of checkboxes in a plain form,
+ * so this works with no client-side JavaScript at all and the request carries
+ * exactly what was on screen.
+ *
+ * Every branch is deliberately a thing that can be undone. There is no bulk
+ * send: approving a hundred replies you have not read is not a feature, it is
+ * the failure this whole product exists to prevent.
+ */
+function selected(form: FormData): string[] {
+  return form
+    .getAll('taskId')
+    .filter((v): v is string => typeof v === 'string' && v !== '');
+}
+
+export async function bulkDismiss(form: FormData): Promise<void> {
+  await requireApi();
+  const ids = selected(form);
+  for (const id of ids) {
+    const task = updateTask(id, { status: 'dismissed' });
+    // Same reasoning as the single dismiss: a decision made here should not
+    // leave the mail bold for whoever opens the mailbox next.
+    if (task) await markHandled(task);
+  }
+  revalidatePath('/');
+  redirect(`/?bulk=${ids.length}`);
+}
+
+export async function bulkReopen(form: FormData): Promise<void> {
+  await requireApi();
+  const ids = selected(form);
+  let reopened = 0;
+  for (const id of ids) {
+    if (await reopen(id)) reopened += 1;
+  }
+  revalidatePath('/');
+  redirect(`/?bulk=${reopened}`);
+}
+
+export async function bulkDelete(form: FormData): Promise<void> {
+  await requireApi();
+  const ids = selected(form);
+  let deleted = 0;
+  for (const id of ids) {
+    // Sent tasks are the record of what a customer was told. Dropping that on
+    // the floor because a checkbox was ticked is not a thing this offers.
+    if (deleteUnlessSent(id)) deleted += 1;
+  }
+  revalidatePath('/');
+  // Worth saying plainly: the row is gone, but so is the note that this
+  // message was ever seen, and the next sync will ingest it again.
+  redirect(`/?deleted=${deleted}`);
 }
 
 export async function addRule(form: FormData): Promise<void> {

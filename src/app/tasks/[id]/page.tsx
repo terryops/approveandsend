@@ -12,7 +12,7 @@ import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
 import { reviewLanguage } from '@/lib/translation/translate';
 
-import { approveAndSend, dismissTask, redraftTask, saveDraft } from '../../actions';
+import { approveAndSend, dismissTask, redraftTask, reopenTask, saveDraft } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -247,6 +247,13 @@ export default async function TaskPage({
             <button type="submit" formAction={redraftTask}>
               {t('task.redraft')}
             </button>
+            {/* Only where there is something to come back from. A task that is
+                already awaiting review has nowhere to be reopened to. */}
+            {(task.status === 'dismissed' || task.status === 'failed') && (
+              <button type="submit" formAction={reopenTask}>
+                {t('task.reopen')}
+              </button>
+            )}
             <button className="danger" type="submit" formAction={dismissTask}>
               {t('task.dismiss')}
             </button>
