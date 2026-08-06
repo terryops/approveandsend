@@ -21,6 +21,7 @@ import { createWorker } from '../queue/worker';
 import { createRule, listRules } from '../rules/store';
 import { addMessage, countMessages, listMessages } from '../tasks/messages';
 import { countTasksByStatus, createTask, deleteTask, getTask, listTasks, markOpened, updateTask } from '../tasks/store';
+import { listVersions } from '../tasks/versions';
 import { draftReply } from './draft';
 
 // --- an AI server that returns whatever the test queues -------------------
@@ -757,6 +758,25 @@ describe('draft-reply job', () => {
     // Leaving it read would leave new text sitting under a row that looks
     // dealt with, which is how a redraft goes out unexamined.
     expect(getTask(task.id, db)?.openedAt).toBeNull();
+  });
+
+  it('keeps the draft it replaced, with the note that replaced it', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(
+      task.id,
+      { status: 'awaiting_review', draft: 'The old one', reviewerNotes: 'make it shorter' },
+      db,
+    );
+
+    enqueueDraftReply(task.id, { critic: false, db });
+    await worker().runOnce();
+
+    // Redraft is the button that used to destroy ten minutes of somebody's
+    // editing without looking like it could.
+    expect(listVersions(task.id, db)).toMatchObject([
+      { body: 'We have escalated this and will update you shortly.', notes: 'make it shorter' },
+    ]);
   });
 
   it('drafts one reply per task however many times it is enqueued', () => {

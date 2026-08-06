@@ -9,11 +9,19 @@ import { listAttachments } from '@/lib/tasks/attachments';
 import { listEvents } from '@/lib/tasks/events';
 import { listMessages } from '@/lib/tasks/messages';
 import { getTask, markOpened } from '@/lib/tasks/store';
+import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
 import { reviewLanguage } from '@/lib/translation/translate';
 
-import { approveAndSend, dismissTask, redraftTask, reopenTask, saveDraft } from '../../actions';
+import {
+  approveAndSend,
+  dismissTask,
+  redraftTask,
+  reopenTask,
+  restoreDraft,
+  saveDraft,
+} from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +67,10 @@ export default async function TaskPage({
   const bodyText = task.body || '';
   const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
   const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+
+  // Newest first, and never including what is in the box right now — the
+  // point of the panel is what the box used to say.
+  const versions = listVersions(task.id).filter(v => v.body.trim() !== body.trim());
 
   // Names, not ids, and resolved once each — a task drafted and edited six
   // times by the same person is six rows pointing at one operator.
@@ -327,6 +339,30 @@ export default async function TaskPage({
           <h2>{t('task.draftYouChanged')}</h2>
           <pre className="email">{task.draft}</pre>
         </div>
+      )}
+
+      {/* Everything the draft box used to say. Its own form, outside the one
+          above: a restore must not carry the text currently on screen with
+          it, and nesting forms is not a thing HTML does. */}
+      {versions.length > 0 && (
+        <details className="card">
+          <summary>{t('task.versions', { n: versions.length })}</summary>
+          {versions.map(version => (
+            <form action={restoreDraft} key={version.id} style={{ marginTop: 12 }}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="versionId" value={version.id} />
+              <div className="row">
+                <span className="meta grow">
+                  {version.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
+                  {t(`task.versionBy.${version.source}`)}
+                  {version.notes ? ` · ${version.notes}` : ''}
+                </span>
+                {!sent && <button type="submit">{t('task.restore')}</button>}
+              </div>
+              <pre className="email">{version.body}</pre>
+            </form>
+          ))}
+        </details>
       )}
 
       {/* Last on the page and collapsed, because the reviewer's job is the

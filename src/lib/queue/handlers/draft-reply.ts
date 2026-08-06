@@ -4,6 +4,7 @@ import { listRules } from '../../rules/store';
 import { recordEvent } from '../../tasks/events';
 import { listMessages } from '../../tasks/messages';
 import { gradeRisk } from '../../tasks/risk';
+import { recordDraft } from '../../tasks/versions';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
@@ -94,6 +95,15 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     );
 
     recordEvent(taskId, 'drafted', { db: context.db });
+    // Kept against the moment somebody presses Redraft on a reply they had
+    // already rewritten by hand. The note that produced this one goes with it,
+    // because "the version before I asked for it shorter" is how anybody
+    // actually looks for a draft.
+    recordDraft(taskId, result.draft, {
+      source: 'model',
+      notes: task.reviewerNotes,
+      db: context.db,
+    });
 
     // Now that both halves exist — their mail and our answer — one job can
     // render the pair for whoever has to read it.

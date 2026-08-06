@@ -36,6 +36,7 @@ import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
 import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
 import { recordEvent } from '@/lib/tasks/events';
+import { getVersion, recordDraft } from '@/lib/tasks/versions';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
@@ -124,6 +125,7 @@ export async function saveDraft(form: FormData): Promise<void> {
     // thinking, and a history of six identical "edited" lines says less than
     // one does.
     recordEvent(id, 'edited', { actor: (await currentOperator())?.id ?? null });
+    recordDraft(id, draft, { source: 'human' });
   }
 
   revalidatePath(`/tasks/${id}`);
@@ -222,6 +224,39 @@ export async function redraftTask(form: FormData): Promise<void> {
   }
   revalidatePath(`/tasks/${id}`);
   redirect(`/tasks/${id}?queued=1`);
+}
+
+/**
+ * Putting an older draft back in the box.
+ *
+ * The text that is being replaced is kept first, so this is itself undoable —
+ * a restore that discards the current draft would be the same trap as the
+ * redraft button it exists to make safe.
+ *
+ * A sent task is not restorable: its draft column is the record of what was
+ * proposed against what actually went out, and the learning loop reads the
+ * pair.
+ */
+export async function restoreDraft(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const version = getVersion(field(form, 'versionId'));
+  const task = getTask(id);
+
+  if (version && version.taskId === id && task && task.status !== 'sent') {
+    if (task.draft) recordDraft(id, task.draft, { source: 'human' });
+    updateTask(id, { draft: version.body });
+    recordEvent(id, 'edited', {
+      detail: 'restored',
+      actor: (await currentOperator())?.id ?? null,
+    });
+    // The reviewer is about to read a reply in a language they may not have,
+    // and the translation on file is of the text this just replaced.
+    enqueueForTranslation(id);
+  }
+
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?saved=1`);
 }
 
 /**

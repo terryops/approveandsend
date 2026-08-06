@@ -598,6 +598,32 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 20,
+    name: 'draft_versions',
+    up: db => {
+      // Every text that has ever been in the draft box, newest kept on the
+      // task itself and the rest here.
+      //
+      // Until now a redraft overwrote the draft in place, so a reviewer who
+      // edited a reply carefully and then pressed Redraft to see what else was
+      // possible lost the edit with no way back. That is a destructive button
+      // that does not look like one.
+      db.exec(`
+        CREATE TABLE draft_versions (
+          id         TEXT PRIMARY KEY,
+          task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          body       TEXT NOT NULL,
+          -- 'model' | 'human'. Who typed it, not who asked for it.
+          source     TEXT NOT NULL,
+          -- The reviewer's instruction for a redraft, where there was one.
+          notes      TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_draft_versions_task ON draft_versions(task_id, created_at);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
