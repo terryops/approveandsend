@@ -158,9 +158,17 @@ export default async function TaskPage({
           </p>
         )}
         <div className="meta">
+          {/* On a composed mail this address is the recipient, not a sender.
+              The label above the body says which, because a brief presented as
+              "the customer's email" is a lie on the one screen that has to be
+              trusted. */}
+          {task.origin === 'composed' ? `${t('compose.to')}: ` : ''}
           {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
           {task.receivedAt ? ` · ${task.receivedAt.slice(0, 16).replace('T', ' ')}` : ''}
         </div>
+        {task.origin === 'composed' && (
+          <p className="meta" style={{ marginTop: 12 }}>{t('task.brief')}</p>
+        )}
         {task.error && <p className="error">{task.error}</p>}
         <pre className="email" style={{ marginTop: 12 }}>
           {task.body || t('task.emptyBody')}

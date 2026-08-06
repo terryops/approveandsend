@@ -49,6 +49,23 @@ export function isCause(value: unknown): value is Cause {
   return typeof value === 'string' && (CAUSES as readonly string[]).includes(value);
 }
 
+/**
+ * Where a task came from: a mailbox, or somebody here deciding to write.
+ *
+ * It matters in exactly two places and both of them are things a reviewer
+ * would notice immediately. A composed mail must not go out with "Re:" glued
+ * to a subject nobody has ever seen, and the card at the top of the review
+ * screen is the operator's own brief rather than a customer's words — calling
+ * that "the customer's email" would be a lie on the one screen that has to be
+ * trusted.
+ */
+export const TASK_ORIGINS = ['inbound', 'composed'] as const;
+export type TaskOrigin = (typeof TASK_ORIGINS)[number];
+
+export function isOrigin(value: unknown): value is TaskOrigin {
+  return typeof value === 'string' && (TASK_ORIGINS as readonly string[]).includes(value);
+}
+
 export const SENTIMENTS = ['positive', 'neutral', 'negative', 'angry'] as const;
 export type Sentiment = (typeof SENTIMENTS)[number];
 
@@ -69,6 +86,7 @@ export interface Analysis {
 export interface Task {
   id: string;
   status: TaskStatus;
+  origin: TaskOrigin;
   scope: string | null;
   priority: number;
 
@@ -108,6 +126,7 @@ export interface Task {
 
 /** What ingestion knows before anything has looked at the mail. */
 export interface NewTask {
+  origin?: TaskOrigin;
   messageId?: string;
   threadId?: string;
   messageIdHeader?: string;

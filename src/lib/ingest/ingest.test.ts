@@ -528,6 +528,37 @@ describe('sendReply', () => {
     return updateTask(task.id, { status: 'awaiting_review', draft: 'A draft', ...overrides }, db)!;
   }
 
+  it('answers with Re: on the subject the customer wrote', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await sendReply(task.id, { finalReply: 'On its way.' }, { provider, db, learn: false });
+
+    expect(provider.sent[0]!.subject).toBe('Re: Refund please');
+  });
+
+  it('sends a composed mail under its own subject', async () => {
+    // "Re:" on a subject the recipient has never seen is how somebody decides
+    // the sender is a bot, and it is what happens when the reply path is the
+    // only path.
+    const { task } = createTask(
+      {
+        origin: 'composed',
+        subject: 'Yesterday’s export outage is fixed',
+        fromAddress: 'customer@example.com',
+      },
+      db,
+    );
+    updateTask(task.id, { status: 'awaiting_review', draft: 'All re-run.' }, db);
+    const provider = new FakeMailbox();
+
+    await sendReply(task.id, { finalReply: 'All re-run.' }, { provider, db, learn: false });
+
+    expect(provider.sent[0]!.subject).toBe('Yesterday’s export outage is fixed');
+    // Nothing to be in reply to, so nothing claiming to be.
+    expect(provider.sent[0]!.inReplyTo).toBeUndefined();
+  });
+
   it('sends an HTML part saying exactly what the text part says', async () => {
     const task = seed();
     const provider = new FakeMailbox();

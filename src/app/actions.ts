@@ -24,6 +24,7 @@ import {
   createWorker,
   enqueueAlternatives,
   enqueueBackfillScan,
+  enqueueCompose,
   enqueueConsolidateRules,
   enqueueForDrafting,
   enqueueForTranslation,
@@ -41,7 +42,7 @@ import { recordEvent } from '@/lib/tasks/events';
 import { getVersion, recordDraft } from '@/lib/tasks/versions';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
-import { getTask, updateTask } from '@/lib/tasks/store';
+import { createTask, getTask, updateTask } from '@/lib/tasks/store';
 import { sweepStuckTasks } from '@/lib/tasks/sweep';
 
 /**
@@ -259,6 +260,36 @@ export async function restoreDraft(form: FormData): Promise<void> {
 
   revalidatePath(`/tasks/${id}`);
   redirect(`/tasks/${id}?saved=1`);
+}
+
+/**
+ * Writing a mail nobody asked for.
+ *
+ * Produces an ordinary task and sends the operator to the review screen for
+ * it. There is no path from here to the mailbox that does not go through a
+ * human reading the result, which is the point of the whole product and is
+ * most load-bearing exactly here: an unsolicited mail has no customer question
+ * bounding what it can say.
+ */
+export async function composeEmail(form: FormData): Promise<void> {
+  await requireApi();
+  const to = field(form, 'to');
+  const brief = field(form, 'brief');
+  if (!to || !brief) redirect('/compose');
+
+  const { task } = createTask({
+    origin: 'composed',
+    // Where a customer's words would be. The drafter is told which it is
+    // reading; nothing else downstream needs to care.
+    body: brief,
+    fromAddress: to,
+    subject: field(form, 'subject'),
+    // Ahead of the inbox: somebody is watching this one.
+    priority: 3,
+  });
+
+  enqueueCompose(task.id);
+  redirect(`/tasks/${task.id}?queued=1`);
 }
 
 /**

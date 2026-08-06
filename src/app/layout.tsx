@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span className="tagline">{t('brand.tagline')}</span>
             <nav>
               <a href="/">{t('nav.inbox')}</a>
+              <a href="/compose">{t('nav.compose')}</a>
               <a href="/rules">{t('nav.rules')}</a>
               <a href="/backfill">{t('nav.archive')}</a>
               <a href="/queue">{t('nav.queue')}</a>

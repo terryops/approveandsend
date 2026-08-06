@@ -59,6 +59,7 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
   return {
     id: `backfill:${item.id}`,
     status: 'pending',
+    origin: 'inbound',
     scope: null,
     priority: 9,
     messageId: incoming.id,

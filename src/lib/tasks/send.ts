@@ -70,7 +70,10 @@ export async function sendReply(
 
   await provider.send({
     to: [{ address: task.fromAddress, ...(task.fromName ? { name: task.fromName } : {}) }],
-    subject: replySubject(task.subject),
+    // A composed mail starts the conversation, so there is nothing to be
+    // "Re:" about — and a subject nobody has ever seen prefixed like that is
+    // how a recipient decides the sender is a bot.
+    subject: task.origin === 'composed' ? task.subject : replySubject(task.subject),
     text: reply,
     ...(html ? { html } : {}),
     ...(task.messageIdHeader
@@ -105,7 +108,7 @@ export async function sendReply(
       {
         direction: 'outbound',
         fromAddress: '',
-        subject: replySubject(task.subject),
+        subject: task.origin === 'composed' ? task.subject : replySubject(task.subject),
         body: reply,
         receivedAt: new Date().toISOString(),
       },

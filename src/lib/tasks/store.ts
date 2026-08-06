@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { getDb, type Db } from '../db';
 import { recordEvent } from './events';
 import { isRiskFactor, isRiskLevel, type Risk } from './risk';
-import { isCause, isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
+import { isCause, isOrigin, isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
 
 interface TaskRow {
   id: string;
   status: string;
+  origin: string;
   scope: string | null;
   priority: number;
   message_id: string | null;
@@ -77,6 +78,7 @@ function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
     status: isTaskStatus(row.status) ? row.status : 'failed',
+    origin: isOrigin(row.origin) ? row.origin : 'inbound',
     scope: row.scope,
     priority: row.priority,
     messageId: row.message_id,
@@ -126,14 +128,15 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
 
   const row = db
     .prepare(
-      `INSERT INTO tasks (id, status, priority, message_id, thread_id, message_id_header,
+      `INSERT INTO tasks (id, status, origin, priority, message_id, thread_id, message_id_header,
                           subject, from_address, from_name, received_at, body,
                           created_at, updated_at)
-       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .get(
       randomUUID(),
+      input.origin ?? 'inbound',
       input.priority ?? 5,
       input.messageId ?? null,
       input.threadId ?? null,
@@ -233,6 +236,8 @@ export interface TaskUpdate {
   /** Ingestion writes the summary first and fills the real body in after the
    * detail fetch, so this is updatable even though nothing else rewrites it. */
   body?: string;
+  /** Only a composed mail rewrites this, and only where nobody typed one. */
+  subject?: string;
   analysis?: Analysis | null;
   draft?: string | null;
   finalReply?: string | null;
@@ -251,6 +256,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   scope: 'scope',
   priority: 'priority',
   body: 'body',
+  subject: 'subject',
   analysis: 'analysis',
   draft: 'draft',
   finalReply: 'final_reply',

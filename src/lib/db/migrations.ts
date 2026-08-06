@@ -641,6 +641,16 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 22,
+    name: 'task_origin',
+    up: db => {
+      db.exec(`
+        -- Everything that exists when this runs came out of a mailbox.
+        ALTER TABLE tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'inbound';
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -1,4 +1,5 @@
 import { BACKFILL_LEARN, BACKFILL_SCAN, backfillLearnHandler, backfillScanHandler } from './backfill';
+import { COMPOSE_MESSAGE, composeMessageHandler } from './compose-message';
 import { CONSOLIDATE_RULES, consolidateRulesHandler } from './consolidate-rules';
 import { DRAFT_REPLY, draftReplyHandler } from './draft-reply';
 import { ENRICH_CONTEXT, enrichContextHandler } from './enrich-context';
@@ -13,6 +14,7 @@ import type { JobHandler } from '../types';
 export const DEFAULT_HANDLERS: Record<string, JobHandler> = {
   [ENRICH_CONTEXT]: enrichContextHandler,
   [DRAFT_REPLY]: draftReplyHandler,
+  [COMPOSE_MESSAGE]: composeMessageHandler,
   [LEARN_FROM_SENT]: learnFromSentHandler,
   [LEARN_FROM_REJECTION]: learnFromRejectionHandler,
   [TRANSLATE_TASK]: translateTaskHandler,
@@ -24,6 +26,7 @@ export const DEFAULT_HANDLERS: Record<string, JobHandler> = {
 };
 
 export * from './backfill';
+export * from './compose-message';
 export * from './consolidate-rules';
 export * from './draft-reply';
 export * from './enrich-context';
