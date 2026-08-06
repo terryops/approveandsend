@@ -65,6 +65,8 @@ export interface Task {
   /** When a human last opened it. Cleared whenever the machine rewrites the
    * draft, because what they read is no longer what is there. */
   openedAt: string | null;
+  /** Why a human refused to send the draft. Their words, not the system's. */
+  rejectionReason: string | null;
 
   createdAt: string;
   updatedAt: string;

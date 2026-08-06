@@ -323,6 +323,16 @@ button.danger:hover {
   align-items: center;
 }
 
+/* Sits in the action row next to the button it belongs to, so it has to stop
+   being a full-width input without stopping being an input. */
+input[type='text'].reason {
+  width: auto;
+  flex: 1;
+  min-width: 180px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 .stack > * + * {
   margin-top: 10px;
 }

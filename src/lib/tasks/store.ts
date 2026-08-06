@@ -25,6 +25,7 @@ interface TaskRow {
   error: string | null;
   superseded_by: string | null;
   opened_at: string | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +73,7 @@ function mapTask(row: TaskRow): Task {
     error: row.error,
     supersededBy: row.superseded_by,
     openedAt: row.opened_at,
+    rejectionReason: row.rejection_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -212,6 +214,7 @@ export interface TaskUpdate {
   error?: string | null;
   supersededBy?: string | null;
   openedAt?: string | null;
+  rejectionReason?: string | null;
 }
 
 const COLUMNS: Record<keyof TaskUpdate, string> = {
@@ -228,6 +231,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   error: 'error',
   supersededBy: 'superseded_by',
   openedAt: 'opened_at',
+  rejectionReason: 'rejection_reason',
 };
 
 export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): Task | null {

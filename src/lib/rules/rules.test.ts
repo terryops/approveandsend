@@ -7,7 +7,7 @@ import { openDb, type Db } from '../db';
 import { currentVersion, migrate, MIGRATIONS, SCHEMA_VERSION } from '../db/migrations';
 import { dedupeAndApplyRule } from './dedup';
 import { diffSentences, diffSummary, splitSentences } from './diff';
-import { learnFromSentReply } from './learn';
+import { learnFromRejection, learnFromSentReply } from './learn';
 import { formatRulesForReview, selectRules } from './prompt';
 import { formatRetrieved, retrieveRules } from './retrieve';
 import { rankBySimilarity, shortlist, tokenize } from './similarity';
@@ -739,6 +739,82 @@ describe('learnFromSentReply', () => {
     const outcome = await learnFromSentReply(sample, { db });
     expect(outcome.discarded).toContain('new:(empty)');
     expect(listRules({}, db)).toHaveLength(0);
+  });
+});
+
+const rejected = {
+  taskId: 'task-43',
+  incomingSubject: 'Where is my refund?',
+  incomingBody: '<p>I asked for a refund last week and heard nothing.</p>',
+  rejectedDraft: 'Hi. Your refund will arrive within 3 days. Thanks.',
+  reason: 'We never promise a refund date. Support cannot see the bank timing.',
+};
+
+describe('learnFromRejection', () => {
+  it('shows the model the draft and the reason it was refused', async () => {
+    queued.push(JSON.stringify({ newRules: [] }));
+    await learnFromRejection(rejected, { db });
+
+    const prompt = prompts[0]!;
+    expect(prompt).toContain('The draft that was rejected');
+    expect(prompt).toContain('Why it was rejected');
+    expect(prompt).toContain('We never promise a refund date.');
+    expect(prompt).toContain('I asked for a refund last week');
+    expect(prompt).not.toContain('<p>');
+  });
+
+  it('stores what it learned against the task that taught it', async () => {
+    queued.push(
+      JSON.stringify({
+        newRules: [
+          {
+            content: 'Never state a specific timeframe for a refund.',
+            category: 'policy',
+            rationale: 'Support cannot see bank timing.',
+          },
+        ],
+      }),
+    );
+    queued.push(JSON.stringify({ action: 'add' }));
+
+    const outcome = await learnFromRejection(rejected, { db });
+
+    expect(outcome.results[0]?.action).toBe('add');
+    expect(listRules({}, db)[0]).toMatchObject({
+      content: 'Never state a specific timeframe for a refund.',
+      sourceTaskId: 'task-43',
+    });
+  });
+
+  it('confines the rule to the topic the mail was about', async () => {
+    queued.push(JSON.stringify({ newRules: [{ content: 'Never promise a refund date.' }] }));
+    queued.push(JSON.stringify({ action: 'add' }));
+
+    await learnFromRejection({ ...rejected, topic: 'billing' }, { db });
+
+    expect(listRules({}, db)[0]?.topics).toEqual(['billing']);
+  });
+
+  it('does nothing without a reason', async () => {
+    // A rejection on its own says the draft was wrong but not in what way, and
+    // a model asked to guess writes rules nobody agreed to.
+    const outcome = await learnFromRejection({ ...rejected, reason: '  ' }, { db });
+    expect(outcome.attempted).toBe(false);
+    expect(prompts).toHaveLength(0);
+  });
+
+  it('does nothing when there was no draft to reject', async () => {
+    const outcome = await learnFromRejection({ ...rejected, rejectedDraft: '' }, { db });
+    expect(outcome.attempted).toBe(false);
+    expect(prompts).toHaveLength(0);
+  });
+
+  it('survives a failed call', async () => {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    server = undefined;
+
+    const outcome = await learnFromRejection(rejected, { db });
+    expect(outcome).toMatchObject({ attempted: true, results: [], amended: [] });
   });
 });
 

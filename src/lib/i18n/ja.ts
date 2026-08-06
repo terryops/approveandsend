@@ -89,6 +89,8 @@ export const ja: Dictionary = {
   "task.redraft": "下書きし直す",
   "task.dismiss": "見送る",
   "task.reopen": "再開",
+  "task.reasonPlaceholder": "送らない理由は？（任意）",
+  "task.rejectedBecause": "却下：{reason}",
   "task.editsBecomeRules": "ここでの修正は、送信した時点でルールになります。",
   "task.sentAt": "{time} に送信しました。",
   "task.sentBy": "送信者は {who}",

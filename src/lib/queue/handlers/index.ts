@@ -2,6 +2,7 @@ import { BACKFILL_LEARN, BACKFILL_SCAN, backfillLearnHandler, backfillScanHandle
 import { CONSOLIDATE_RULES, consolidateRulesHandler } from './consolidate-rules';
 import { DRAFT_REPLY, draftReplyHandler } from './draft-reply';
 import { ENRICH_CONTEXT, enrichContextHandler } from './enrich-context';
+import { LEARN_FROM_REJECTION, learnFromRejectionHandler } from './learn-from-rejection';
 import { LEARN_FROM_SENT, learnFromSentHandler } from './learn-from-sent';
 import { SUMMARISE_RULES, summariseRulesHandler } from './summarise-rules';
 import { TRANSLATE_TASK, translateTaskHandler } from './translate-task';
@@ -12,6 +13,7 @@ export const DEFAULT_HANDLERS: Record<string, JobHandler> = {
   [ENRICH_CONTEXT]: enrichContextHandler,
   [DRAFT_REPLY]: draftReplyHandler,
   [LEARN_FROM_SENT]: learnFromSentHandler,
+  [LEARN_FROM_REJECTION]: learnFromRejectionHandler,
   [TRANSLATE_TASK]: translateTaskHandler,
   [SUMMARISE_RULES]: summariseRulesHandler,
   [CONSOLIDATE_RULES]: consolidateRulesHandler,
@@ -23,6 +25,7 @@ export * from './backfill';
 export * from './consolidate-rules';
 export * from './draft-reply';
 export * from './enrich-context';
+export * from './learn-from-rejection';
 export * from './learn-from-sent';
 export * from './summarise-rules';
 export * from './translate-task';

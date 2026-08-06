@@ -107,6 +107,8 @@ export const en = {
   "task.redraft": "Redraft",
   "task.dismiss": "Dismiss",
   "task.reopen": "Reopen",
+  "task.reasonPlaceholder": "Why not send this? (optional)",
+  "task.rejectedBecause": "Rejected: {reason}",
   "task.editsBecomeRules": "Edits here become rules once it is sent.",
   "task.sentAt": "Sent {time}.",
   "task.sentBy": "by {who}",

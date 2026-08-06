@@ -34,7 +34,7 @@ import {
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
-import { deleteUnlessSent, reopenTask as reopen } from '@/lib/tasks/lifecycle';
+import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { getTask, updateTask } from '@/lib/tasks/store';
@@ -153,9 +153,9 @@ export async function approveAndSend(form: FormData): Promise<void> {
 export async function dismissTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
-  const dismissed = updateTask(id, {
-    status: 'dismissed',
-    reviewerNotes: field(form, 'notes') || null,
+  const dismissed = rejectTask(id, {
+    reason: field(form, 'reason'),
+    notes: field(form, 'notes'),
   });
   // Dismissed is a decision, not an oversight: somebody looked at this and said
   // it needs no reply. Leaving it bold in the mailbox would put it back in
@@ -237,7 +237,7 @@ export async function bulkDismiss(form: FormData): Promise<void> {
   await requireApi();
   const ids = selected(form);
   for (const id of ids) {
-    const task = updateTask(id, { status: 'dismissed' });
+    const task = rejectTask(id);
     // Same reasoning as the single dismiss: a decision made here should not
     // leave the mail bold for whoever opens the mailbox next.
     if (task) await markHandled(task);

@@ -80,6 +80,15 @@ export default async function TaskPage({
         </p>
       )}
 
+      {/* Why the last person to look at this refused to send it. Shown to
+          whoever opens it next — usually somebody deciding whether to reopen,
+          and the reason is the whole of what they need to decide with. */}
+      {task.rejectionReason && task.status === 'dismissed' && (
+        <p className="banner">
+          {t('task.rejectedBecause', { reason: task.rejectionReason })}
+        </p>
+      )}
+
       {/* Above the message being answered, in the order it happened. A
           reviewer judging "is this reply right?" on a follow-up cannot answer
           it from the last message alone, and the reply they are approving was
@@ -254,6 +263,17 @@ export default async function TaskPage({
                 {t('task.reopen')}
               </button>
             )}
+            {/* The reason sits next to the button rather than behind a second
+                click, because a rejection with no explanation teaches nothing
+                and asking afterwards never works. Optional: somebody clearing
+                an email that needed no answer has nothing to explain. */}
+            <input
+              type="text"
+              className="reason"
+              name="reason"
+              defaultValue={task.rejectionReason ?? ''}
+              placeholder={t('task.reasonPlaceholder')}
+            />
             <button className="danger" type="submit" formAction={dismissTask}>
               {t('task.dismiss')}
             </button>

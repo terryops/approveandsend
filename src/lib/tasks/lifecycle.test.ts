@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../db';
 import { listJobs } from '../queue';
 
-import { deleteUnlessSent, reopenTask } from './lifecycle';
+import { deleteUnlessSent, rejectTask, reopenTask } from './lifecycle';
 import { createTask, getTask, markOpened, updateTask } from './store';
 import type { TaskStatus } from './types';
 
@@ -21,6 +21,60 @@ beforeEach(() => {
 
 afterEach(() => {
   db.close();
+});
+
+describe('rejectTask', () => {
+  it('records the reason and sends it to the learning loop', () => {
+    const id = task('awaiting_review', 'Your refund will arrive within 3 days.');
+
+    rejectTask(id, { reason: 'We never promise a refund date.' }, db);
+
+    expect(getTask(id, db)).toMatchObject({
+      status: 'dismissed',
+      rejectionReason: 'We never promise a refund date.',
+    });
+    const [job] = listJobs({}, db);
+    expect(job?.type).toBe('learn-from-rejection');
+    expect(job?.payload).toMatchObject({
+      reason: 'We never promise a refund date.',
+      rejectedDraft: 'Your refund will arrive within 3 days.',
+    });
+  });
+
+  it('learns nothing from a dismissal with no reason', () => {
+    const id = task('awaiting_review', 'A draft');
+
+    rejectTask(id, {}, db);
+
+    expect(getTask(id, db)?.status).toBe('dismissed');
+    expect(listJobs({}, db)).toHaveLength(0);
+  });
+
+  it('learns nothing when there was no draft to reject', () => {
+    // Clearing an email that never needed answering. There is no assistant
+    // output here to have been wrong about.
+    const id = task('pending');
+
+    rejectTask(id, { reason: 'Not a support request.' }, db);
+
+    expect(getTask(id, db)?.rejectionReason).toBe('Not a support request.');
+    expect(listJobs({}, db)).toHaveLength(0);
+  });
+
+  it('leaves the reviewer notes alone when none are passed', () => {
+    // What the bulk bar does. It has no notes box, and reading that as "the
+    // notes are now empty" would erase what somebody typed on the task.
+    const id = task('awaiting_review', 'A draft');
+    updateTask(id, { reviewerNotes: 'Ask billing about this one' }, db);
+
+    rejectTask(id, {}, db);
+
+    expect(getTask(id, db)?.reviewerNotes).toBe('Ask billing about this one');
+  });
+
+  it('returns null for a task that does not exist', () => {
+    expect(rejectTask('nope', { reason: 'why' }, db)).toBeNull();
+  });
 });
 
 describe('reopenTask', () => {

@@ -539,6 +539,20 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 17,
+    name: 'rejection_reason',
+    up: db => {
+      // Why a human refused to send a draft.
+      //
+      // Its own column rather than `error`, which already holds things like
+      // "Bulk mail — it carries a List-Unsubscribe header". Those are notes
+      // the system wrote to itself. This is the most direct statement of what
+      // the assistant got wrong that anybody ever types, and the learning loop
+      // reads it — the two must not be mixed in one field.
+      db.exec(`ALTER TABLE tasks ADD COLUMN rejection_reason TEXT`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

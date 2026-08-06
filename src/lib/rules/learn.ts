@@ -192,27 +192,47 @@ export async function learnFromSentReply(
   // nobody asked it to make.
   const topics = input.topic ? [input.topic] : [];
 
-  const empty: LearningOutcome = { attempted: false, results: [], amended: [], discarded: [] };
-  if (!input.sentReply.trim()) return empty;
+  if (!input.sentReply.trim()) {
+    return { attempted: false, results: [], amended: [], discarded: [] };
+  }
 
   const rules = listRules({ enabledOnly: true }, db);
+  const extraction = await extract(buildPrompt(input, rules, maxNewRules));
+  if (!extraction) return { attempted: true, results: [], amended: [], discarded: [] };
 
-  let extraction: ExtractionResult | null = null;
+  return apply(extraction, { rules, taskId: input.taskId, topics, maxNewRules, db });
+}
+
+/**
+ * Run the extractor and parse what comes back, or null if either step failed.
+ *
+ * Learning is best-effort and always runs after the decision it learns from —
+ * the mail has gone, or the draft is already rejected. A failure here must
+ * never surface as a failure of the thing the human actually did.
+ */
+async function extract(prompt: string): Promise<ExtractionResult | null> {
+  let response: string;
   try {
-    const response = await callAI(buildPrompt(input, rules, maxNewRules), { role: 'utility' });
-    extraction = extractJson<ExtractionResult>(response);
+    response = await callAI(prompt, { role: 'utility' });
   } catch (err) {
-    // Learning is best-effort and runs after the mail is already gone. A
-    // failure here must never look like a failure to send.
     console.warn('[rules] learning call failed:', errText(err));
-    return { ...empty, attempted: true };
+    return null;
   }
 
-  if (!extraction) {
-    console.warn('[rules] learning returned unparseable JSON');
-    return { ...empty, attempted: true };
-  }
+  const extraction = extractJson<ExtractionResult>(response);
+  if (!extraction) console.warn('[rules] learning returned unparseable JSON');
+  return extraction;
+}
 
+/** Everything after the model call: amend what it corrected, dedupe what it
+ * proposed, store what survives. Shared by every way of learning, because the
+ * safeguards here are the same whatever prompted the lesson. */
+async function apply(
+  extraction: ExtractionResult,
+  context: { rules: Rule[]; taskId: string; topics: string[]; maxNewRules: number; db: Db },
+): Promise<LearningOutcome> {
+  const { rules, taskId, topics, maxNewRules, db } = context;
+  const input = { taskId };
   const outcome: LearningOutcome = { attempted: true, results: [], amended: [], discarded: [] };
 
   // Amendments are checked against the ids that were actually in the prompt.
@@ -265,4 +285,107 @@ export async function learnFromSentReply(
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * A draft nobody would send, and a human's sentence saying why.
+ *
+ * The sent-reply path learns from a correction — two texts, and the difference
+ * between them. Here there is no second text. What there is instead is rarer
+ * and blunter: somebody stating in their own words what the assistant got
+ * wrong. That is the clearest training signal this system ever receives, and
+ * before this it was thrown away with the draft.
+ */
+export interface RejectionInput {
+  taskId: string;
+  topic?: string | null;
+  incomingSubject: string;
+  incomingBody: string;
+  /** The draft that was refused. */
+  rejectedDraft: string;
+  /** Why. Written by the reviewer, in whatever words they chose. */
+  reason: string;
+}
+
+function buildRejectionPrompt(
+  input: RejectionInput,
+  rules: Rule[],
+  maxNewRules: number,
+): string {
+  return `You maintain the rulebook for a customer-support reply assistant.
+
+A human read the draft below and refused to send it. They gave a reason. Your
+job is to work out what the rulebook should say so this does not happen again.
+
+## The incoming message
+Subject: ${input.incomingSubject}
+
+${clip(htmlToText(input.incomingBody), MAX_BODY_CHARS)}
+
+## The draft that was rejected
+${clip(input.rejectedDraft.trim(), MAX_DRAFT_CHARS)}
+
+## Why it was rejected
+${input.reason.trim()}
+
+## The rulebook as it stands
+${formatRulesForReview(rules)}
+
+## What to look for
+
+The reason is the lesson, but it is written about this one draft and a rule has
+to hold for the next one. "Promised a refund in 3 days, we do not commit to a
+date" is the observation; "never state a specific timeframe for a refund" is
+the rule.
+
+Take the reviewer at their word. They are the authority on what is correct here
+and you are not being asked whether the rejection was fair.
+
+Be careful about two things. A reason like "wrong tone" or "just bad" says
+nothing you can turn into a rule — propose nothing rather than inventing a
+principle the human did not state. And a rejection can be about the situation
+rather than the writing ("this one needs a human, the customer is furious"),
+which is a routing decision and not a rule about how to write.
+
+At most ${maxNewRules} new rules. Proposing none is a perfectly good answer.
+
+You may also amend an existing rule when the rejection shows it to be wrong or
+too weak — that is common here, because a draft that broke a rule the rulebook
+already contains means the rule was not stated firmly enough. Only use ids that
+appear above.
+
+Categories: policy (commitments, money, compliance), product (how the thing
+actually behaves), tone (voice and register), general (everything else).
+
+Reply with JSON only:
+{
+  "newRules": [
+    { "content": "one actionable sentence", "category": "policy", "rationale": "why" }
+  ],
+  "amendRules": [
+    { "ruleId": "id from above", "newContent": "the corrected rule", "rationale": "why" }
+  ]
+}`;
+}
+
+export async function learnFromRejection(
+  input: RejectionInput,
+  options: LearnOptions = {},
+): Promise<LearningOutcome> {
+  const db = options.db ?? getDb();
+  const maxNewRules = options.maxNewRules ?? 2;
+  const topics = input.topic ? [input.topic] : [];
+
+  // No reason, nothing to learn. A rejection on its own says the draft was
+  // wrong but not in what way, and asking a model to guess produces rules
+  // nobody agreed to.
+  if (!input.reason.trim() || !input.rejectedDraft.trim()) {
+    return { attempted: false, results: [], amended: [], discarded: [] };
+  }
+
+  const rules = listRules({ enabledOnly: true }, db);
+  const extraction = await extract(buildRejectionPrompt(input, rules, maxNewRules));
+  if (!extraction) return { attempted: true, results: [], amended: [], discarded: [] };
+
+  return apply(extraction, { rules, taskId: input.taskId, topics, maxNewRules, db });
 }

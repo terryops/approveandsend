@@ -89,6 +89,8 @@ export const de: Dictionary = {
   "task.redraft": "Neu entwerfen",
   "task.dismiss": "Verwerfen",
   "task.reopen": "Wieder öffnen",
+  "task.reasonPlaceholder": "Warum nicht senden? (optional)",
+  "task.rejectedBecause": "Abgelehnt: {reason}",
   "task.editsBecomeRules": "Änderungen hier werden zu Regeln, sobald gesendet wird.",
   "task.sentAt": "Gesendet {time}.",
   "task.sentBy": "von {who}",

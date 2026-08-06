@@ -13,8 +13,69 @@
 
 import { getDb, type Db } from '../db';
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
+import { enqueueLearnFromRejection } from '../queue/handlers/learn-from-rejection';
 
 import { deleteTask, getTask, updateTask } from './store';
+import type { Task } from './types';
+
+/**
+ * Dismiss a draft, optionally saying why.
+ *
+ * The reason is the point. Approving a reply teaches the rulebook by
+ * comparison — what the model wrote against what a human sent instead — but
+ * until now the opposite decision taught it nothing at all, even though a
+ * reviewer refusing to send something is the strongest evidence there is that
+ * the draft was wrong. When they say why, that sentence goes to the learning
+ * loop as well as onto the record.
+ */
+export function rejectTask(
+  id: string,
+  input: { reason?: string; notes?: string } = {},
+  db: Db = getDb(),
+): Task | null {
+  const before = getTask(id, db);
+  if (!before) return null;
+
+  const reason = input.reason?.trim() ?? '';
+  const task = updateTask(
+    id,
+    {
+      status: 'dismissed',
+      // Only when the caller was in a position to know. The bulk bar passes no
+      // notes because it has no box to type them in, and reading that as "the
+      // notes are now empty" would erase what somebody wrote on the task
+      // itself before ticking it.
+      ...(input.notes === undefined ? {} : { reviewerNotes: input.notes.trim() || null }),
+      rejectionReason: reason || null,
+    },
+    db,
+  );
+
+  // Only with both a reason and a draft to attach it to. "Wrong" about nothing
+  // in particular is not a lesson, and a dismissal with no draft behind it is
+  // somebody clearing an email that never needed answering.
+  if (reason && before.draft?.trim()) {
+    try {
+      enqueueLearnFromRejection(
+        {
+          taskId: id,
+          topic: before.scope,
+          incomingSubject: before.subject,
+          incomingBody: before.body,
+          rejectedDraft: before.draft,
+          reason,
+        },
+        { db },
+      );
+    } catch (error) {
+      // The dismissal itself stands. Failing here would tell the reviewer
+      // their decision did not take, and they would make it again.
+      console.warn('[tasks] could not enqueue the rejection learning job:', error);
+    }
+  }
+
+  return task;
+}
 
 /**
  * Put a task back in front of a human. Returns false when there was nothing to

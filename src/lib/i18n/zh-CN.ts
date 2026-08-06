@@ -89,6 +89,8 @@ export const zhCN: Dictionary = {
   "task.redraft": "重写",
   "task.dismiss": "忽略",
   "task.reopen": "重新打开",
+  "task.reasonPlaceholder": "为什么不发这封？（选填）",
+  "task.rejectedBecause": "已拒绝：{reason}",
   "task.editsBecomeRules": "邮件发出后，你在这里的修改会变成规则。",
   "task.sentAt": "发送于{time}。",
   "task.sentBy": "由 {who} 发出",
