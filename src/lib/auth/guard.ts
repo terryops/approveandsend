@@ -1,7 +1,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { COOKIE_NAME, isProtected, verifyToken } from './session';
+import { getOperator, type Operator } from '../operators/store';
+import { COOKIE_NAME, isProtected, verifyToken, type Identity } from './session';
 
 /**
  * One check, called from every page and every route handler.
@@ -11,10 +12,41 @@ import { COOKIE_NAME, isProtected, verifyToken } from './session';
  * matcher pattern is a security check that will eventually miss a route.
  */
 
-export async function hasSession(): Promise<boolean> {
-  if (!isProtected()) return true;
+/**
+ * The identity in the cookie, or null.
+ *
+ * An unprotected install answers `{ operatorId: null }` — logged in as nobody,
+ * which is true, rather than not logged in, which would send someone to a
+ * login page that has no password to accept.
+ */
+export async function currentIdentity(): Promise<Identity | null> {
+  if (!isProtected()) return { operatorId: null };
+
   const jar = await cookies();
-  return verifyToken(jar.get(COOKIE_NAME)?.value);
+  const identity = verifyToken(jar.get(COOKIE_NAME)?.value);
+  if (!identity?.operatorId) return identity;
+
+  // A cookie stays cryptographically valid for a week, so disabling someone
+  // would otherwise not take effect until it expired. Reading the row on every
+  // request is what makes the button on the operators page mean anything.
+  const operator = getOperator(identity.operatorId);
+  return operator && !operator.disabledAt ? identity : null;
+}
+
+export async function hasSession(): Promise<boolean> {
+  return (await currentIdentity()) !== null;
+}
+
+/**
+ * The operator behind this request, if there is a named one.
+ *
+ * Null means there is no name to write: either nobody is logged in, or the
+ * shared password is, which is nobody in particular. A disabled operator never
+ * reaches here — `currentIdentity` has already turned them away.
+ */
+export async function currentOperator(): Promise<Operator | null> {
+  const identity = await currentIdentity();
+  return identity?.operatorId ? getOperator(identity.operatorId) : null;
 }
 
 /** For server components. Sends the browser to the login page. */

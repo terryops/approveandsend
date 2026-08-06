@@ -51,11 +51,13 @@ export const en = {
 
   // --- Signing in ---
   "login.title": "Sign in to {app}",
+  "login.namePlaceholder": "Your name",
   "login.passwordPlaceholder": "Password",
-  "login.wrongPassword": "That is not the password.",
+  "login.wrongPassword": "That name and password do not match.",
   "login.submit": "Sign in",
   "login.hintLead": "One password, set as",
   "login.hintRest": ". There are no accounts.",
+  "login.hintOperators": "Sign in as yourself, so the replies you send carry your name.",
 
   // --- The review screen — the one that matters ---
   "task.backToInbox": "← Inbox",

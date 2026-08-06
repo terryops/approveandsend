@@ -1,20 +1,33 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
+import { countActiveOperators } from '../operators/store';
+import { sessionSecret } from './secret';
+
 /**
- * Single-tenant auth: one password, one signed cookie.
+ * One signed cookie, which may or may not have a name in it.
  *
  * The system this was extracted from shipped a plaintext user table and a
- * session token of the form `user:timestamp:random` that nothing verified —
- * so anyone could mint one by typing it into the cookie jar. Both mistakes are
- * fixed here by having neither a user table nor an unsigned token: the cookie
- * is an expiry plus an HMAC over it, and the key is derived from the password,
- * so changing the password logs everyone out for free.
+ * session token of the form `user:timestamp:random` that nothing verified — so
+ * anyone could authenticate as anyone by typing a cookie. The fix is not to
+ * drop the identity but to sign it: the payload is an operator id, an expiry
+ * and a nonce, and the HMAC covers all three. Editing the id invalidates the
+ * token exactly as editing the expiry does.
+ *
+ * An empty id is `ADMIN_PASSWORD`, logged in as nobody in particular. That
+ * install has no operators and nothing to attribute, so the identity slot is
+ * honestly empty rather than filled with a fictional "admin" who never
+ * existed.
  */
 
 const COOKIE_NAME = 'aas_session';
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { COOKIE_NAME };
+
+/** Who a valid cookie says is holding it. `null` means the shared password. */
+export interface Identity {
+  operatorId: string | null;
+}
 
 /**
  * The password, or null when none is configured.
@@ -29,14 +42,26 @@ export function adminPassword(): string | null {
   return value ? value : null;
 }
 
+/**
+ * Whether anything is guarding this install.
+ *
+ * Operators count. A team that added four people and never set
+ * `ADMIN_PASSWORD` has a login wall, and the red banner saying otherwise would
+ * be a lie about the one thing the banner exists to tell the truth about.
+ */
 export function isProtected(): boolean {
-  return adminPassword() !== null;
+  if (adminPassword() !== null) return true;
+  try {
+    return countActiveOperators() > 0;
+  } catch {
+    // No database yet — the first run, before any migration. Nothing is
+    // guarding it, which is exactly what the banner should say.
+    return false;
+  }
 }
 
 function signingKey(): Buffer {
-  const password = adminPassword() ?? '';
-  const secret = process.env.SESSION_SECRET?.trim() || `aas:${password}`;
-  return Buffer.from(secret, 'utf8');
+  return Buffer.from(sessionSecret(adminPassword()), 'utf8');
 }
 
 function sign(payload: string): string {
@@ -51,31 +76,51 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+/**
+ * The shared password.
+ *
+ * True when none is configured — but that no longer means the door is open,
+ * because operators may be guarding it instead. `isProtected()` is the
+ * question about the door; this one is only about this password.
+ */
 export function checkPassword(input: string): boolean {
   const password = adminPassword();
   if (password === null) return true;
   return safeEqual(input, password);
 }
 
-export function issueToken(ttlMs = DEFAULT_TTL_MS): string {
+export function issueToken(operatorId: string | null = null, ttlMs = DEFAULT_TTL_MS): string {
   // The nonce makes two tokens issued in the same millisecond distinguishable,
   // which matters only for debugging — it is not a session id, because there
   // is no session store to look it up in.
-  const payload = `${Date.now() + ttlMs}.${randomBytes(9).toString('base64url')}`;
+  const payload = `${operatorId ?? ''}.${Date.now() + ttlMs}.${randomBytes(9).toString('base64url')}`;
   return `${payload}.${sign(payload)}`;
 }
 
-export function verifyToken(token: string | undefined | null): boolean {
-  if (!token) return false;
+/**
+ * The identity a cookie proves, or null if it proves nothing.
+ *
+ * Null and `{ operatorId: null }` are different answers and the distinction is
+ * load-bearing: the first is "not logged in", the second is "logged in with
+ * the shared password". Returning a boolean here is what let the predecessor
+ * treat every session as the same anonymous person.
+ */
+export function verifyToken(token: string | undefined | null): Identity | null {
+  if (!token) return null;
 
   const cut = token.lastIndexOf('.');
-  if (cut <= 0) return false;
+  if (cut <= 0) return null;
 
   const payload = token.slice(0, cut);
-  if (!safeEqual(token.slice(cut + 1), sign(payload))) return false;
+  if (!safeEqual(token.slice(cut + 1), sign(payload))) return null;
 
-  const expiry = Number(payload.split('.')[0]);
-  return Number.isFinite(expiry) && expiry > Date.now();
+  const parts = payload.split('.');
+  if (parts.length !== 3) return null;
+
+  const expiry = Number(parts[1]);
+  if (!Number.isFinite(expiry) || expiry <= Date.now()) return null;
+
+  return { operatorId: parts[0] || null };
 }
 
 /**

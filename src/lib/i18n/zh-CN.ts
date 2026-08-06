@@ -33,11 +33,13 @@ export const zhCN: Dictionary = {
 
   // --- Signing in ---
   "login.title": "登录{app}",
+  "login.namePlaceholder": "你的名字",
   "login.passwordPlaceholder": "密码",
-  "login.wrongPassword": "密码不对。",
+  "login.wrongPassword": "名字和密码对不上。",
   "login.submit": "登录",
   "login.hintLead": "只有一个密码，由",
   "login.hintRest": "设定。没有账号这回事。",
+  "login.hintOperators": "用你自己的身份登录，这样你发出去的回复上就署着你的名字。",
 
   // --- The review screen — the one that matters ---
   "task.backToInbox": "← 收件箱",

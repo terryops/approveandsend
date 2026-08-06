@@ -33,11 +33,13 @@ export const ja: Dictionary = {
 
   // --- Signing in ---
   "login.title": "{app} にサインイン",
+  "login.namePlaceholder": "あなたの名前",
   "login.passwordPlaceholder": "パスワード",
-  "login.wrongPassword": "パスワードが違います。",
+  "login.wrongPassword": "名前とパスワードが一致しません。",
   "login.submit": "サインイン",
   "login.hintLead": "パスワードは1つだけで、環境変数",
   "login.hintRest": "で設定します。アカウントという仕組みはありません。",
+  "login.hintOperators": "自分の名前でサインインしてください。送信した返信にその名前が残ります。",
 
   // --- The review screen — the one that matters ---
   "task.backToInbox": "← 受信トレイ",

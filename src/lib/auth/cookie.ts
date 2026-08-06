@@ -10,8 +10,8 @@ import { COOKIE_NAME, cookieOptions, cookieSecure, issueToken } from './session'
  * a request that arrived directly, the proxy's value when there is one — so
  * there is no ambiguous "header is missing" case to guess at.
  */
-export async function setSessionCookie(): Promise<void> {
+export async function setSessionCookie(operatorId: string | null = null): Promise<void> {
   const proto = (await headers()).get('x-forwarded-proto');
   const jar = await cookies();
-  jar.set(COOKIE_NAME, issueToken(), cookieOptions(cookieSecure(proto)));
+  jar.set(COOKIE_NAME, issueToken(operatorId), cookieOptions(cookieSecure(proto)));
 }

@@ -8,7 +8,8 @@ import { requireApi } from '@/lib/auth/guard';
 import { cancelPendingBackfill, clearBackfill } from '@/lib/backfill/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setSessionCookie } from '@/lib/auth/cookie';
-import { COOKIE_NAME, checkPassword } from '@/lib/auth/session';
+import { COOKIE_NAME, adminPassword, checkPassword, isProtected } from '@/lib/auth/session';
+import { authenticate, touchOperator } from '@/lib/operators/store';
 import { t } from '@/lib/i18n';
 import { syncInbox } from '@/lib/ingest/sync';
 import {
@@ -42,6 +43,24 @@ function message(error: unknown): string {
 
 export async function login(form: FormData): Promise<void> {
   const password = field(form, 'password');
+  const name = field(form, 'name');
+
+  // One error message for every way this can fail, including a name that does
+  // not exist. Telling someone which half they got wrong is telling them which
+  // names are real.
+  if (name) {
+    const operator = authenticate(name, password);
+    if (!operator) redirect('/login?error=1');
+    touchOperator(operator.id);
+    await setSessionCookie(operator.id);
+    redirect('/');
+  }
+
+  // No name given, so this is the shared password — which is not an option on
+  // an install whose only door is its operators. Without this line, adding
+  // operators to a passwordless install would leave a blank-name login walking
+  // straight past all of them.
+  if (adminPassword() === null && isProtected()) redirect('/login?error=1');
   if (!checkPassword(password)) redirect('/login?error=1');
 
   await setSessionCookie();

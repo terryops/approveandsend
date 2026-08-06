@@ -298,6 +298,44 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 9,
+    name: 'operators',
+    up: db => {
+      // The people doing the approving, by name.
+      //
+      // No roles column, and that is the design rather than an omission. A
+      // support desk of four people does not need a permission matrix; what it
+      // needs is to be able to answer "who sent that?" six weeks later. Roles
+      // would add a way for the system to say no to someone, which is a cost,
+      // in exchange for a restriction nobody asked for.
+      //
+      // `ADMIN_PASSWORD` still works and still logs in as nobody in
+      // particular, so an install that never adds an operator is unchanged.
+      db.exec(`
+        CREATE TABLE operators (
+          id   TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          -- scrypt$N$r$p$salt$hash, base64url. The system this came from kept
+          -- plaintext passwords in a source file.
+          password_hash TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+          last_seen_at TEXT,
+          -- Disabled, never deleted. Their name is on replies that were sent,
+          -- and a foreign key that dangles turns "who sent that?" back into a
+          -- question nobody can answer — which is the one thing this table
+          -- exists to prevent.
+          disabled_at  TEXT
+        );
+
+        -- Two people called "Sam" on one desk is an ambiguity at exactly the
+        -- moment the attribution is being read, so the database refuses it.
+        CREATE UNIQUE INDEX idx_operators_name ON operators(name COLLATE NOCASE);
+
+        CREATE INDEX idx_operators_active ON operators(disabled_at);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

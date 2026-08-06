@@ -33,11 +33,13 @@ export const de: Dictionary = {
 
   // --- Signing in ---
   "login.title": "Bei {app} anmelden",
+  "login.namePlaceholder": "Dein Name",
   "login.passwordPlaceholder": "Passwort",
-  "login.wrongPassword": "Das ist nicht das Passwort.",
+  "login.wrongPassword": "Name und Passwort passen nicht zusammen.",
   "login.submit": "Anmelden",
   "login.hintLead": "Ein Passwort, gesetzt als",
   "login.hintRest": ". Es gibt keine Konten.",
+  "login.hintOperators": "Melde dich unter deinem Namen an, damit die Antworten, die du sendest, ihn tragen.",
 
   // --- The review screen — the one that matters ---
   "task.backToInbox": "← Posteingang",
