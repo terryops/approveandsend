@@ -6,6 +6,7 @@ import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
 import { listAttachments } from '@/lib/tasks/attachments';
+import { listAlternatives } from '@/lib/tasks/alternatives';
 import { listEvents } from '@/lib/tasks/events';
 import { listMessages } from '@/lib/tasks/messages';
 import { getTask, markOpened } from '@/lib/tasks/store';
@@ -16,11 +17,13 @@ import { reviewLanguage } from '@/lib/translation/translate';
 
 import {
   approveAndSend,
+  askForOptions,
   dismissTask,
   redraftTask,
   reopenTask,
   restoreDraft,
   saveDraft,
+  useAlternative,
 } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +77,9 @@ export default async function TaskPage({
 
   // Names, not ids, and resolved once each — a task drafted and edited six
   // times by the same person is six rows pointing at one operator.
+  // Hidden once the reply has gone: the choice they represent has been made.
+  const alternatives = sent ? [] : listAlternatives(task.id);
+
   const history = listEvents(task.id);
   const names = new Map<string, string>();
   for (const event of history) {
@@ -297,6 +303,13 @@ export default async function TaskPage({
             <button type="submit" formAction={redraftTask}>
               {t('task.redraft')}
             </button>
+            {/* A different question from Redraft, which is why it is a
+                different button: this one is for a reviewer who does not yet
+                know what the right answer is, rather than one who knows this
+                is the wrong one. */}
+            <button type="submit" formAction={askForOptions}>
+              {t('task.askForOptions')}
+            </button>
             {/* Only where there is something to come back from. A task that is
                 already awaiting review has nowhere to be reopened to. */}
             {(task.status === 'dismissed' || task.status === 'failed') && (
@@ -339,6 +352,30 @@ export default async function TaskPage({
           <h2>{t('task.draftYouChanged')}</h2>
           <pre className="email">{task.draft}</pre>
         </div>
+      )}
+
+      {/* Above the version history: these are a decision waiting to be made,
+          and that is a record of one already taken. Each is its own form for
+          the same reason a restore is — it must not carry the textarea. */}
+      {!sent && alternatives.length > 0 && (
+        <details className="card" open>
+          <summary>{t('task.options', { n: alternatives.length })}</summary>
+          <p className="meta">{t('task.optionsHint')}</p>
+          {alternatives.map(option => (
+            <form action={useAlternative} key={option.id} style={{ marginTop: 12 }}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="alternativeId" value={option.id} />
+              <div className="row">
+                <span className="meta grow">
+                  <strong>{option.label}</strong>
+                  {option.strategy ? ` · ${option.strategy}` : ''}
+                </span>
+                <button type="submit">{t('task.useOption')}</button>
+              </div>
+              <pre className="email">{option.body}</pre>
+            </form>
+          ))}
+        </details>
       )}
 
       {/* Everything the draft box used to say. Its own form, outside the one

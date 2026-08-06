@@ -22,6 +22,7 @@ import { syncInbox } from '@/lib/ingest/sync';
 import {
   DEFAULT_HANDLERS,
   createWorker,
+  enqueueAlternatives,
   enqueueBackfillScan,
   enqueueConsolidateRules,
   enqueueForDrafting,
@@ -35,6 +36,7 @@ import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
 import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
+import { getAlternative } from '@/lib/tasks/alternatives';
 import { recordEvent } from '@/lib/tasks/events';
 import { getVersion, recordDraft } from '@/lib/tasks/versions';
 import { markHandled } from '@/lib/tasks/mark-read';
@@ -252,6 +254,60 @@ export async function restoreDraft(form: FormData): Promise<void> {
     });
     // The reviewer is about to read a reply in a language they may not have,
     // and the translation on file is of the text this just replaced.
+    enqueueForTranslation(id);
+  }
+
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?saved=1`);
+}
+
+/**
+ * Asking what else this reply could have said.
+ *
+ * A separate button from Redraft because they answer different questions.
+ * Redraft says this draft is wrong and here is why; this says the reviewer
+ * does not yet know what right looks like, and would like to see the choice
+ * laid out before committing the desk to one of them.
+ *
+ * Deliberately not automatic. Most mail is answered by the first draft, and
+ * three replies to every routine question is three times the bill for the one
+ * task in ten that is actually a judgement call.
+ */
+export async function askForOptions(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const task = getTask(id);
+
+  if (task && task.status !== 'sent' && task.status !== 'dismissed') {
+    enqueueAlternatives(id);
+  }
+
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?queued=1`);
+}
+
+/**
+ * Putting one of the options in the draft box.
+ *
+ * The same shape as a restore, and for the same reason: what is in the box now
+ * is kept first, so picking B and then wanting A back does not cost anybody
+ * their editing. The set is left on the page — a reviewer who picks one and
+ * then changes their mind should not have to pay for the other two again.
+ */
+export async function useAlternative(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const option = getAlternative(field(form, 'alternativeId'));
+  const task = getTask(id);
+
+  if (option && option.taskId === id && task && task.status !== 'sent') {
+    if (task.draft) recordDraft(id, task.draft, { source: 'human' });
+    recordDraft(id, option.body, { source: 'model', notes: option.strategy || null });
+    updateTask(id, { draft: option.body });
+    recordEvent(id, 'edited', {
+      detail: `option ${option.label}`,
+      actor: (await currentOperator())?.id ?? null,
+    });
     enqueueForTranslation(id);
   }
 

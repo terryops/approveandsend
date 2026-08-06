@@ -624,6 +624,23 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 21,
+    name: 'draft_alternatives',
+    up: db => {
+      db.exec(`
+        CREATE TABLE draft_alternatives (
+          id         TEXT PRIMARY KEY,
+          task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          label      TEXT NOT NULL,
+          strategy   TEXT NOT NULL,
+          body       TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_draft_alternatives_task ON draft_alternatives(task_id, label);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

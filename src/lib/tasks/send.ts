@@ -4,6 +4,7 @@ import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml } from '../mail/render';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
+import { clearAlternatives } from './alternatives';
 import { recordEvent } from './events';
 import { enqueueForTranslation } from '../queue/handlers/translate-task';
 import { markHandled } from './mark-read';
@@ -116,6 +117,11 @@ export async function sendReply(
   }
 
   recordEvent(taskId, 'sent', { ...(input.sentBy ? { actor: input.sentBy } : {}), db });
+
+  // The roads not taken. Nobody reads them once a reply has gone out, and a
+  // desk that keeps every option it ever generated is a desk whose database
+  // grows with its bill rather than its work.
+  clearAlternatives(taskId, db);
 
   // Reusing the provider we just sent through rather than asking for another:
   // on IMAP that is the difference between one connection and two.

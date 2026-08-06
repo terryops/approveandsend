@@ -264,7 +264,33 @@ function parseDraft(
   };
 }
 
-export async function draftReply(task: Task, options: DraftOptions = {}): Promise<DraftResult> {
+/**
+ * Everything a prompt about this task needs, assembled once.
+ *
+ * Pulled out of `draftReply` when a second kind of generation appeared. The
+ * expensive half of drafting is not the drafting: it is working out what the
+ * mail is about, which rules that routes to, what had to be retrieved because
+ * it did not fit, what the enrichment found and what has already been said in
+ * the thread. Any generation that answers the same email needs the same
+ * answers, and paying for them twice would be paying for a classification call
+ * to tell us what we already know.
+ */
+export interface Assembled {
+  workspace: WorkspaceConfig;
+  /** Undefined where the desk has no topic vocabulary to route by. */
+  topic: string | undefined;
+  rulesBlock: string;
+  contextBlock: string;
+  threadBlock: string;
+  steerBlock: string;
+  filesBlock: string;
+  /** Rules that went into the prompt. Not yet counted against telemetry. */
+  appliedIds: string[];
+  /** What the budget pushed out and retrieval did not ask back. */
+  droppedIds: string[];
+}
+
+export async function assemble(task: Task, options: DraftOptions = {}): Promise<Assembled> {
   const db = options.db ?? getDb();
   const workspace = options.workspace ?? getWorkspaceConfig();
 
@@ -290,36 +316,50 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
       })
     : { rules: [], refusedIds: [] };
 
-  const rulesBlock = block.text + formatRetrieved(dropped.rules);
   const appliedIds = [...block.includedIds, ...dropped.rules.map(rule => rule.id)];
 
-  // Whatever the enrichment job found, if it ran. Empty when no sources are
-  // configured, which is the default and costs nothing.
-  const contextBlock = options.context ?? contextForPrompt(task.id, db);
+  return {
+    workspace,
+    topic: topic || undefined,
+    rulesBlock: block.text + formatRetrieved(dropped.rules),
+    // Whatever the enrichment job found, if it ran. Empty when no sources are
+    // configured, which is the default and costs nothing.
+    contextBlock: options.context ?? contextForPrompt(task.id, db),
+    // Everything said in this conversation before the message being answered.
+    // Overridable for the same reason `context` is: the backfill reconstructs a
+    // thread as it stood when the archived reply was written, not as it stands
+    // now, and the two are not the same conversation.
+    threadBlock: options.thread ?? threadContextFor(task.id, {}, db),
+    // Read off the task rather than passed in by the caller: a redraft that is
+    // retried by the queue, or requeued by the sweep, has to carry the same
+    // instruction, and a payload would have lost it on the first retry.
+    steerBlock: buildSteer(options.steer ?? task.reviewerNotes ?? ''),
+    // Names only, and only of the files a person meant to send — see
+    // `attachmentSummary`.
+    filesBlock: buildFiles(options.files ?? attachmentSummary(listAttachments(task.id, db))),
+    appliedIds,
+    // What did not fit and was not asked for either. A rule that was retrieved
+    // is not a dropped rule, and reporting it as one would hide the fact that
+    // retrieval is working.
+    droppedIds: block.droppedIds.filter(id => !appliedIds.includes(id)),
+  };
+}
 
-  // Everything said in this conversation before the message being answered.
-  // Overridable for the same reason `context` is: the backfill reconstructs a
-  // thread as it stood when the archived reply was written, not as it stands
-  // now, and the two are not the same conversation.
-  const threadBlock = options.thread ?? threadContextFor(task.id, {}, db);
-
-  // Read off the task rather than passed in by the caller: a redraft that is
-  // retried by the queue, or requeued by the sweep, has to carry the same
-  // instruction, and a payload would have lost it on the first retry.
-  const steerBlock = buildSteer(options.steer ?? task.reviewerNotes ?? '');
-
-  // Names only, and only of the files a person meant to send — see
-  // `attachmentSummary`.
-  const filesBlock = buildFiles(options.files ?? attachmentSummary(listAttachments(task.id, db)));
+export async function draftReply(task: Task, options: DraftOptions = {}): Promise<DraftResult> {
+  const db = options.db ?? getDb();
+  const {
+    workspace, topic, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
+    appliedIds, droppedIds,
+  } = await assemble(task, options);
 
   const raw = await callAI(
     buildPrompt(
-      task, workspace, rulesBlock, contextBlock, topic || undefined,
+      task, workspace, rulesBlock, contextBlock, topic,
       threadBlock, steerBlock, filesBlock,
     ),
     { role: 'drafter' },
   );
-  const parsed = parseDraft(raw, workspace, topic || undefined);
+  const parsed = parseDraft(raw, workspace, topic);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
   }
@@ -334,10 +374,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
     analysis: parsed.analysis,
     draft: signed,
     appliedRuleIds: appliedIds,
-    // What did not fit and was not asked for either. A rule that was retrieved
-    // is not a dropped rule, and reporting it as one would hide the fact that
-    // retrieval is working.
-    droppedRuleIds: block.droppedIds.filter(id => !appliedIds.includes(id)),
+    droppedRuleIds: droppedIds,
   };
 
   if (options.critic) {
