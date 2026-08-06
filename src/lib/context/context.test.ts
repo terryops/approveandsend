@@ -199,13 +199,14 @@ describe('the prompt block', () => {
 describe('the registry', () => {
   it('leaves an unconfigured built-in out', async () => {
     // No STRIPE_API_KEY: Stripe must not appear, and must not be asked to run.
-    expect(await listContextSources()).toEqual([]);
+    // History does, always — it needs no credentials and no configuration.
+    expect((await listContextSources()).map(s => s.id)).toEqual(['history']);
   });
 
   it('includes a built-in once it has credentials', async () => {
     process.env.STRIPE_API_KEY = 'rk_test_x';
     resetContextSources();
-    expect((await listContextSources()).map(s => s.id)).toEqual(['stripe']);
+    expect((await listContextSources()).map(s => s.id)).toEqual(['history', 'stripe']);
   });
 
   it('loads an external source from a path', async () => {
@@ -221,8 +222,8 @@ describe('the registry', () => {
     resetContextSources();
 
     const sources = await listContextSources();
-    expect(sources.map(s => s.id)).toEqual(['crm']);
-    expect(await sources[0]!.lookup({ taskId: 't', email: 'a@b.c', name: null, subject: '' })).toMatchObject(
+    expect(sources.map(s => s.id)).toEqual(['history', 'crm']);
+    expect(await sources[1]!.lookup({ taskId: 't', email: 'a@b.c', name: null, subject: '' })).toMatchObject(
       { prompt: 'Enterprise account.' },
     );
   });
@@ -233,7 +234,7 @@ describe('the registry', () => {
     process.env.AAS_CONTEXT_SOURCES = `${path},${join(dir, 'absent.mjs')}`;
     resetContextSources();
 
-    expect(await listContextSources()).toEqual([]);
+    expect((await listContextSources()).map(s => s.id)).toEqual(['history']);
   });
 
   it('ignores a module that exports the wrong shape', async () => {
@@ -242,7 +243,7 @@ describe('the registry', () => {
     process.env.AAS_CONTEXT_SOURCES = path;
     resetContextSources();
 
-    expect(await listContextSources()).toEqual([]);
+    expect((await listContextSources()).map(s => s.id)).toEqual(['history']);
   });
 
   it('keeps the first of two sources claiming the same id', async () => {
@@ -253,7 +254,7 @@ describe('the registry', () => {
     process.env.AAS_CONTEXT_SOURCES = `${a},${b}`;
     resetContextSources();
 
-    const sources = await listContextSources();
+    const sources = (await listContextSources()).filter(s => s.id === 'dup');
     expect(sources).toHaveLength(1);
     expect(sources[0]!.label).toBe('A');
   });
@@ -269,6 +270,7 @@ describe('the registry', () => {
 
 describe('the enrichment job', () => {
   it('drafts directly when no sources are configured', async () => {
+    setContextSources([]);
     const t = task();
     await enqueueForDrafting(t.id, { db });
 

@@ -41,14 +41,19 @@ export interface WorkspaceConfig {
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
-   * Paths to modules that look up who the sender is — billing, a CRM, an
-   * internal admin. Each default-exports a `ContextSource`.
+   * Where to look the sender up — billing, a CRM, an internal admin.
    *
-   * Paths rather than package names, because the useful ones are specific to
-   * one company and cannot be published: they hold a tenant id, an internal
-   * URL, a session cookie. Keep them next to the deployment, not in here.
+   * Two forms. A string is a path to a module that default-exports a
+   * `ContextSource`; paths rather than package names, because the useful ones
+   * are specific to one company and cannot be published — they hold a tenant
+   * id, an internal URL, a session cookie.
+   *
+   * An object is a `DeclarativeSpec`: a URL or a command, plus which fields
+   * matter and what they mean. Most lookups are that and nothing more, and
+   * asking for a JavaScript file to express them put the feature out of reach
+   * of the people who know which fields matter.
    */
-  contextSources: string[];
+  contextSources: (string | Record<string, unknown>)[];
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceConfig = {
@@ -74,6 +79,22 @@ function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '');
   return items.map(entry => entry.trim());
+}
+
+/**
+ * A mixed list of module paths and lookup specs.
+ *
+ * Anything that is neither is dropped here rather than at load time, so a
+ * typo in the config costs one source instead of the config file.
+ */
+function asSourceList(value: unknown): (string | Record<string, unknown>)[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  return value.flatMap((entry): (string | Record<string, unknown>)[] => {
+    if (typeof entry === 'string') return entry.trim() ? [entry.trim()] : [];
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) return [entry as Record<string, unknown>];
+    return [];
+  });
 }
 
 function asString(value: unknown): string | undefined {
@@ -115,7 +136,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       asString(fromFile.replyLanguage) ??
       DEFAULT_WORKSPACE.replyLanguage,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
-    contextSources: asStringArray(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
+    contextSources: asSourceList(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };
 }
 

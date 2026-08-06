@@ -2,6 +2,8 @@ import { pathToFileURL } from 'node:url';
 import { isAbsolute, resolve } from 'node:path';
 
 import { getWorkspaceConfig } from '../config/workspace';
+import { buildDeclarativeSource, isDeclarativeSpec } from './sources/declarative';
+import { historySource } from './sources/history';
 import { stripeSource } from './sources/stripe';
 import { isContextSource, type ContextSource } from './types';
 
@@ -23,15 +25,16 @@ import { isContextSource, type ContextSource } from './types';
 /**
  * Sources that ship with the product.
  *
- * Stripe is here rather than in a private module because most people running a
- * support inbox bill through it, and "who is this person paying us" is the
- * single most useful thing to know before answering them.
+ * History needs nothing and is always on. Stripe is here rather than in a
+ * private module because most people running a support inbox bill through it,
+ * and "who is this person paying us" is the single most useful thing to know
+ * before answering them.
  */
-const BUILT_IN: ContextSource[] = [stripeSource];
+const BUILT_IN: ContextSource[] = [historySource, stripeSource];
 
 let cached: ContextSource[] | null = null;
 
-function configuredPaths(): string[] {
+function configuredEntries(): unknown[] {
   const fromEnv = process.env.AAS_CONTEXT_SOURCES?.trim();
   if (fromEnv) return fromEnv.split(',').map(entry => entry.trim()).filter(Boolean);
   return getWorkspaceConfig().contextSources;
@@ -60,11 +63,27 @@ async function importSource(path: string): Promise<ContextSource | null> {
   }
 }
 
+/**
+ * One config entry into one source.
+ *
+ * A string is a path to a module. An object is a spec this file turns into a
+ * source itself, so the common case — an internal endpoint that already
+ * answers to an email address — needs a few lines of JSON rather than a
+ * JavaScript file, a deploy path and somewhere to put it.
+ */
+async function loadEntry(entry: unknown): Promise<ContextSource | null> {
+  if (typeof entry === 'string') return importSource(entry);
+  if (isDeclarativeSpec(entry)) return buildDeclarativeSource(entry);
+
+  console.error('[context] ignoring a source entry that is neither a path nor a lookup spec');
+  return null;
+}
+
 /** Every source that is loadable and has its credentials. */
 export async function listContextSources(): Promise<ContextSource[]> {
   if (cached) return cached;
 
-  const external = await Promise.all(configuredPaths().map(importSource));
+  const external = await Promise.all(configuredEntries().map(loadEntry));
   const seen = new Set<string>();
 
   cached = [...BUILT_IN, ...external.filter((s): s is ContextSource => s !== null)].filter(source => {

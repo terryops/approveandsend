@@ -260,6 +260,18 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 7,
+    name: 'sender-index',
+    up: db => {
+      // "Everything we have already sent this address" is asked once per
+      // incoming email, by the history context source. Case-insensitive
+      // because addresses arrive capitalised however the sender's client felt
+      // like it, and the collation is declared on the index so the lookup can
+      // actually use it.
+      db.exec('CREATE INDEX idx_tasks_from ON tasks(from_address COLLATE NOCASE, status);');
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

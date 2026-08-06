@@ -210,11 +210,31 @@ No active subscription — the most recent one is canceled, last period ended
 2026-01-14. Do not talk to them as a current subscriber.
 ```
 
-Your own sources are plain ESM modules you point at by path:
+**Earlier conversations** are built in too, and need nothing at all: how many
+times you have written to this person, when, what about, and whether your
+drafts for them usually get rewritten before they go.
+
+Anything else is config, not code — a URL or a command, plus which fields
+matter and what they mean:
 
 ```json
-{ "contextSources": ["/srv/approveandsend/sources/crm.mjs"] }
+{
+  "contextSources": [
+    {
+      "id": "product",
+      "url": "https://admin.example.com/api/support/lookup?email={email}",
+      "headers": { "Authorization": "Bearer ${PRODUCT_TOKEN}" },
+      "title": "Product account",
+      "fields": [{ "label": "Plan", "path": "level", "map": { "0": "Free", "2": "Unlimited" } }],
+      "prompt": ["They have {credits} credits left, expiring {expiry}."]
+    }
+  ]
+}
 ```
+
+A sentence whose facts are missing is dropped whole rather than rendered with a
+hole in it, which is why that format needs no conditionals. When the mapping
+isn't enough, a source can still be an ESM module you point at by path.
 
 Two rules hold everywhere: a source **cannot act** — there is no `refund()` and
 there will not be one — and a source writes its **own prose** rather than

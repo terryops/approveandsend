@@ -47,10 +47,114 @@ No active subscription — the most recent one is canceled, last period ended
 2026-01-14. Do not talk to them as a current subscriber.
 ```
 
+## Earlier conversations, which is always on
+
+The one lookup that needs no credentials, because it reads the database this
+product already keeps. It says how many times you have replied to this person,
+when, and what about:
+
+```
+We have replied to them 3 times before, most recently 9 days ago. That
+exchange was about "Export finishes but the file is empty".
+```
+
+It also watches how those replies were sent. When the drafts for one person
+have usually been rewritten before going out, it says so, and the drafter aims
+closer to the sent version than to its own instincts.
+
+This is the fact a human reviewer reliably has and a model reliably lacks.
+Answering "sorry you're having trouble, could you tell me more" to someone on
+their fourth email about the same thing is the most common way support writing
+goes wrong, and it is invisible from the message in front of you.
+
+## Declaring a lookup instead of writing one
+
+Most lookups are one endpoint that already answers to an email address, and the
+only real work is saying which fields matter and what they mean. That does not
+need a JavaScript file. Put an object in `contextSources`:
+
+```json
+{
+  "contextSources": [
+    {
+      "id": "product",
+      "label": "Product account",
+      "url": "https://admin.example.com/api/support/lookup?email={email}",
+      "headers": { "Authorization": "Bearer ${PRODUCT_TOKEN}" },
+
+      "root": "user",
+      "requires": "id",
+
+      "title": "Product account",
+      "href": "https://admin.example.com/users/{id}",
+      "fields": [
+        { "label": "Plan", "path": "level", "map": { "0": "Free", "1": "Pro", "2": "Unlimited" } },
+        { "label": "Credits", "path": "credits", "suffix": "left" },
+        { "label": "Files", "path": "files" }
+      ],
+      "prompt": [
+        "They are on the Unlimited plan and have used it for {files} files since {joined}.",
+        "They have {credits} credits left."
+      ]
+    }
+  ]
+}
+```
+
+A few of those keys are load-bearing:
+
+- **`{path}`** is a dotted path into the response, and `{email}`, `{name}` and
+  `{subject}` always resolve to the sender. A path that is not there is not an
+  error; see the next two points.
+- **`map`** is how a declared source obeys the second rule. `level: 2` becomes
+  `Unlimited` on the card, so nobody — human or model — has to know the code.
+- **`prompt`** is a list of sentences, and **a sentence with a missing value is
+  dropped whole**. That is why there is no `if` in this format: the sentence
+  about expiring credits simply is not there for someone who has none, and you
+  never get "They have  credits left."
+- **`requires`** handles the usual shape of "no such user": a `200` with an
+  empty record. A card reading `Plan: —` is worse than no card.
+- **`${VAR}`** in a header reads the environment, so the token stays out of the
+  config file and the config file stays committable.
+- **`404`** is an answer — this person is not in that system — and any other
+  error status is a failure, reported against that source by name.
+
+`method`, `body` and `timeoutMs` are there for the POST-only internal endpoint
+you will eventually meet.
+
+### When it isn't an HTTP API
+
+Give `command` instead of `url`. The command is run with the substituted
+arguments, its stdout is parsed as JSON, and everything downstream is
+identical:
+
+```json
+{
+  "id": "admin",
+  "label": "Admin",
+  "command": ["node", "/srv/lookups/admin-lookup.js", "{email}", "--json"],
+  "requires": "found",
+  "title": "Admin",
+  "fields": [{ "label": "Plan", "path": "plan" }],
+  "prompt": "They are on {plan} and have {credits} credits."
+}
+```
+
+Anything that prints JSON qualifies, which in practice means the scraper
+somebody already wrote for the admin panel that has no API. Progress on stderr
+is ignored; only stdout is read.
+
+The command is **argv, never a shell string**. The system this was extracted
+from built it by concatenation — `execSync('node lookup.js "' + email + '"')` —
+so an address containing a quote ran whatever came after it. An array of
+arguments cannot do that and costs nothing.
+
 ## Writing your own
 
-A source is a module that default-exports an object with an `id`, a `label` and
-a `lookup`. Plain ESM; no build step, no manifest, no registration.
+When the mapping is not enough — the response needs two calls, or a date needs
+arithmetic, or the sentence depends on a comparison — a source is a module that
+default-exports an object with an `id`, a `label` and a `lookup`. Plain ESM; no
+build step, no manifest, no registration.
 
 ```js
 // /srv/approveandsend/sources/crm.mjs
@@ -82,16 +186,20 @@ export default {
 };
 ```
 
-Point at it from `aas.config.json`:
+Point at it from `aas.config.json`. Paths and declared specs mix freely in the
+same list:
 
 ```json
 {
   "organization": "Acme",
-  "contextSources": ["/srv/approveandsend/sources/crm.mjs"]
+  "contextSources": [
+    "/srv/approveandsend/sources/crm.mjs",
+    { "id": "product", "url": "https://admin.example.com/api/support/lookup?email={email}", "title": "Product" }
+  ]
 }
 ```
 
-or from the environment, comma-separated:
+Module paths can also come from the environment, comma-separated:
 
 ```bash
 AAS_CONTEXT_SOURCES=/srv/approveandsend/sources/crm.mjs,/srv/approveandsend/sources/billing.mjs

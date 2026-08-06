@@ -106,7 +106,9 @@ describe('syncInbox', () => {
     expect(tasks).toHaveLength(2);
     // The summary body is replaced by the real one after the detail fetch.
     expect(tasks.map(t => t.body).sort()).toEqual(['full body of a', 'full body of b']);
-    expect(listJobs({ type: 'draft-reply' }, db)).toHaveLength(2);
+    // Enrichment, not drafting: looking the sender up comes first, and that
+    // job is what enqueues the draft.
+    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(2);
   });
 
   it('does not pay for a detail fetch on mail it has already seen', async () => {
@@ -118,7 +120,7 @@ describe('syncInbox', () => {
 
     expect(second).toMatchObject({ created: 0, skipped: 1 });
     expect(provider.detailFetches).toEqual([]);
-    expect(listJobs({ type: 'draft-reply' }, db)).toHaveLength(1);
+    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(1);
   });
 
   it('carries the threading headers through so the reply can be threaded', async () => {
