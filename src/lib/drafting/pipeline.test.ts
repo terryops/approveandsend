@@ -55,22 +55,22 @@ let db: Db;
 let configDir: string;
 
 const WORKSPACE_ENV = [
-  'REPLYLOOP_CONFIG',
-  'REPLYLOOP_ORGANIZATION',
-  'REPLYLOOP_PRODUCT',
-  'REPLYLOOP_VOICE',
-  'REPLYLOOP_SIGNATURE',
-  'REPLYLOOP_REPLY_LANGUAGE',
+  'AAS_CONFIG',
+  'AAS_ORGANIZATION',
+  'AAS_PRODUCT',
+  'AAS_VOICE',
+  'AAS_SIGNATURE',
+  'AAS_REPLY_LANGUAGE',
 ];
 
 beforeEach(async () => {
   db = openDb(':memory:');
   queued.length = 0;
   prompts.length = 0;
-  configDir = mkdtempSync(join(tmpdir(), 'replyloop-'));
+  configDir = mkdtempSync(join(tmpdir(), 'aas-'));
   // Point at a path that does not exist, so a stray config file in the repo
   // root cannot change what these tests assert.
-  process.env.REPLYLOOP_CONFIG = join(configDir, 'absent.json');
+  process.env.AAS_CONFIG = join(configDir, 'absent.json');
   resetWorkspaceConfig();
   await startAi();
 });
@@ -86,9 +86,9 @@ afterEach(async () => {
 });
 
 function writeConfig(value: unknown): void {
-  const path = join(configDir, 'replyloop.config.json');
+  const path = join(configDir, 'aas.config.json');
   writeFileSync(path, JSON.stringify(value));
-  process.env.REPLYLOOP_CONFIG = path;
+  process.env.AAS_CONFIG = path;
   resetWorkspaceConfig();
 }
 
@@ -130,7 +130,7 @@ describe('workspace config', () => {
 
   it('lets the environment override one field without a rebuild', () => {
     writeConfig({ organization: 'Acme' });
-    process.env.REPLYLOOP_ORGANIZATION = 'Acme Europe';
+    process.env.AAS_ORGANIZATION = 'Acme Europe';
     resetWorkspaceConfig();
 
     expect(loadWorkspaceConfig().organization).toBe('Acme Europe');
@@ -139,7 +139,7 @@ describe('workspace config', () => {
   it('throws on a malformed config rather than silently losing the policy facts', () => {
     const path = join(configDir, 'broken.json');
     writeFileSync(path, '{ not json');
-    process.env.REPLYLOOP_CONFIG = path;
+    process.env.AAS_CONFIG = path;
     resetWorkspaceConfig();
 
     expect(() => loadWorkspaceConfig()).toThrow(/Could not read/);

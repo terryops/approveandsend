@@ -32,4 +32,4 @@ yarn-error.log*
 .pnpm-debug.log*
 
 data/
-replyloop.config.json
+aas.config.json

@@ -57,7 +57,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
 let cached: WorkspaceConfig | null = null;
 
 function configPath(): string {
-  return process.env.REPLYLOOP_CONFIG?.trim() || resolve(process.cwd(), 'replyloop.config.json');
+  return process.env.AAS_CONFIG?.trim() || resolve(process.cwd(), 'aas.config.json');
 }
 
 function asStringArray(value: unknown): string[] | undefined {
@@ -91,17 +91,17 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
 
   return {
     organization:
-      asString(process.env.REPLYLOOP_ORGANIZATION) ??
+      asString(process.env.AAS_ORGANIZATION) ??
       asString(fromFile.organization) ??
       DEFAULT_WORKSPACE.organization,
-    ...(asString(process.env.REPLYLOOP_PRODUCT) ?? asString(fromFile.product)
-      ? { product: asString(process.env.REPLYLOOP_PRODUCT) ?? asString(fromFile.product) }
+    ...(asString(process.env.AAS_PRODUCT) ?? asString(fromFile.product)
+      ? { product: asString(process.env.AAS_PRODUCT) ?? asString(fromFile.product) }
       : {}),
-    voice: asString(process.env.REPLYLOOP_VOICE) ?? asString(fromFile.voice) ?? DEFAULT_WORKSPACE.voice,
+    voice: asString(process.env.AAS_VOICE) ?? asString(fromFile.voice) ?? DEFAULT_WORKSPACE.voice,
     facts: asStringArray(fromFile.facts) ?? DEFAULT_WORKSPACE.facts,
-    signature: asString(process.env.REPLYLOOP_SIGNATURE) ?? asString(fromFile.signature) ?? DEFAULT_WORKSPACE.signature,
+    signature: asString(process.env.AAS_SIGNATURE) ?? asString(fromFile.signature) ?? DEFAULT_WORKSPACE.signature,
     replyLanguage:
-      asString(process.env.REPLYLOOP_REPLY_LANGUAGE) ??
+      asString(process.env.AAS_REPLY_LANGUAGE) ??
       asString(fromFile.replyLanguage) ??
       DEFAULT_WORKSPACE.replyLanguage,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,

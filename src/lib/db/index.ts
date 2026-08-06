@@ -10,7 +10,7 @@ export type Db = Database.Database;
 let cached: Db | null = null;
 
 function defaultPath(): string {
-  return process.env.DATABASE_PATH?.trim() || resolve(process.cwd(), 'data/replyloop.db');
+  return process.env.DATABASE_PATH?.trim() || resolve(process.cwd(), 'data/aas.db');
 }
 
 /**

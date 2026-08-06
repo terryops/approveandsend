@@ -1,5 +1,5 @@
 /**
- * Every AI call in ReplyLoop is made on behalf of a role. Roles exist so an
+ * Every AI call in Approve & Send is made on behalf of a role. Roles exist so an
  * operator can point the expensive work at a strong model and the cheap work at
  * a small one — translating a draft does not need the model that wrote it.
  */

@@ -1,5 +1,5 @@
 {
-  "name": "replyloop",
+  "name": "approveandsend",
   "version": "0.0.1",
   "private": true,
   "description": "AI drafts your customer support replies, a human approves them, and every correction teaches it.",

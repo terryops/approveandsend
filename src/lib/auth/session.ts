@@ -11,7 +11,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
  * so changing the password logs everyone out for free.
  */
 
-const COOKIE_NAME = 'replyloop_session';
+const COOKIE_NAME = 'aas_session';
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { COOKIE_NAME };
@@ -35,7 +35,7 @@ export function isProtected(): boolean {
 
 function signingKey(): Buffer {
   const password = adminPassword() ?? '';
-  const secret = process.env.SESSION_SECRET?.trim() || `replyloop:${password}`;
+  const secret = process.env.SESSION_SECRET?.trim() || `aas:${password}`;
   return Buffer.from(secret, 'utf8');
 }
 

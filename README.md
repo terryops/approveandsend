@@ -1,8 +1,8 @@
-# ReplyLoop
+# Approve & Send
 
-**AI drafts your support replies. A human approves them. Every correction teaches it.**
+**AI drafts it. You approve it. Every edit teaches it.**
 
-Most "AI email assistant" projects stop at the draft. ReplyLoop's point is the
+Most "AI email assistant" projects stop at the draft. Approve & Send's point is the
 loop after it: when a human edits a draft before sending, the system compares
 the two versions, extracts what changed and why, and turns that into a rule the
 drafter follows next time.
@@ -83,7 +83,7 @@ instead. Which mode you get is inferred from the variables you set.
 
 ## Tell it who it is
 
-Copy `replyloop.config.example.json` to `replyloop.config.json`. This is the
+Copy `aas.config.example.json` to `aas.config.json`. This is the
 whole persona — no prompt files to edit:
 
 ```json
@@ -107,7 +107,7 @@ a reply that reads perfectly well and quietly breaks a policy.
 
 ## How it learns
 
-When you edit a draft before sending it, that edit is the lesson. ReplyLoop
+When you edit a draft before sending it, that edit is the lesson. Approve & Send
 diffs the two versions, asks a model what principle the change implies, and
 stores it as a rule that goes into every future draft:
 
@@ -135,7 +135,7 @@ job queue that is one SQLite table, because "self-hosted" should not mean
 ```bash
 npm install
 cp .env.example .env            # model + mailbox
-cp replyloop.config.example.json replyloop.config.json
+cp aas.config.example.json aas.config.json
 npm run build && npm start      # http://localhost:3000
 ```
 

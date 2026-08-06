@@ -1,6 +1,6 @@
 # Design notes
 
-A record of the decisions behind ReplyLoop, mostly so that future-me stops
+A record of the decisions behind Approve & Send, mostly so that future-me stops
 re-litigating them. Written while extracting a working private system into a
 public one.
 
