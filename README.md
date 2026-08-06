@@ -2,20 +2,17 @@
 
 **AI drafts it. You approve it. Every edit teaches it.**
 
-Most "AI email assistant" projects stop at the draft. Approve & Send's point is the
-loop after it: when a human edits a draft before sending, the system compares
-the two versions, extracts what changed and why, and turns that into a rule the
-drafter follows next time.
+Most "AI email assistant" projects stop at the draft. Approve & Send's point is
+the loop after it: when you edit a draft before sending, the system compares the
+two versions, works out what principle the change implies, and turns that into a
+rule the drafter follows next time.
 
-The instance this was extracted from has processed **929 emails**, of which
-**137 were revised by a human** — producing **213 learned rules, 135 currently
-active**. The drafts get closer to sendable over time, and you can read exactly
-why: every rule is inspectable, editable and switch-off-able.
+![The review screen: what the model understood, the draft you can edit, and the box that turns your edit into a rule](docs/images/review.png)
 
-> Status: v0.1. End to end and usable — fetch mail, draft, review, send, learn,
-> plus a weekly pass that consolidates the rulebook, a setup wizard that tests
-> what you typed, and sample data so there is something to look at on day one.
-> It has not yet been run by anyone but its author.
+> **Status: v0.1.** Complete end to end — fetch, draft, review, send, learn —
+> and running in production nowhere. The private tool it was extracted from has
+> handled 929 emails and learned 213 rules; this rewrite has been run by nobody
+> but its author.
 
 ## Why it exists
 
@@ -24,6 +21,95 @@ acceptable — a wrong refund answer costs more than the time it saved — but
 "human writes every reply from scratch" doesn't scale either. Human-in-the-loop
 with a learning curve is the middle path, and it needs to be self-hosted,
 because this data is your customer correspondence.
+
+## How it learns
+
+When you edit a draft before sending it, that edit is the lesson. Approve & Send
+diffs the two versions, asks a model what principle the change implies, and
+stores it as a rule that goes into every future draft:
+
+```
+draft:  "I'm so sorry. Your refund will arrive within 3 days."
+sent:   "We've escalated this and will update you shortly."
+learned: "Never commit to a refund date that has not been confirmed."  [policy]
+```
+
+![The rulebook: each rule shows the conversation that taught it and how often it has been used](docs/images/rules.png)
+
+Rules are inspectable, editable and switch-off-able. Each one records which
+conversation taught it, why, and how often it has been used — so when a rule
+starts producing bad replies you can find out where it came from instead of
+guessing. Near-duplicates are merged rather than accumulated, and every change
+to a rule's text keeps the previous version.
+
+Approving a draft unchanged usually teaches nothing, and the extractor is told
+so. The rulebook is meant to stay small enough to read.
+
+Extraction runs in the background — clicking Send never waits on a model — on a
+job queue that is one SQLite table, because "self-hosted" should not mean "also
+run Redis".
+
+There is a second model in the path too: before any human sees a draft, a critic
+reads it against the same rules and either signs it off or rewrites it. It
+catches the expensive failure, which is a reply that reads perfectly well and
+quietly breaks a policy.
+
+## What it doesn't do
+
+Being clear about this early saves you an evening:
+
+- **One mailbox, one user.** One password, one signed cookie, no accounts. Two
+  people can share the login; the rulebook cannot tell them apart.
+- **No routing, assignment, tagging or SLAs.** It is not a helpdesk and won't
+  become one. If you need queues per agent, use a helpdesk.
+- **No inbound classification beyond drafting.** Every unanswered thread becomes
+  a task; there is no spam triage layer in front of it.
+- **No mobile app.** The UI is plain server-rendered forms. They work on a
+  phone; they are not designed for one.
+
+## Running it
+
+```bash
+npm install
+npm run build && npm start      # http://localhost:3000
+```
+
+![The inbox: everything waiting on a human, with what the model thinks each one is about](docs/images/inbox.png)
+
+A fresh install opens the setup wizard: password, model, mailbox, voice. Each
+step ends by using what you typed — one completion against the model, one login
+to the mailbox — and tells you what came back, so a wrong port or a stale key
+surfaces there rather than in a failed job at 4am.
+
+It writes `.env` and `aas.config.json`, the same two files you would edit by
+hand, and only the keys it asked about; your comments and everything else stay
+put. Values take effect immediately — no restart. On a read-only container the
+write fails and the page hands you the lines to paste instead.
+
+Set `ADMIN_PASSWORD` before you expose the port. Leaving it unset disables the
+login wall and every page says so in red.
+
+Nothing to review yet? The empty inbox has a **Load sample data** button: five
+fictional emails and a rulebook, including one reply that was edited before
+sending and the two rules that edit taught. It refuses to touch a database that
+already has anything in it.
+
+Three endpoints drive it from cron:
+
+```cron
+*/5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
+*/2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
+30 4 * * 1  curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
+```
+
+`/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs,
+and `/api/consolidate` is the weekly tidy — it merges rules that have drifted
+into saying the same thing. All three have buttons in the UI too, so you can run
+without a scheduler while you are trying it out.
+
+The whole UI is plain forms — it works with JavaScript off, and a half-written
+draft survives a reload because it was posted rather than kept in component
+state.
 
 ## Bring your own model
 
@@ -63,29 +149,14 @@ SMTP_HOST=smtp.yourcompany.com
 ```
 
 Ports default to 993/465 with implicit TLS, and setting `SMTP_PORT=587`
-switches to STARTTLS on its own. The Sent mailbox is discovered from the
-server's `\Sent` flag rather than guessing between "Sent", "Sent Items" and
-"[Gmail]/Sent Mail".
-
-Gmail and Google Workspace can go through the Gmail API instead, which gets you
-real threads and no app password:
-
-```bash
-MAIL_PROVIDER=gmail
-MAIL_USER=support@yourcompany.com
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REFRESH_TOKEN=...
-```
-
-For Workspace, a service account with domain-wide delegation works too — set
-`GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_IMPERSONATE_USER`
-instead. Which mode you get is inferred from the variables you set.
+switches to STARTTLS on its own. Gmail and Google Workspace can go through the
+Gmail API instead, which gets you real threads and no app password — see
+[docs/mailboxes.md](docs/mailboxes.md).
 
 ## Tell it who it is
 
-Copy `aas.config.example.json` to `aas.config.json`. This is the
-whole persona — no prompt files to edit:
+Copy `aas.config.example.json` to `aas.config.json`. This is the whole persona —
+no prompt files to edit:
 
 ```json
 {
@@ -98,90 +169,9 @@ whole persona — no prompt files to edit:
 }
 ```
 
-`facts` are the things the model would otherwise invent. Keep the list short
-and load-bearing — it goes into every draft. `replyLanguage: "match"` answers
-in whatever language the customer wrote in.
-
-A second model then reads each draft against the same rules and either signs it
-off or rewrites it, before any human sees it. It catches the expensive failure:
-a reply that reads perfectly well and quietly breaks a policy.
-
-## How it learns
-
-When you edit a draft before sending it, that edit is the lesson. Approve & Send
-diffs the two versions, asks a model what principle the change implies, and
-stores it as a rule that goes into every future draft:
-
-```
-draft:  "I'm so sorry. Your refund will arrive within 3 days."
-sent:   "We've escalated this and will update you shortly."
-learned: "Never commit to a refund date that has not been confirmed."  [policy]
-```
-
-Rules are inspectable, editable and switch-off-able. Each one records which
-conversation taught it, why, and how often it has been used — so when a rule
-starts producing bad replies you can find out where it came from instead of
-guessing. Near-duplicates are merged rather than accumulated, and every change
-to a rule's text keeps the previous version.
-
-Approving a draft unchanged usually teaches nothing, and the extractor is told
-so. The rulebook is meant to stay small enough to read.
-
-Extraction runs in the background — clicking Send never waits on a model — on a
-job queue that is one SQLite table, because "self-hosted" should not mean
-"also run Redis".
-
-## Running it
-
-```bash
-npm install
-npm run build && npm start      # http://localhost:3000
-```
-
-A fresh install opens the setup wizard: password, model, mailbox, voice. Each
-step ends by using what you typed — one completion against the model, one login
-to the mailbox — and tells you what came back, so a wrong port or a stale key
-surfaces there rather than in a failed job at 4am.
-
-It writes `.env` and `aas.config.json`, the same two files you would edit by
-hand, and only the keys it asked about; your comments and everything else stay
-put. Values take effect immediately — no restart. On a read-only container the
-write fails and the page hands you the lines to paste instead.
-
-So you can skip it entirely and configure by hand if you prefer:
-
-```bash
-cp .env.example .env            # model + mailbox
-cp aas.config.example.json aas.config.json
-```
-
-Set `ADMIN_PASSWORD` before you expose the port. There are no accounts — one
-password, one signed cookie. Leaving it unset disables the login wall and every
-page says so in red.
-
-Three endpoints drive it from cron:
-
-```cron
-*/5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
-*/2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
-30 4 * * 1  curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
-```
-
-`/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs,
-and `/api/consolidate` is the weekly tidy — it merges rules that have drifted
-into saying the same thing. It counts what has been written since the last pass
-and does nothing in a quiet week, so running it more often is harmless. All
-three have buttons in the UI too, so you can run without a scheduler while you
-are trying it out.
-
-Nothing to review yet? The empty inbox has a **Load sample data** button: five
-fictional emails and a rulebook, including one reply that was edited before
-sending and the two rules that edit taught. It refuses to touch a database that
-already has anything in it.
-
-The whole UI is plain forms — it works with JavaScript off, and a half-written
-draft survives a reload because it was posted rather than kept in component
-state.
+`facts` are the things the model would otherwise invent. Keep the list short and
+load-bearing — it goes into every draft. `replyLanguage: "match"` answers in
+whatever language the customer wrote in.
 
 ## Deploying
 
@@ -192,43 +182,16 @@ docker compose up -d --build
 ```
 
 That is the whole thing: the app on `127.0.0.1:3000`, and a second container
-that pokes the three endpoints on schedule so you do not need cron. The
-database is `./data/aas.db` on the host — back up that directory and you have
-backed up everything. Put a reverse proxy with a certificate in front before
-it is reachable from anywhere but localhost; it will be holding your mail.
+that pokes the three endpoints on schedule so you do not need cron. The database
+is `./data/aas.db` on the host — back up that directory and you have backed up
+everything.
 
-If your host already runs cron, delete the `ticker` service and point crontab
-at the published port instead. Same endpoints, one less container.
-
-Approve & Send needs two things from a host: **a writable disk** and **a
-process that stays running**. A $5 VPS has both. So do Fly with a volume,
-Railway, Render, Coolify, a Synology, or the spare machine under your desk.
-
-### It does not fit Vercel
-
-Worth stating plainly, because it is the first thing people try:
-
-- **Cron.** Vercel Hobby allows *one invocation per day*. `*/5 * * * *` is not
-  throttled there, it fails at deploy time. Per-minute needs Pro.
-- **Disk.** The filesystem is read-only apart from an ephemeral `/tmp` that
-  instances do not share. Vercel's own docs say SQLite can't be used.
-- **Time.** `AI_TIMEOUT_MS` defaults to fifteen minutes because a self-hosted
-  model on modest hardware genuinely takes that long. Vercel caps a function
-  at 300s on Hobby and 800s on Pro — so bring-your-own-local-model, which is
-  half the point of this project, is off the table there.
-- **The setup wizard** writes `.env`, which cannot work on a read-only
-  filesystem, and mirrors values into `process.env`, which does not survive
-  across instances. You would configure by dashboard and redeploy.
-- **IMAP** over raw TCP to port 993 is undocumented on Vercel. The Gmail API
-  path is plain HTTPS and would be fine.
-
-Postgres is sometimes proposed as the fix. It addresses the second bullet and
-none of the others, which is why this ships SQLite.
-
-If you want it there anyway the shape is: Vercel Pro, a hosted Postgres, the
-Gmail API rather than IMAP, a hosted model, and configuration by environment
-variable. That is a real deployment. It is just not one this repo goes out of
-its way to support.
+Approve & Send needs two things from a host: **a writable disk** and **a process
+that stays running**. A $5 VPS has both; so do Fly with a volume, Railway,
+Render, Coolify, or the spare machine under your desk. Vercel has neither, and
+Postgres would not fix it — the long version is in
+[docs/deploying.md](docs/deploying.md), along with the reverse-proxy note you
+should read before this is reachable from anywhere but localhost.
 
 ## Design notes worth knowing
 

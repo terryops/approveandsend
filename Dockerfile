@@ -30,9 +30,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# A build must not reach the network or touch a database. If it ever does, it
-# fails here rather than in production against whatever it happened to find.
-ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_STANDALONE switches on `output: standalone`, which is what makes the
+# runner stage small. It is off by default because `next start` — the command
+# the README gives — cannot serve a standalone build.
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_STANDALONE=1
 RUN npm run build
 
 # ---------------------------------------------------------------------------
