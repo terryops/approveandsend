@@ -68,6 +68,11 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
         draft: result.draft,
         ...(result.analysis.scope ? { scope: result.analysis.scope } : {}),
         error: null,
+        // Unread again. Whoever glanced at the previous draft — on a redraft,
+        // probably the person who asked for this one — has not seen this text,
+        // and a task that stayed "read" through a rewrite is one nobody is
+        // told to go back to.
+        openedAt: null,
       },
       context.db,
     );

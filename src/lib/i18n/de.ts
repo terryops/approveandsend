@@ -31,6 +31,8 @@ export const de: Dictionary = {
   "inbox.emptyTitle": "Hier ist nichts. Ruf Mail ab, um den Posteingang zu holen.",
   "inbox.loadSampleData": "Beispieldaten laden",
   "inbox.noSubject": "(kein Betreff)",
+  "inbox.unread": "({count} ungelesen)",
+  "inbox.unreadOne": "Diesen hast du noch nicht geöffnet",
 
   // --- Signing in ---
   "login.title": "Bei {app} anmelden",

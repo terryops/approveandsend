@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
-import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
+import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
 import { TASK_STATUSES, isTaskStatus, type TaskStatus } from '@/lib/tasks/types';
 
 import { loadDemo, logout, runQueue, syncNow } from './actions';
@@ -51,6 +51,7 @@ export default async function InboxPage({
 
   const tasks = listTasks({ ...(status ? { status } : {}), limit: 100 });
   const counts = countTasksByStatus();
+  const unopened = countUnopened();
   const LABELS = labels();
 
   const notice =
@@ -74,6 +75,11 @@ export default async function InboxPage({
           {TASK_STATUSES.filter((s) => counts[s]).map((s) => (
             <span key={s} className="meta" style={{ marginRight: 14 }}>
               {LABELS[s] ?? s}: <strong>{counts[s]}</strong>
+              {/* Only against awaiting_review, and only when it is not the
+                  whole number: "12, all new" is one fact, not two. */}
+              {s === 'awaiting_review' && unopened > 0 && unopened < (counts[s] ?? 0) && (
+                <span className="unread-count"> {t('inbox.unread', { count: unopened })}</span>
+              )}
             </span>
           ))}
         </div>
@@ -121,6 +127,12 @@ export default async function InboxPage({
               <li key={task.id}>
                 <div className="row">
                   <a className="subject grow" href={`/tasks/${task.id}`}>
+                    {/* Only where it means something. Every pending task is
+                        unread by definition, and a dot on all of them is a dot
+                        that tells you nothing. */}
+                    {task.status === 'awaiting_review' && !task.openedAt && (
+                      <span className="dot" title={t('inbox.unreadOne')} aria-hidden="true" />
+                    )}
                     {task.subject || t('inbox.noSubject')}
                   </a>
                   <span className={`tag ${task.status}`}>{LABELS[task.status] ?? task.status}</span>

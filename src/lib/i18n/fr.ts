@@ -31,6 +31,8 @@ export const fr: Dictionary = {
   "inbox.emptyTitle": "Rien ici. Relevez le courrier pour faire entrer la boîte de réception.",
   "inbox.loadSampleData": "Charger des données d'exemple",
   "inbox.noSubject": "(sans objet)",
+  "inbox.unread": "({count} non ouverts)",
+  "inbox.unreadOne": "Vous n'avez pas encore ouvert celui-ci",
 
   // --- Signing in ---
   "login.title": "Connexion à {app}",

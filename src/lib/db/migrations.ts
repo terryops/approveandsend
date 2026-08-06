@@ -521,6 +521,24 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 16,
+    name: 'opened_at',
+    up: db => {
+      // When a human last looked at this draft.
+      //
+      // A timestamp rather than a read flag, because the question is not "has
+      // anybody seen this row" but "has anybody seen *this text*". A draft the
+      // machine rewrites after somebody skimmed it is unread again, and
+      // comparing this against updated_at answers that without a second
+      // column to keep in step.
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN opened_at TEXT;
+        CREATE INDEX idx_tasks_unopened
+          ON tasks(status) WHERE opened_at IS NULL;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

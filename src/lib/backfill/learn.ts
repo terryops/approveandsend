@@ -79,6 +79,7 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     sentBy: null,
     error: null,
     supersededBy: null,
+    openedAt: null,
     createdAt: now,
     updatedAt: now,
   };

@@ -62,6 +62,9 @@ export interface Task {
   error: string | null;
   /** The newer task on this conversation that replaced this one. */
   supersededBy: string | null;
+  /** When a human last opened it. Cleared whenever the machine rewrites the
+   * draft, because what they read is no longer what is there. */
+  openedAt: string | null;
 
   createdAt: string;
   updatedAt: string;

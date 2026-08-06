@@ -31,6 +31,8 @@ export const ja: Dictionary = {
   "inbox.emptyTitle": "ここには何もありません。メールを取得して受信トレイを読み込んでください。",
   "inbox.loadSampleData": "サンプルデータを読み込む",
   "inbox.noSubject": "（件名なし）",
+  "inbox.unread": "（未読 {count} 件）",
+  "inbox.unreadOne": "まだ開いていません",
 
   // --- Signing in ---
   "login.title": "{app} にサインイン",

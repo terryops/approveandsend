@@ -20,7 +20,7 @@ import { enqueue, listJobs } from '../queue/store';
 import { createWorker } from '../queue/worker';
 import { createRule, listRules } from '../rules/store';
 import { addMessage, countMessages, listMessages } from '../tasks/messages';
-import { countTasksByStatus, createTask, deleteTask, getTask, listTasks, updateTask } from '../tasks/store';
+import { countTasksByStatus, createTask, deleteTask, getTask, listTasks, markOpened, updateTask } from '../tasks/store';
 import { draftReply } from './draft';
 
 // --- an AI server that returns whatever the test queues -------------------
@@ -717,6 +717,21 @@ describe('draft-reply job', () => {
     expect(updated?.draft).toBe('We have escalated this and will update you shortly.');
     expect(updated?.scope).toBe('refund');
     expect(updated?.error).toBeNull();
+  });
+
+  it('makes a redrafted task unread again', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    // Somebody read the first draft, did not like it, and asked for another.
+    updateTask(task.id, { status: 'awaiting_review', draft: 'The old one' }, db);
+    markOpened(task.id, db);
+
+    enqueueDraftReply(task.id, { critic: false, db });
+    await worker().runOnce();
+
+    // Leaving it read would leave new text sitting under a row that looks
+    // dealt with, which is how a redraft goes out unexamined.
+    expect(getTask(task.id, db)?.openedAt).toBeNull();
   });
 
   it('drafts one reply per task however many times it is enqueued', () => {

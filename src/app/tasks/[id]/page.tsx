@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { after } from 'next/server';
 
 import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
@@ -6,7 +7,7 @@ import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
 import { listAttachments } from '@/lib/tasks/attachments';
 import { listMessages } from '@/lib/tasks/messages';
-import { getTask } from '@/lib/tasks/store';
+import { getTask, markOpened } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
 import { reviewLanguage } from '@/lib/translation/translate';
@@ -35,6 +36,12 @@ export default async function TaskPage({
   const query = await searchParams;
   const task = getTask(id);
   if (!task) notFound();
+
+  // After the response, not during the render. Rendering is supposed to be
+  // free of side effects — Next may run it twice, or throw the result away —
+  // and a write in the middle of it is a write that happens an unpredictable
+  // number of times. `after` runs once, when the page has actually been sent.
+  after(() => markOpened(id));
 
   const sent = task.status === 'sent';
   const sender = task.sentBy ? getOperator(task.sentBy) : null;

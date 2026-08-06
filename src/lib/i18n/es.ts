@@ -31,6 +31,8 @@ export const es: Dictionary = {
   "inbox.emptyTitle": "Aquí no hay nada. Trae el correo para cargar la bandeja de entrada.",
   "inbox.loadSampleData": "Cargar datos de ejemplo",
   "inbox.noSubject": "(sin asunto)",
+  "inbox.unread": "({count} sin abrir)",
+  "inbox.unreadOne": "Todavía no has abierto este",
 
   // --- Signing in ---
   "login.title": "Inicia sesión en {app}",

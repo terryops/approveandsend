@@ -49,6 +49,8 @@ export const en = {
   "inbox.emptyTitle": "Nothing here. Fetch mail to pull the inbox in.",
   "inbox.loadSampleData": "Load sample data",
   "inbox.noSubject": "(no subject)",
+  "inbox.unread": "({count} new)",
+  "inbox.unreadOne": "You have not opened this one yet",
 
   // --- Signing in ---
   "login.title": "Sign in to {app}",

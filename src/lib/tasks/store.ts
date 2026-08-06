@@ -24,6 +24,7 @@ interface TaskRow {
   sent_by: string | null;
   error: string | null;
   superseded_by: string | null;
+  opened_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -70,6 +71,7 @@ function mapTask(row: TaskRow): Task {
     sentBy: row.sent_by,
     error: row.error,
     supersededBy: row.superseded_by,
+    openedAt: row.opened_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -166,6 +168,34 @@ export function countTasksByStatus(db: Db = getDb()): Record<string, number> {
   return Object.fromEntries(rows.map(row => [row.status, row.count]));
 }
 
+/**
+ * Note that somebody has now read this task.
+ *
+ * Deliberately not routed through `updateTask`: opening a task must not touch
+ * `updated_at`. That column is how "changed since you last looked" is decided
+ * everywhere else, and a read that counted as a change would mark every task
+ * stale the moment it was read, which is the opposite of what it is for.
+ */
+export function markOpened(id: string, db: Db = getDb()): void {
+  db.prepare('UPDATE tasks SET opened_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+}
+
+/**
+ * How many tasks are waiting for a reviewer who has not seen them yet.
+ *
+ * Only `awaiting_review`. A pending task has nothing to read, and a sent one
+ * has already had its moment; counting either would put a number on the screen
+ * that no amount of reading could clear.
+ */
+export function countUnopened(db: Db = getDb()): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM tasks WHERE status = 'awaiting_review' AND opened_at IS NULL`,
+    )
+    .get() as { n: number };
+  return row.n;
+}
+
 export interface TaskUpdate {
   status?: TaskStatus;
   scope?: string | null;
@@ -181,6 +211,7 @@ export interface TaskUpdate {
   sentBy?: string | null;
   error?: string | null;
   supersededBy?: string | null;
+  openedAt?: string | null;
 }
 
 const COLUMNS: Record<keyof TaskUpdate, string> = {
@@ -196,6 +227,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   sentBy: 'sent_by',
   error: 'error',
   supersededBy: 'superseded_by',
+  openedAt: 'opened_at',
 };
 
 export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): Task | null {

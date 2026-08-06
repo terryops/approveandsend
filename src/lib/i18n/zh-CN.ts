@@ -31,6 +31,8 @@ export const zhCN: Dictionary = {
   "inbox.emptyTitle": "这里空着。收取邮件，把收件箱拉进来。",
   "inbox.loadSampleData": "载入示例数据",
   "inbox.noSubject": "（无主题）",
+  "inbox.unread": "（{count} 封未读）",
+  "inbox.unreadOne": "你还没打开过这封",
 
   // --- Signing in ---
   "login.title": "登录{app}",
