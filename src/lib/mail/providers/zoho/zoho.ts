@@ -10,12 +10,16 @@ import {
   type MailMessage,
   type MailMessageDetail,
   type MailProvider,
+  type OutgoingAttachment,
   type OutgoingMail,
   type SendResult,
 } from '../../types';
 import { ZOHO_REGIONS, ZohoAuth, type ZohoAuthConfig } from './auth';
 
 const PROVIDER_ID = 'zoho';
+
+/** Zoho's per-message ceiling. Checked before uploading, not after. */
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 export interface ZohoConfig {
   auth: ZohoAuthConfig;
@@ -67,6 +71,13 @@ interface ZohoSummary {
   status2?: string;
 }
 
+/** What Zoho hands back for an uploaded file, and wants back verbatim on send. */
+interface ZohoStoredAttachment {
+  storeName: string;
+  attachmentPath: string;
+  attachmentName: string;
+}
+
 interface ZohoAttachmentInfo {
   attachmentId: string;
   attachmentName?: string;
@@ -82,7 +93,7 @@ interface ZohoAttachmentInfo {
  * credentials", which is a miserable thing to debug. The API needs neither, so
  * it is the better default for this mailbox even though it is more code.
  *
- * Three things about this API are worth knowing before changing anything here:
+ * Four things about this API are worth knowing before changing anything here:
  *
  * - **Message ids are folder-scoped.** Every read endpoint is
  *   /folders/{folderId}/messages/{messageId}, and the same message moved to
@@ -98,6 +109,10 @@ interface ZohoAttachmentInfo {
  *   so In-Reply-To cannot be set by us; the reply action takes the original
  *   message's Zoho id and threads it server-side. That is what
  *   `inReplyToProviderId` on OutgoingMail is for.
+ * - **Attachments go up separately.** Files are POSTed as raw bytes to the
+ *   attachment store, which hands back handles that the send payload carries.
+ *   The upload wants Content-Type: application/octet-stream and answers the
+ *   file's real type with 415.
  */
 export class ZohoProvider implements MailProvider {
   readonly id = PROVIDER_ID;
@@ -124,11 +139,15 @@ export class ZohoProvider implements MailProvider {
 
   private async request<T>(
     path: string,
-    init: { method?: string; body?: unknown; retryOn401?: boolean } = {},
+    init: { method?: string; body?: unknown; contentType?: string; retryOn401?: boolean } = {},
   ): Promise<T> {
-    const { method = 'GET', body, retryOn401 = true } = init;
+    const { method = 'GET', body, contentType, retryOn401 = true } = init;
     const token = await this.auth.accessToken();
     const url = `${this.apiBase}/api${path}`;
+
+    // A Buffer goes up as-is: the attachment upload endpoint wants the file's
+    // own bytes, and JSON-encoding them would corrupt anything non-text.
+    const raw = body instanceof Uint8Array;
 
     let response: Response;
     try {
@@ -136,9 +155,16 @@ export class ZohoProvider implements MailProvider {
         method,
         headers: {
           Authorization: `Zoho-oauthtoken ${token}`,
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(body === undefined
+            ? {}
+            : { 'Content-Type': contentType ?? 'application/json' }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined
+            ? undefined
+            : raw
+              ? (body as unknown as BodyInit)
+              : JSON.stringify(body),
       });
     } catch (err) {
       throw new MailError(PROVIDER_ID, `Zoho Mail unreachable: ${errText(err)}`, {
@@ -171,7 +197,7 @@ export class ZohoProvider implements MailProvider {
   /** Everything below /api/accounts/{id}, which is everything except /accounts. */
   private async account<T>(
     path: string,
-    init: { method?: string; body?: unknown } = {},
+    init: { method?: string; body?: unknown; contentType?: string } = {},
   ): Promise<T> {
     return this.request<T>(`/accounts/${await this.resolveAccountId()}${path}`, init);
   }
@@ -366,12 +392,7 @@ export class ZohoProvider implements MailProvider {
     if (!mail.html && !mail.text) {
       throw new MailError(PROVIDER_ID, 'Refusing to send an empty body');
     }
-    if (mail.attachments?.length) {
-      // Sending one means uploading it to Zoho's store first and passing the
-      // handles back. Not implemented, and failing loudly beats sending the
-      // reply with the attachment silently missing.
-      throw new MailError(PROVIDER_ID, 'The Zoho provider cannot send attachments yet');
-    }
+    const stored = await this.uploadAll(mail.attachments ?? []);
 
     const html = mail.html ?? textToHtml(mail.text ?? '');
     const payload = {
@@ -382,6 +403,7 @@ export class ZohoProvider implements MailProvider {
       subject: mail.subject,
       content: html,
       mailFormat: 'html',
+      ...(stored.length ? { attachments: stored } : {}),
     };
 
     // Replying by id lets Zoho set In-Reply-To and References itself, which is
@@ -403,6 +425,72 @@ export class ZohoProvider implements MailProvider {
       // reply later, and both ends of that comparison come from Zoho.
       messageId: sent?.messageId ?? '',
       ...(sent?.threadId ? { threadId: sent.threadId } : {}),
+    };
+  }
+
+  /**
+   * Put the files in Zoho's staging store and hand back the handles.
+   *
+   * Sequential on purpose. Zoho rate-limits this endpoint hard enough that
+   * three parallel uploads of a normal-sized set start coming back 429, and a
+   * reply that is a few hundred milliseconds slower is better than one that
+   * fails on the third file.
+   */
+  private async uploadAll(attachments: OutgoingAttachment[]): Promise<ZohoStoredAttachment[]> {
+    if (attachments.length === 0) return [];
+
+    const inline = attachments.find(a => a.contentId);
+    if (inline) {
+      // Zoho embeds inline images by rewriting the body around a URL of its
+      // own, not by honouring a cid: reference we wrote. Sending anyway would
+      // deliver a mail with a broken image in the middle of it.
+      throw new MailError(
+        PROVIDER_ID,
+        `The Zoho provider cannot embed inline images (${inline.filename})`,
+      );
+    }
+
+    const total = attachments.reduce((sum, a) => sum + a.content.length, 0);
+    if (total > MAX_ATTACHMENT_BYTES) {
+      // Checked here because Zoho's own answer to an oversized upload is a
+      // bare 400, which tells the reviewer nothing about what to remove.
+      throw new MailError(
+        PROVIDER_ID,
+        `Attachments total ${Math.round(total / 1024 / 1024)} MB, over Zoho's ${
+          MAX_ATTACHMENT_BYTES / 1024 / 1024
+        } MB limit`,
+      );
+    }
+
+    const stored: ZohoStoredAttachment[] = [];
+    for (const attachment of attachments) stored.push(await this.upload(attachment));
+    return stored;
+  }
+
+  private async upload(attachment: OutgoingAttachment): Promise<ZohoStoredAttachment> {
+    const query = new URLSearchParams({ fileName: attachment.filename, isInline: 'false' });
+    const uploaded = await this.account<ZohoStoredAttachment | ZohoStoredAttachment[]>(
+      `/messages/attachments?${query}`,
+      // Always octet-stream. Sending the file's real type here is answered
+      // with 415 Unsupported Media Type — verified against the live API — and
+      // Zoho types the attachment from the filename anyway.
+      { method: 'POST', body: attachment.content, contentType: 'application/octet-stream' },
+    );
+
+    // Zoho answers a single raw upload with an object but the multipart form
+    // with an array, and has been seen to do the latter for one file too.
+    const first = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+    if (!first?.storeName || !first.attachmentPath) {
+      throw new MailError(
+        PROVIDER_ID,
+        `Zoho accepted ${attachment.filename} but returned no store handle`,
+      );
+    }
+
+    return {
+      storeName: first.storeName,
+      attachmentPath: first.attachmentPath,
+      attachmentName: first.attachmentName || attachment.filename,
     };
   }
 

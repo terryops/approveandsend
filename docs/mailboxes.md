@@ -54,10 +54,16 @@ The account id is discovered from `MAIL_USER`; set `ZOHO_ACCOUNT_ID` only if
 this account owns several mailboxes and the wrong one is picked. Non-English
 mailboxes can name their folders with `ZOHO_INBOX_FOLDER` / `ZOHO_SENT_FOLDER`.
 
-Two limits worth knowing before you switch: **outgoing attachments are not
-supported** (a reply carrying one fails rather than sending without it), and
-the setup wizard cannot configure this provider — it writes IMAP settings only,
-so these variables go in `.env` by hand.
+Outgoing attachments are staged in Zoho's own file store first and the reply
+carries the handles, so nothing large travels as JSON. The 20 MB per-message
+ceiling is checked before anything is uploaded, and a failed upload fails the
+send rather than letting the mail go out without its file. Inline images
+(`cid:` references) are refused: Zoho embeds those by rewriting the body around
+a URL of its own, so honouring them would mean delivering a broken image.
+
+One limit worth knowing before you switch: the setup wizard cannot configure
+this provider — it writes IMAP settings only, so these variables go in `.env`
+by hand.
 
 ## Unread flags
 

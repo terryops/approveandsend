@@ -13,7 +13,10 @@ interface Recorded {
   method: string;
   url: string;
   authorization?: string;
+  contentType?: string;
   body: string;
+  /** The bytes as received, for the upload path where they are not text. */
+  bytes: Buffer;
 }
 
 interface Fake {
@@ -30,14 +33,16 @@ function startFake(handler: Handler): Promise<Fake> {
     const chunks: Buffer[] = [];
     req.on('data', c => chunks.push(c as Buffer));
     req.on('end', () => {
-      const body = Buffer.concat(chunks).toString('utf8');
+      const bytes = Buffer.concat(chunks);
       requests.push({
         method: req.method ?? '',
         url: req.url ?? '',
         authorization: req.headers.authorization,
-        body,
+        contentType: req.headers['content-type'],
+        body: bytes.toString('utf8'),
+        bytes,
       });
-      handler(req, res, body);
+      handler(req, res, bytes.toString('utf8'));
     });
   });
 
@@ -166,6 +171,14 @@ function zohoRoutes(over: Record<string, (req: IncomingMessage, res: ServerRespo
     if (url.endsWith('/attachmentinfo')) return json(res, 200, { attachments: [] });
 
     if (url.endsWith('/updatemessage')) return json(res, 200, {});
+    if (req.method === 'POST' && url.includes('/messages/attachments')) {
+      const name = new URL(url, 'http://x').searchParams.get('fileName') ?? '';
+      return json(res, 200, {
+        storeName: `store-${name}`,
+        attachmentPath: `/path/${name}`,
+        attachmentName: name,
+      });
+    }
     if (req.method === 'POST' && url.includes('/messages')) {
       return json(res, 200, { messageId: 'new-1', threadId: 'thread-1' });
     }
@@ -397,7 +410,7 @@ describe('ZohoProvider writing', () => {
     expect(content).toBe('Use &lt;b&gt; tags &amp; such<br>second line');
   });
 
-  it('refuses an empty body, no recipients, or an attachment it cannot send', async () => {
+  it('refuses an empty body or no recipients', async () => {
     fake = await startFake(zohoRoutes());
     const p = provider(fake.origin);
 
@@ -405,15 +418,121 @@ describe('ZohoProvider writing', () => {
     await expect(
       p.send({ to: [{ address: 'a@example.com' }], subject: 'x' }),
     ).rejects.toThrow(/empty body/);
-    // Failing loudly beats sending the reply with the attachment missing.
+  });
+
+  it('stages attachments in Zoho\'s store and sends the handles, not the bytes', async () => {
+    fake = await startFake(zohoRoutes());
+
+    // Bytes that are not valid UTF-8, because JSON-encoding them would be the
+    // silent way this breaks: a PDF that arrives corrupt rather than not at all.
+    const pdf = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x80, 0xff, 0x00, 0x01]);
+
+    await provider(fake.origin).send({
+      to: [{ address: 'customer@example.com' }],
+      subject: 'Your invoice',
+      text: 'Attached.',
+      attachments: [
+        { filename: 'invoice.pdf', content: pdf, contentType: 'application/pdf' },
+        { filename: 'notes.txt', content: Buffer.from('hello'), contentType: 'text/plain' },
+      ],
+    });
+
+    const uploads = fake.requests.filter(r => r.url.includes('/messages/attachments'));
+    expect(uploads).toHaveLength(2);
+    expect(uploads[0]!.url).toContain('fileName=invoice.pdf');
+    // Octet-stream, never the file's own type: Zoho answers that with 415.
+    expect(uploads[0]!.contentType).toBe('application/octet-stream');
+    expect(uploads[0]!.bytes.equals(pdf)).toBe(true);
+
+    const post = fake.requests.find(r => r.method === 'POST' && /\/messages$/.test(r.url))!;
+    expect(JSON.parse(post.body).attachments).toEqual([
+      { storeName: 'store-invoice.pdf', attachmentPath: '/path/invoice.pdf', attachmentName: 'invoice.pdf' },
+      { storeName: 'store-notes.txt', attachmentPath: '/path/notes.txt', attachmentName: 'notes.txt' },
+    ]);
+  });
+
+  it('attaches to a reply too, not only to a fresh message', async () => {
+    fake = await startFake(zohoRoutes());
+
+    await provider(fake.origin).send({
+      to: [{ address: 'customer@example.com' }],
+      subject: 'Re: Your invoice',
+      text: 'Attached.',
+      inReplyToProviderId: `${INBOX}:1786003364656153000`,
+      attachments: [{ filename: 'a.pdf', content: Buffer.from('pdf') }],
+    });
+
+    const post = fake.requests.find(r => r.method === 'POST' && r.url.includes('/messages/1786'))!;
+    const sent = JSON.parse(post.body);
+    expect(sent.action).toBe('reply');
+    expect(sent.attachments).toHaveLength(1);
+  });
+
+  it('does not upload anything when there is nothing to attach', async () => {
+    fake = await startFake(zohoRoutes());
+
+    await provider(fake.origin).send({
+      to: [{ address: 'customer@example.com' }],
+      subject: 'Hello',
+      text: 'No files here.',
+    });
+
+    expect(fake.requests.some(r => r.url.includes('/messages/attachments'))).toBe(false);
+    expect(JSON.parse(fake.requests.find(r => r.method === 'POST' && r.url.includes('/messages'))!.body).attachments).toBeUndefined();
+  });
+
+  it('refuses an inline image rather than delivering a broken one', async () => {
+    fake = await startFake(zohoRoutes());
+
     await expect(
-      p.send({
+      provider(fake.origin).send({
+        to: [{ address: 'a@example.com' }],
+        subject: 'x',
+        html: '<p><img src="cid:logo"></p>',
+        attachments: [
+          { filename: 'logo.png', content: Buffer.from('png'), contentId: 'logo' },
+        ],
+      }),
+    ).rejects.toThrow(/inline/);
+
+    expect(fake.requests.some(r => r.url.includes('/messages/attachments'))).toBe(false);
+  });
+
+  it('says what is too big before uploading 25 MB Zoho will reject anyway', async () => {
+    fake = await startFake(zohoRoutes());
+
+    await expect(
+      provider(fake.origin).send({
+        to: [{ address: 'a@example.com' }],
+        subject: 'x',
+        text: 'y',
+        attachments: [{ filename: 'huge.mov', content: Buffer.alloc(25 * 1024 * 1024) }],
+      }),
+    ).rejects.toThrow(/over Zoho's 20 MB limit/);
+
+    expect(fake.requests.some(r => r.url.includes('/messages/attachments'))).toBe(false);
+  });
+
+  it('fails the send when an upload comes back without a store handle', async () => {
+    fake = await startFake((req, res, body) => {
+      const url = req.url ?? '';
+      if (req.method === 'POST' && url.includes('/messages/attachments')) {
+        return json(res, 200, {});
+      }
+      return zohoRoutes()(req, res, body);
+    });
+
+    await expect(
+      provider(fake.origin).send({
         to: [{ address: 'a@example.com' }],
         subject: 'x',
         text: 'y',
         attachments: [{ filename: 'a.pdf', content: Buffer.from('pdf') }],
       }),
-    ).rejects.toThrow(/attachments/);
+    ).rejects.toThrow(/no store handle/);
+
+    // And crucially: the mail itself never went out half-formed.
+    expect(fake.requests.some(r => r.method === 'POST' && /\/messages$/.test(r.url))).toBe(false);
   });
 
   it('marks read through the batch endpoint, because the per-message one 404s', async () => {
