@@ -143,16 +143,25 @@ Set `ADMIN_PASSWORD` before you expose the port. There are no accounts — one
 password, one signed cookie. Leaving it unset disables the login wall and every
 page says so in red.
 
-Two endpoints drive it from cron:
+Three endpoints drive it from cron:
 
 ```cron
 */5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
 */2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
+30 4 * * 1  curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
 ```
 
-`/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs.
-Both have buttons in the UI too, so you can run without a scheduler while you
+`/api/sync` pulls the inbox into tasks, `/api/worker` drains a batch of jobs,
+and `/api/consolidate` is the weekly tidy — it merges rules that have drifted
+into saying the same thing. It counts what has been written since the last pass
+and does nothing in a quiet week, so running it more often is harmless. All
+three have buttons in the UI too, so you can run without a scheduler while you
 are trying it out.
+
+Nothing to review yet? The empty inbox has a **Load sample data** button: five
+fictional emails and a rulebook, including one reply that was edited before
+sending and the two rules that edit taught. It refuses to touch a database that
+already has anything in it.
 
 The whole UI is plain forms — it works with JavaScript off, and a half-written
 draft survives a reload because it was posted rather than kept in component

@@ -1,8 +1,9 @@
 import { requirePage } from '@/lib/auth/guard';
+import { consolidationGate } from '@/lib/rules/consolidate';
 import { listRules } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
 
-import { addRule, editRule, removeRule, toggleRule } from '../actions';
+import { addRule, editRule, removeRule, tidyRulebook, toggleRule } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,12 +25,14 @@ export default async function RulesPage({
   const showDisabled = query.show === 'all';
   const rules = listRules({ ...(showDisabled ? {} : { enabledOnly: true }) });
   const active = rules.filter((rule) => rule.enabled).length;
+  const gate = consolidationGate();
 
   return (
     <>
       <div className="row" style={{ marginBottom: 16 }}>
         <span className="grow meta">
           {active} active {showDisabled ? `of ${rules.length}` : ''}
+          {gate.changed > 0 && ` · ${gate.changed} written since the last tidy`}
         </span>
         <div className="filters" style={{ margin: 0 }}>
           <a href="/rules" className={showDisabled ? '' : 'active'}>
@@ -39,7 +42,18 @@ export default async function RulesPage({
             Including retired
           </a>
         </div>
+        <form action={tidyRulebook}>
+          <button type="submit">Tidy the rulebook</button>
+        </form>
       </div>
+
+      {typeof query.tidy === 'string' && (
+        <p className="banner" style={{ borderColor: 'var(--line)' }}>
+          {query.tidy === 'already'
+            ? 'A tidy is already queued.'
+            : 'Queued. It merges near-duplicates in the background — run the queue, then reload.'}
+        </p>
+      )}
 
       <form className="card stack" action={addRule}>
         <h2>Write a rule</h2>

@@ -167,6 +167,24 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    name: 'meta',
+    up: db => {
+      db.exec(`
+        -- Small, boring key/value facts about the installation itself: when
+        -- the rulebook was last tidied, and whatever else turns out to need
+        -- remembering. A table rather than a JSON file next to the database,
+        -- because a file and a database cannot be updated in one transaction
+        -- and the pair drifts apart the first time a run is interrupted.
+        CREATE TABLE meta (
+          key        TEXT PRIMARY KEY,
+          value      TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

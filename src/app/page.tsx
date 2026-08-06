@@ -2,7 +2,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
 import { TASK_STATUSES, isTaskStatus, type TaskStatus } from '@/lib/tasks/types';
 
-import { logout, runQueue, syncNow } from './actions';
+import { loadDemo, logout, runQueue, syncNow } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +45,12 @@ export default async function InboxPage({
         ? { kind: 'ok', text: 'Sent. The learning job is queued.' }
         : typeof params.synced === 'string'
           ? { kind: 'ok', text: `Synced. ${params.synced} new email(s).` }
-          : null;
+          : typeof params.demo === 'string'
+            ? {
+                kind: 'ok',
+                text: `Loaded ${params.demo} sample emails and a rulebook. None of it is real, and nothing will be sent.`,
+              }
+            : null;
 
   return (
     <>
@@ -88,7 +93,13 @@ export default async function InboxPage({
 
       <div className="card">
         {tasks.length === 0 ? (
-          <p className="empty">Nothing here. Fetch mail to pull the inbox in.</p>
+          <div className="empty">
+            <p>Nothing here. Fetch mail to pull the inbox in.</p>
+            {/* Only offered on a genuinely empty database — see seedDemoData. */}
+            <form action={loadDemo}>
+              <button type="submit">Load sample data</button>
+            </form>
+          </div>
         ) : (
           <ul className="list">
             {tasks.map((task) => (

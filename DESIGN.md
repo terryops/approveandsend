@@ -256,6 +256,46 @@ a consolidation pass collapses later.
 proposed from the same conversation dedupe against each other and not only
 against what was in the database when the batch started.
 
+### The consolidation pass
+
+Failing open is a decision to accumulate near-duplicates, and something has to
+collect them. `rules/consolidate.ts` reads a category at a time and asks a
+model to group rules that say the same thing, then rewrites each group's
+survivor and retires the rest.
+
+Two properties make it safe to run unattended:
+
+- **Every rule lands in exactly one group.** The model is asked for a
+  partition, but a model asked for a partition will occasionally repeat an id,
+  invent one, or drop one. `salvageGroups` resolves what it can, gives a
+  repeated id to whoever claimed it first, and appends an identity group for
+  anything left over. A rule cannot vanish because a response was malformed.
+- **A group of one is left byte-identical.** Models reflow text they were told
+  to copy. The survivor is only written when the content actually differs, so a
+  pass over a tidy rulebook is a no-op rather than a slow rewrite of everything.
+
+Nothing is deleted — absorbed rules are disabled, and the survivor's previous
+text is in `rule_revisions` with `reason = 'consolidation'`. Undoing a bad pass
+is reading the revisions and flipping the flags back.
+
+Large categories go out in batches of eighteen, then a second pass over the
+resulting groups — chunked by stride, so batch neighbours are separated —
+catches duplicates that landed in different batches. That pass runs with
+`exactOnly`, because its synthetic ids (`g_1`, `g_12`) are prefixes of each
+other and the usual id repair would confuse them.
+
+**The gate is clock-free.** "Has anything changed since the last tidy?" was
+first answered by comparing timestamps, which is wrong at millisecond
+resolution: a rule written in the same millisecond as the stamp is
+indistinguishable from one written before it. The watermark is a `rowid` plus
+a count of non-consolidation revisions instead — both monotonic, neither
+subject to ties. The pass's own rewrites are excluded, so it does not re-arm
+itself.
+
+It runs as a queue job rather than a script, so there is one code path, one
+database handle and one config source; `POST /api/consolidate` checks the gate
+and enqueues.
+
 ### What the rule block does about growth
 
 Every enabled rule goes into every generation, so an unbounded rulebook

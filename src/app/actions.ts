@@ -5,9 +5,15 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import { requireApi } from '@/lib/auth/guard';
+import { seedDemoData } from '@/lib/demo/seed';
 import { COOKIE_NAME, COOKIE_OPTIONS, checkPassword, issueToken } from '@/lib/auth/session';
 import { syncInbox } from '@/lib/ingest/sync';
-import { DEFAULT_HANDLERS, createWorker, enqueueDraftReply } from '@/lib/queue';
+import {
+  DEFAULT_HANDLERS,
+  createWorker,
+  enqueueConsolidateRules,
+  enqueueDraftReply,
+} from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
 import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
 import { sendReply } from '@/lib/tasks/send';
@@ -185,4 +191,33 @@ export async function runQueue(): Promise<void> {
   revalidatePath('/queue');
   revalidatePath('/');
   redirect(`/queue${query}`);
+}
+
+/**
+ * Queueing the rulebook tidy from the rules page.
+ *
+ * Enqueued rather than run inline: a pass over a few hundred rules is a dozen
+ * LLM calls and minutes of wall time, which is not a thing to do inside a form
+ * post. `force` because a human who clicked the button has overruled the gate.
+ */
+export async function tidyRulebook(): Promise<void> {
+  await requireApi();
+  const result = enqueueConsolidateRules({ force: true });
+  revalidatePath('/rules');
+  revalidatePath('/queue');
+  redirect(`/rules?tidy=${result.deduped ? 'already' : 'queued'}`);
+}
+
+/**
+ * Filling an empty install with the sample inbox.
+ *
+ * Offered only on the empty state, and `seedDemoData` refuses to write over
+ * anything, so the worst outcome of a stray click is nothing at all.
+ */
+export async function loadDemo(): Promise<void> {
+  await requireApi();
+  const result = seedDemoData();
+  revalidatePath('/');
+  revalidatePath('/rules');
+  redirect(result.skipped ? '/' : `/?demo=${result.tasks}`);
 }
