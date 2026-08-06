@@ -500,6 +500,27 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 15,
+    name: 'superseded_by',
+    up: db => {
+      // Which newer task took this one's place.
+      //
+      // A customer who writes again before we answer leaves two tasks in the
+      // queue for one conversation, and the older one's draft answers a
+      // question they have moved past. Sending it is worse than sending
+      // nothing: it reads as not having been listened to.
+      //
+      // The older task is dismissed rather than deleted, and this records what
+      // dismissed it, so the row is explicable a month later instead of being
+      // a mystery in the audit trail. Never set on a task that was sent: what
+      // went out went out, and a later message does not unsend it.
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN superseded_by TEXT;
+        CREATE INDEX idx_tasks_thread ON tasks(thread_id) WHERE thread_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

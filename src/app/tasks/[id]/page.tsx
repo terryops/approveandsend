@@ -64,6 +64,15 @@ export default async function TaskPage({
         <p className="meta">{t('task.redraftQueued')}</p>
       )}
 
+      {/* The loudest thing on the page when it applies. A reviewer who opens a
+          superseded task from a bookmark or the sent list is about to spend
+          time on a draft nobody should send. */}
+      {task.supersededBy && (
+        <p className="banner">
+          {t('task.superseded')} <a href={`/tasks/${task.supersededBy}`}>{t('task.supersededOpen')}</a>
+        </p>
+      )}
+
       {/* Above the message being answered, in the order it happened. A
           reviewer judging "is this reply right?" on a follow-up cannot answer
           it from the last message alone, and the reply they are approving was

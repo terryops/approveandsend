@@ -55,6 +55,8 @@ export const zhCN: Dictionary = {
   "task.status.failed": "失败",
   "task.emptyBody": "（正文为空）",
   "task.attachments": "附件",
+  "task.superseded": "这封邮件已被同一个人后来的邮件取代。",
+  "task.supersededOpen": "打开新的那封 →",
   "task.unnamedAttachment": "(未命名)",
   "task.conversation": "这次对话的早前消息（{n} 条）",
   "task.threadCustomer": "客户",

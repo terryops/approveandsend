@@ -5,7 +5,7 @@ import type { MailMessage, MailMessageDetail, MailProvider } from '../mail/types
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { addAttachment } from '../tasks/attachments';
 import { addMessage } from '../tasks/messages';
-import { createTask, updateTask } from '../tasks/store';
+import { createTask, supersedeThread, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
 import { answeredMessageIds } from './answered';
 
@@ -180,6 +180,12 @@ async function ingest(
   );
 
   if (existed) return 'skipped';
+
+  // Anything still waiting to be answered on this conversation was answering
+  // the message before this one. Done before the draft is queued, so the
+  // superseded task's own drafting job — which skips dismissed tasks — never
+  // spends the call.
+  if (message.threadId) supersedeThread(message.threadId, task.id, db);
 
   const detail = await provider.getMessage(message.id);
   updateTask(task.id, { body: bodyOf(detail) }, db);

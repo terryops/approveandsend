@@ -55,6 +55,8 @@ export const fr: Dictionary = {
   "task.status.failed": "échec",
   "task.emptyBody": "(corps vide)",
   "task.attachments": "Pièces jointes",
+  "task.superseded": "Ce message a été remplacé par un message ultérieur de la même personne.",
+  "task.supersededOpen": "Ouvrir le plus récent →",
   "task.unnamedAttachment": "(sans nom)",
   "task.conversation": "Plus tôt dans cette conversation ({n})",
   "task.threadCustomer": "Client",

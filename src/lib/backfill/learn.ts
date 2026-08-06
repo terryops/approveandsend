@@ -78,6 +78,7 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     // this database has never heard of.
     sentBy: null,
     error: null,
+    supersededBy: null,
     createdAt: now,
     updatedAt: now,
   };

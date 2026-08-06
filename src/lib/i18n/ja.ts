@@ -55,6 +55,8 @@ export const ja: Dictionary = {
   "task.status.failed": "失敗",
   "task.emptyBody": "（本文なし）",
   "task.attachments": "添付ファイル",
+  "task.superseded": "このメールは同じ人からの後続メールに取って代わられました。",
+  "task.supersededOpen": "新しい方を開く →",
   "task.unnamedAttachment": "(名称なし)",
   "task.conversation": "このやり取りのこれまでの経緯（{n} 件）",
   "task.threadCustomer": "お客様",

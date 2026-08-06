@@ -23,6 +23,7 @@ interface TaskRow {
   sent_at: string | null;
   sent_by: string | null;
   error: string | null;
+  superseded_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +69,7 @@ function mapTask(row: TaskRow): Task {
     sentAt: row.sent_at,
     sentBy: row.sent_by,
     error: row.error,
+    supersededBy: row.superseded_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -178,6 +180,7 @@ export interface TaskUpdate {
   sentAt?: string | null;
   sentBy?: string | null;
   error?: string | null;
+  supersededBy?: string | null;
 }
 
 const COLUMNS: Record<keyof TaskUpdate, string> = {
@@ -192,6 +195,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   sentAt: 'sent_at',
   sentBy: 'sent_by',
   error: 'error',
+  supersededBy: 'superseded_by',
 };
 
 export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): Task | null {
@@ -215,6 +219,49 @@ export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): T
     .get(...params) as TaskRow | undefined;
 
   return row ? mapTask(row) : null;
+}
+
+/** Everything on one conversation, oldest first. Empty for an untracked thread. */
+export function listThread(threadId: string, db: Db = getDb()): Task[] {
+  if (!threadId) return [];
+  const rows = db
+    .prepare('SELECT * FROM tasks WHERE thread_id = ? ORDER BY received_at ASC, created_at ASC')
+    .all(threadId) as TaskRow[];
+  return rows.map(mapTask);
+}
+
+/**
+ * Retire the unanswered tasks a newer message on the same thread replaced.
+ *
+ * The case: a customer writes, gets no reply within the hour, and writes again
+ * — often to say something the first message got wrong, or that they no longer
+ * need help. Both messages become tasks, and the older draft is now an answer
+ * to a question they have moved on from. Sending it reads as not having been
+ * listened to, which is worse than a slow reply.
+ *
+ * Only unsent tasks are touched. A sent one is a record of a mail that exists
+ * in somebody's inbox, and no later message unsends it.
+ *
+ * Returns the ids retired.
+ */
+export function supersedeThread(threadId: string, newerTaskId: string, db: Db = getDb()): string[] {
+  if (!threadId) return [];
+
+  const rows = db
+    .prepare(
+      `SELECT id FROM tasks
+        WHERE thread_id = ? AND id != ?
+          AND status IN ('pending', 'drafting', 'awaiting_review', 'failed')`,
+    )
+    .all(threadId, newerTaskId) as { id: string }[];
+
+  for (const row of rows) {
+    // Dismissed, so it leaves the queue the way a human dismissal does, and
+    // `superseded_by` so a month from now the row explains itself.
+    updateTask(row.id, { status: 'dismissed', supersededBy: newerTaskId }, db);
+  }
+
+  return rows.map(row => row.id);
 }
 
 export function deleteTask(id: string, db: Db = getDb()): boolean {

@@ -55,6 +55,8 @@ export const de: Dictionary = {
   "task.status.failed": "fehlgeschlagen",
   "task.emptyBody": "(kein Text)",
   "task.attachments": "Anhänge",
+  "task.superseded": "Diese Nachricht wurde von einer späteren derselben Person überholt.",
+  "task.supersededOpen": "Die neuere öffnen →",
   "task.unnamedAttachment": "(ohne Namen)",
   "task.conversation": "Früher in diesem Verlauf ({n})",
   "task.threadCustomer": "Kunde",

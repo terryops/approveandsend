@@ -60,6 +60,8 @@ export interface Task {
    * is nobody in particular, or that the row predates operators. */
   sentBy: string | null;
   error: string | null;
+  /** The newer task on this conversation that replaced this one. */
+  supersededBy: string | null;
 
   createdAt: string;
   updatedAt: string;

@@ -251,6 +251,57 @@ describe('syncInbox', () => {
     expect(files[0]).toMatchObject({ messageId: 'a', attachmentId: 'att-1', size: 4096 });
   });
 
+  it('retires the unanswered task a follow-up overtook', async () => {
+    const first = message('m1', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' });
+    const provider = new FakeMailbox([first]);
+    await syncInbox({ provider, db, skipAnswered: false });
+
+    const older = getTask(
+      (db.prepare('SELECT id FROM tasks').get() as { id: string }).id,
+      db,
+    )!;
+    updateTask(older.id, { status: 'awaiting_review', draft: 'An answer to the first one' }, db);
+
+    // Same conversation, an hour later: "actually, ignore that, I worked it out".
+    const second = message('m2', { threadId: 'T1', receivedAt: '2026-08-01T10:00:00.000Z' });
+    await syncInbox({ provider: new FakeMailbox([first, second]), db, skipAnswered: false });
+
+    const newer = (db.prepare('SELECT id FROM tasks WHERE message_id = ?').get('m2') as { id: string }).id;
+    expect(getTask(older.id, db)).toMatchObject({ status: 'dismissed', supersededBy: newer });
+    // The draft is kept. It explains why the row is there, and nobody can send
+    // a dismissed task by accident anyway.
+    expect(getTask(older.id, db)?.draft).toBe('An answer to the first one');
+  });
+
+  it('leaves a reply that already went out alone', async () => {
+    const first = message('m1', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' });
+    await syncInbox({ provider: new FakeMailbox([first]), db, skipAnswered: false });
+
+    const older = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
+    updateTask(older, { status: 'sent', finalReply: 'Already in their inbox' }, db);
+
+    const second = message('m2', { threadId: 'T1', receivedAt: '2026-08-01T10:00:00.000Z' });
+    await syncInbox({ provider: new FakeMailbox([first, second]), db, skipAnswered: false });
+
+    // No later message unsends a mail, and rewriting the row would lose the
+    // record of what a customer was actually told.
+    expect(getTask(older, db)).toMatchObject({ status: 'sent', supersededBy: null });
+  });
+
+  it('does not touch another conversation with the same customer', async () => {
+    const monday = message('m1', { threadId: 'T1', receivedAt: '2026-08-01T09:00:00.000Z' });
+    await syncInbox({ provider: new FakeMailbox([monday]), db, skipAnswered: false });
+    const older = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
+    updateTask(older, { status: 'awaiting_review' }, db);
+
+    const tuesday = message('m2', { threadId: 'T2', receivedAt: '2026-08-02T09:00:00.000Z' });
+    await syncInbox({ provider: new FakeMailbox([monday, tuesday]), db, skipAnswered: false });
+
+    // Two questions, two answers owed. Merging them by sender would silently
+    // drop one.
+    expect(getTask(older, db)?.status).toBe('awaiting_review');
+  });
+
   it('writes down what was attached earlier in the conversation too', async () => {
     // The screenshot usually arrives with the *first* message, and the mail we
     // are replying to is the third. A drafter told only about the last one asks
