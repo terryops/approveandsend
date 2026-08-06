@@ -4,6 +4,7 @@ import { mailProvider } from '../mail/config';
 import type { MailProvider } from '../mail/types';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
 import { markHandled } from './mark-read';
+import { addMessage } from './messages';
 import { getTask, updateTask } from './store';
 import type { Task } from './types';
 
@@ -84,6 +85,27 @@ export async function sendReply(
     },
     db,
   );
+
+  // What we said, kept against the conversation rather than only in
+  // `final_reply`. When this thread comes back — and support threads do — the
+  // next draft has to know what was already promised, and the only record of
+  // that is this row.
+  try {
+    addMessage(
+      taskId,
+      {
+        direction: 'outbound',
+        fromAddress: '',
+        subject: replySubject(task.subject),
+        body: reply,
+        receivedAt: new Date().toISOString(),
+      },
+      db,
+    );
+  } catch (error) {
+    // Cosmetic next to a mail that has already gone out.
+    console.warn('[tasks] could not record the sent reply against the thread:', error);
+  }
 
   // Reusing the provider we just sent through rather than asking for another:
   // on IMAP that is the difference between one connection and two.

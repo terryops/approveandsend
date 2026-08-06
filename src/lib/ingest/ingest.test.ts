@@ -11,6 +11,7 @@ import type {
 } from '../mail/types';
 import { LEARN_FROM_SENT } from '../queue/handlers';
 import { listJobs } from '../queue/store';
+import { listMessages } from '../tasks/messages';
 import { createTask, getTask, updateTask } from '../tasks/store';
 import { createOperator } from '../operators/store';
 import { markHandled } from '../tasks/mark-read';
@@ -50,8 +51,21 @@ class FakeMailbox implements MailProvider {
     return { ...message, text: `full body of ${id}`, attachments: [] };
   }
 
+  /** Whatever a test wants the thread to be, keyed by the message asked about. */
+  threads = new Map<string, MailMessageDetail[]>();
+  threadFetches: string[] = [];
+
   async getThread(message: MailMessage): Promise<MailMessageDetail[]> {
-    return [await this.getMessage(message.id)];
+    this.threadFetches.push(message.id);
+    // Not routed through getMessage: a real provider reads a thread in one
+    // call, and counting it as a detail fetch would hide the thing
+    // `detailFetches` exists to prove — that we pay for a body once per new
+    // email and never for one we have already seen.
+    const thread = this.threads.get(message.id);
+    if (thread) return thread;
+    const self = this.inbox.find(m => m.id === message.id);
+    if (!self) throw new Error(`no such message: ${message.id}`);
+    return [{ ...self, text: `full body of ${message.id}`, attachments: [] }];
   }
 
   async send(mail: OutgoingMail): Promise<SendResult> {
@@ -116,6 +130,66 @@ describe('syncInbox', () => {
     // Enrichment, not drafting: looking the sender up comes first, and that
     // job is what enqueues the draft.
     expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(2);
+  });
+
+  it('records the rest of the conversation, and which side said what', async () => {
+    const latest = message('c');
+    const provider = new FakeMailbox([latest]);
+    provider.threads.set('c', [
+      {
+        ...message('c0', { receivedAt: '2026-07-30T09:00:00.000Z' }),
+        from: { address: 'c@example.com' },
+        text: 'my export came out silent',
+        attachments: [],
+      },
+      {
+        ...message('c1', { receivedAt: '2026-07-30T11:00:00.000Z' }),
+        from: { address: 'Support@Acme.test', name: 'Acme Support' },
+        text: 'we have refunded you in full',
+        attachments: [],
+      },
+      { ...latest, text: 'full body of c', attachments: [] },
+    ]);
+
+    await syncInbox({ provider, db, self: 'support@acme.test' });
+
+    const task = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
+    const thread = listMessages(task, db);
+
+    // The message being replied to is the task body, not a history entry —
+    // showing it twice invites a reply to the wrong copy.
+    expect(thread.map(m => m.messageId)).toEqual(['c0', 'c1']);
+    expect(thread.map(m => m.direction)).toEqual(['inbound', 'outbound']);
+    // Our own address arrives capitalised however the server felt like it.
+    expect(thread[1]!.fromAddress).toBe('support@acme.test');
+    expect(thread[0]!.body).toBe('my export came out silent');
+  });
+
+  it('still creates the task when the thread cannot be read', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    provider.getThread = async () => {
+      throw new Error('mailbox said no');
+    };
+
+    const result = await syncInbox({ provider, db });
+
+    // A drafter with no history writes a worse reply. A customer with no task
+    // gets no reply at all, which is the failure worth avoiding.
+    expect(result).toMatchObject({ created: 1, failures: [] });
+    const task = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
+    expect(listMessages(task, db)).toEqual([]);
+    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(1);
+  });
+
+  it('files a sent reply against the conversation', async () => {
+    const provider = new FakeMailbox();
+    const { task } = createTask({ messageId: 'x', fromAddress: 'them@example.com', subject: 'Help' }, db);
+
+    await sendReply(task.id, { finalReply: 'Have a look at Settings.' }, { provider, db, learn: false });
+
+    const thread = listMessages(task.id, db);
+    expect(thread).toHaveLength(1);
+    expect(thread[0]).toMatchObject({ direction: 'outbound', body: 'Have a look at Settings.' });
   });
 
   it('does not pay for a detail fetch on mail it has already seen', async () => {

@@ -408,6 +408,54 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE rules ADD COLUMN summary TEXT`);
     },
   },
+  {
+    version: 13,
+    name: 'task_messages',
+    up: db => {
+      // The rest of the conversation this email belongs to.
+      //
+      // Without it a follow-up is answered as though it were the first thing
+      // the customer ever said — and that failure is silent, which is what
+      // makes it the expensive one. The reply reads perfectly well and
+      // contradicts what we promised two messages ago.
+      //
+      // A table rather than a JSON column because the thread grows: every
+      // reply we send appends a row, and rewriting a blob to append to it is
+      // how two writers lose each other's work.
+      //
+      // Bodies are stored already trimmed. The raw HTML of a long support
+      // thread runs to megabytes, none of it is ever read back except to build
+      // a prompt that caps it anyway, and keeping it would make the database
+      // grow at the rate of the mailbox.
+      db.exec(`
+        CREATE TABLE task_messages (
+          id        TEXT PRIMARY KEY,
+          task_id   TEXT NOT NULL,
+          -- 'inbound' (from the customer) | 'outbound' (from us)
+          direction TEXT NOT NULL,
+          -- The provider's id, when this came from the mailbox. Null for a
+          -- reply we sent from here, which has no provider id until the next
+          -- sync sees it.
+          message_id   TEXT,
+          from_address TEXT NOT NULL DEFAULT '',
+          from_name    TEXT,
+          subject      TEXT NOT NULL DEFAULT '',
+          body         TEXT NOT NULL DEFAULT '',
+          received_at  TEXT NOT NULL,
+          created_at   TEXT NOT NULL,
+
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_task_messages_task ON task_messages(task_id, received_at);
+
+        -- Re-reading a thread on a later sync updates rows rather than
+        -- doubling them.
+        CREATE UNIQUE INDEX idx_task_messages_provider
+          ON task_messages(task_id, message_id) WHERE message_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

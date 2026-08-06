@@ -170,6 +170,23 @@ export function loadZohoConfig(): ZohoConfig {
   };
 }
 
+/**
+ * The address this desk sends from, lowercased, or undefined when nothing is
+ * configured yet.
+ *
+ * Deliberately lenient where the loaders above are strict: the only caller is
+ * thread reconstruction deciding which messages are ours, and a desk with a
+ * half-written `.env` should still ingest mail rather than throw. Getting this
+ * wrong labels a message "Customer" instead of "Support", which is a worse
+ * prompt, not a failure.
+ */
+export function mailboxAddress(): string | undefined {
+  const fromRaw = env('MAIL_FROM');
+  const parsed = fromRaw ? parseAddress(fromRaw) : null;
+  const address = parsed?.address ?? env('MAIL_USER') ?? env('GOOGLE_IMPERSONATE_USER');
+  return address?.toLowerCase();
+}
+
 export function buildMailProvider(): MailProvider {
   const kind = (env('MAIL_PROVIDER') ?? 'imap-smtp').toLowerCase();
 

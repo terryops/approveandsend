@@ -4,6 +4,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
+import { listMessages } from '@/lib/tasks/messages';
 import { getTask } from '@/lib/tasks/store';
 import { listRules } from '@/lib/rules/store';
 import { getTranslation } from '@/lib/translation/store';
@@ -39,6 +40,7 @@ export default async function TaskPage({
   const body = task.finalReply ?? task.draft ?? '';
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
+  const thread = listMessages(task.id);
 
   // Only ever the translation of exactly what is rendered below it. A draft
   // regenerated since its translation was written shows none, because a
@@ -58,6 +60,27 @@ export default async function TaskPage({
       {typeof query.saved === 'string' && <p className="meta">{t('task.saved')}</p>}
       {typeof query.queued === 'string' && (
         <p className="meta">{t('task.redraftQueued')}</p>
+      )}
+
+      {/* Above the message being answered, in the order it happened. A
+          reviewer judging "is this reply right?" on a follow-up cannot answer
+          it from the last message alone, and the reply they are approving was
+          written with all of this in front of it. Collapsed, because on a
+          first contact — most tasks — there is nothing here at all. */}
+      {thread.length > 0 && (
+        <details className="card">
+          <summary>{t('task.conversation', { n: thread.length })}</summary>
+          {thread.map(m => (
+            <div key={m.id} style={{ marginTop: 12 }}>
+              <div className="meta">
+                {m.direction === 'outbound' ? t('task.threadUs') : t('task.threadCustomer')}
+                {m.fromAddress ? ` · ${m.fromAddress}` : ''}
+                {` · ${m.receivedAt.slice(0, 16).replace('T', ' ')}`}
+              </div>
+              <pre className="email">{m.body || t('task.emptyBody')}</pre>
+            </div>
+          ))}
+        </details>
       )}
 
       <div className="card">

@@ -1,8 +1,9 @@
 import type { Db } from '../db';
 import { getDb } from '../db';
-import { mailProvider } from '../mail/config';
-import type { MailMessage, MailProvider } from '../mail/types';
+import { mailboxAddress, mailProvider } from '../mail/config';
+import type { MailMessage, MailMessageDetail, MailProvider } from '../mail/types';
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
+import { addMessage } from '../tasks/messages';
 import { createTask, updateTask } from '../tasks/store';
 import { htmlToText, trimEmailBody } from '../thread-context';
 
@@ -26,6 +27,16 @@ export interface SyncOptions {
   db?: Db;
   /** Off when you want tasks created but no drafting to start. */
   draft?: boolean;
+  /**
+   * Off to skip the per-message thread fetch.
+   *
+   * On by default, because a drafter with no thread answers a follow-up as a
+   * first contact and nothing about that looks wrong until a customer points
+   * it out. Worth one extra provider call per new task.
+   */
+  thread?: boolean;
+  /** Our own address, for deciding which messages in a thread are ours. */
+  self?: string;
 }
 
 export interface SyncResult {
@@ -43,11 +54,65 @@ function bodyOf(detail: { text?: string | undefined; html?: string | undefined }
   return detail.html ? trimEmailBody(htmlToText(detail.html)) : '';
 }
 
+function detailBody(detail: MailMessageDetail): string {
+  const text = detail.text?.trim();
+  if (text) return trimEmailBody(text);
+  return detail.html ? trimEmailBody(htmlToText(detail.html)) : (detail.snippet ?? '');
+}
+
+/**
+ * Record the rest of the conversation against the task.
+ *
+ * Best-effort on purpose. A thread fetch that fails should cost the drafter its
+ * context, not cost the customer their reply — the task is already created and
+ * a mail with no thread is exactly what every task looked like before this
+ * existed.
+ */
+async function captureThread(
+  taskId: string,
+  message: MailMessage,
+  provider: MailProvider,
+  db: Db,
+  self: string | undefined,
+): Promise<void> {
+  let thread: MailMessageDetail[];
+  try {
+    thread = await provider.getThread(message);
+  } catch (error) {
+    console.warn(`[ingest] could not read the thread for ${message.id}:`, error);
+    return;
+  }
+
+  for (const item of thread) {
+    // The message being replied to is already the task body; repeating it as
+    // history would show the drafter the same text twice and invite a reply to
+    // the wrong one.
+    if (item.id === message.id) continue;
+
+    const from = item.from?.address?.toLowerCase() ?? '';
+    addMessage(
+      taskId,
+      {
+        direction: self && from === self ? 'outbound' : 'inbound',
+        messageId: item.id,
+        fromAddress: from,
+        ...(item.from?.name ? { fromName: item.from.name } : {}),
+        subject: item.subject ?? '',
+        body: detailBody(item),
+        receivedAt: item.receivedAt,
+      },
+      db,
+    );
+  }
+}
+
 async function ingest(
   message: MailMessage,
   provider: MailProvider,
   db: Db,
   draft: boolean,
+  thread: boolean,
+  self: string | undefined,
 ): Promise<'created' | 'skipped'> {
   // Created from the summary first: the detail fetch is the expensive call and
   // there is no point paying it for mail we have already seen.
@@ -70,6 +135,10 @@ async function ingest(
   const detail = await provider.getMessage(message.id);
   updateTask(task.id, { body: bodyOf(detail) }, db);
 
+  // Before drafting is queued, not after: the drafting job reads the thread,
+  // and a worker that claims the job first would build its prompt without one.
+  if (thread) await captureThread(task.id, message, provider, db, self);
+
   if (draft) await enqueueForDrafting(task.id, { db });
   return 'created';
 }
@@ -78,6 +147,8 @@ export async function syncInbox(options: SyncOptions = {}): Promise<SyncResult> 
   const db = options.db ?? getDb();
   const provider = options.provider ?? mailProvider();
   const draft = options.draft !== false;
+  const thread = options.thread !== false;
+  const self = options.self?.toLowerCase() ?? mailboxAddress();
 
   const messages = await provider.listInbox({
     limit: options.limit ?? 50,
@@ -91,7 +162,7 @@ export async function syncInbox(options: SyncOptions = {}): Promise<SyncResult> 
   // turn one bad message into a burst of retries.
   for (const message of messages) {
     try {
-      if ((await ingest(message, provider, db, draft)) === 'created') result.created += 1;
+      if ((await ingest(message, provider, db, draft, thread, self)) === 'created') result.created += 1;
       else result.skipped += 1;
     } catch (error) {
       result.failures.push({

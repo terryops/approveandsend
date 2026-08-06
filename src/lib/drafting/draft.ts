@@ -14,6 +14,7 @@ import { extractJson } from '../json-repair';
 import { selectRules } from '../rules/prompt';
 import { formatRetrieved, retrieveRules } from '../rules/retrieve';
 import { listRules, recordApplied } from '../rules/store';
+import { threadContextFor } from '../tasks/messages';
 import type { Analysis, Task } from '../tasks/types';
 import { isSentiment } from '../tasks/types';
 import { clip, htmlToText } from '../thread-context';
@@ -67,6 +68,10 @@ export interface DraftOptions {
    * feeding it in would teach rules from a fact that was not available.
    */
   context?: string;
+  /**
+   * Override the conversation history block. '' forces a first-contact prompt.
+   */
+  thread?: string;
   db?: Db;
 }
 
@@ -85,6 +90,8 @@ function buildPrompt(
   contextBlock: string,
   /** Already decided, and already used to choose the rules above. */
   topic: string | undefined,
+  /** Earlier messages in this conversation; '' for a first contact. */
+  threadBlock: string,
 ): string {
   const body = clip(htmlToText(task.body), MAX_BODY_CHARS);
 
@@ -96,9 +103,13 @@ function buildPrompt(
     ? `\n\nThis mail has been classified as: ${topic}. The rules below were chosen for it.`
     : describeTopics(workspace);
 
-  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}
+  // The history comes before the message being answered, and the heading says
+  // which is which. A drafter shown four messages and asked for "a reply" will
+  // otherwise answer whichever one it found most interesting, which on a thread
+  // where the customer has already been placated is the angry one.
+  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}
 
-## The customer's email
+## ${threadBlock ? "The customer's latest message — this is what you are replying to" : "The customer's email"}
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
 Subject: ${task.subject}
 
@@ -206,7 +217,16 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   // configured, which is the default and costs nothing.
   const contextBlock = options.context ?? contextForPrompt(task.id, db);
 
-  const raw = await callAI(buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined), { role: 'drafter' });
+  // Everything said in this conversation before the message being answered.
+  // Overridable for the same reason `context` is: the backfill reconstructs a
+  // thread as it stood when the archived reply was written, not as it stands
+  // now, and the two are not the same conversation.
+  const threadBlock = options.thread ?? threadContextFor(task.id, {}, db);
+
+  const raw = await callAI(
+    buildPrompt(task, workspace, rulesBlock, contextBlock, topic || undefined, threadBlock),
+    { role: 'drafter' },
+  );
   const parsed = parseDraft(raw, workspace, topic || undefined);
   if (!parsed) {
     throw new Error('The drafter returned no usable draft');
@@ -229,7 +249,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   };
 
   if (options.critic) {
-    const critique = await criticise(task, signed, workspace, rulesBlock, contextBlock);
+    const critique = await criticise(task, signed, workspace, rulesBlock, contextBlock, threadBlock);
     if (critique) {
       result.critique = critique;
       if (critique.revised) result.draft = critique.revised;
@@ -260,12 +280,16 @@ async function criticise(
   // that cheerfully tells a lapsed customer their subscription renews next
   // month gets caught before a human has to notice it.
   contextBlock: string,
+  // The critic needs the thread more than the drafter does. "Contradicts what
+  // we already told them" is not a judgement it can make on a message in
+  // isolation, and it is the mistake a follow-up reply actually makes.
+  threadBlock: string,
 ): Promise<Critique | undefined> {
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
-${describeWorkspace(workspace)}${rulesBlock}${contextBlock}
+${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}
 
-## The customer's email
+## The customer's ${threadBlock ? 'latest message' : 'email'}
 Subject: ${task.subject}
 
 ${clip(htmlToText(task.body), MAX_BODY_CHARS)}
@@ -274,8 +298,8 @@ ${clip(htmlToText(task.body), MAX_BODY_CHARS)}
 ${draft}
 
 Check it for: claims that are not supported by the facts above, anything on the
-never-promise list, breaches of the rules, the wrong language, and tone that
-does not match. Ignore matters of taste — a reply you would have phrased
+never-promise list, breaches of the rules, the wrong language, tone that does
+not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}. Ignore matters of taste — a reply you would have phrased
 differently is not a problem.
 
 JSON only:

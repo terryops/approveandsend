@@ -19,6 +19,7 @@ import { enqueueDraftReply, DRAFT_REPLY, draftReplyHandler } from '../queue/hand
 import { enqueue, listJobs } from '../queue/store';
 import { createWorker } from '../queue/worker';
 import { createRule, listRules } from '../rules/store';
+import { addMessage, countMessages, listMessages } from '../tasks/messages';
 import { countTasksByStatus, createTask, deleteTask, getTask, listTasks, updateTask } from '../tasks/store';
 import { draftReply } from './draft';
 
@@ -295,6 +296,128 @@ describe('task store', () => {
   it('is a no-op for an unknown id', () => {
     expect(updateTask('nope', { draft: 'x' }, db)).toBeNull();
     expect(deleteTask('nope', db)).toBe(false);
+  });
+});
+
+describe('conversation history in the prompt', () => {
+  it('shows earlier messages and names which one is being answered', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+
+    addMessage(
+      task.id,
+      {
+        direction: 'inbound',
+        messageId: 'm1',
+        fromAddress: 'customer@example.com',
+        body: 'My export finished but the file is silent.',
+        receivedAt: '2026-07-29T09:00:00.000Z',
+      },
+      db,
+    );
+    addMessage(
+      task.id,
+      {
+        direction: 'outbound',
+        body: 'Sorry about that — we have issued a full refund today.',
+        receivedAt: '2026-07-29T11:00:00.000Z',
+      },
+      db,
+    );
+
+    await draftReply(task, { db });
+
+    const prompt = prompts[0]!;
+    // Both sides of what was already said, in order, labelled.
+    expect(prompt).toContain('[Customer]');
+    expect(prompt).toContain('the file is silent');
+    expect(prompt).toContain('[Support]');
+    expect(prompt).toContain('we have issued a full refund today');
+    expect(prompt.indexOf('the file is silent')).toBeLessThan(
+      prompt.indexOf('we have issued a full refund today'),
+    );
+
+    // And the drafter is told which of the four messages in front of it is the
+    // one to answer. Without this it answers whichever it finds most
+    // interesting, which on a placated thread is the angry one.
+    expect(prompt).toContain("The customer's latest message — this is what you are replying to");
+    expect(prompt.indexOf('end of conversation history')).toBeLessThan(
+      prompt.indexOf("The customer's latest message"),
+    );
+  });
+
+  it('says nothing about a thread on a first contact', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+
+    await draftReply(task, { db });
+
+    const prompt = prompts[0]!;
+    expect(prompt).not.toContain('This is a follow-up');
+    expect(prompt).toContain("The customer's email");
+  });
+
+  it('gives the critic the thread too, so it can catch a contradiction', async () => {
+    queued.push(GOOD_DRAFT, JSON.stringify({ approved: true, issues: [] }));
+    const { task } = createTask(INCOMING, db);
+    addMessage(
+      task.id,
+      {
+        direction: 'outbound',
+        body: 'We have already refunded you in full.',
+        receivedAt: '2026-07-29T11:00:00.000Z',
+      },
+      db,
+    );
+
+    await draftReply(task, { db, critic: true });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain('We have already refunded you in full.');
+    expect(prompts[1]).toContain('contradicts or repeats what we already said');
+  });
+
+  it('lets the caller force a first-contact prompt', async () => {
+    // What the backfill needs: today's thread is not the conversation as it
+    // stood when the archived reply was written.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    addMessage(
+      task.id,
+      { direction: 'inbound', body: 'something from later', receivedAt: '2026-07-29T09:00:00.000Z' },
+      db,
+    );
+
+    await draftReply(task, { db, thread: '' });
+
+    expect(prompts[0]).not.toContain('something from later');
+  });
+
+  it('updates a message rather than duplicating it when a thread is re-read', async () => {
+    const { task } = createTask(INCOMING, db);
+    const first = addMessage(
+      task.id,
+      { direction: 'inbound', messageId: 'm1', body: 'draft body', receivedAt: '2026-07-29T09:00:00.000Z' },
+      db,
+    );
+    const second = addMessage(
+      task.id,
+      { direction: 'inbound', messageId: 'm1', body: 'full body', receivedAt: '2026-07-29T09:00:00.000Z' },
+      db,
+    );
+
+    expect(second.id).toBe(first.id);
+    expect(countMessages(task.id, db)).toBe(1);
+    expect(listMessages(task.id, db)[0]!.body).toBe('full body');
+  });
+
+  it('goes with the task when the task is deleted', () => {
+    const { task } = createTask(INCOMING, db);
+    addMessage(task.id, { direction: 'inbound', body: 'x', receivedAt: '2026-07-29T09:00:00.000Z' }, db);
+
+    deleteTask(task.id, db);
+
+    expect(countMessages(task.id, db)).toBe(0);
   });
 });
 
