@@ -291,11 +291,17 @@ can take minutes, repairing a missing backslash beats re-running the call.
 
 ## Licensing
 
-AGPL-3.0-or-later. Self-hosting, modification and internal use are unrestricted;
-running a modified version as a public service requires publishing those
-modifications. This keeps a hosted-SaaS fork honest while leaving the door open
-to sell exceptions later. Relicensing to something more permissive later is
-easy; the reverse is not, once there are outside contributors.
+MIT. The AGPL case was that it keeps a hosted-SaaS fork honest, and it was
+rejected: the moat here is not the code, it is a rulebook that only exists
+after a few hundred real corrections, which a fork does not get by copying
+files. Meanwhile AGPL is on the banned-dependency list at a large share of the
+companies whose support inboxes this is for, so it costs adoption to protect
+something that was not at risk.
+
+MIT also makes the code reusable inside other projects without a lawyer in the
+loop, which is most of what a small open-source project has going for it. The
+tradeoff is real and accepted: this is relicensable in one direction only, and
+the direction has now been chosen.
 
 ## Open questions
 

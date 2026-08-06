@@ -134,5 +134,4 @@ so wire format, headers, retry behaviour and timeouts are actually exercised.
 
 ## License
 
-AGPL-3.0-or-later. Self-host it freely, modify it freely; if you run a modified
-version as a network service, share those modifications.
+MIT. Use it, change it, ship it, sell it.

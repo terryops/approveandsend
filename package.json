@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "AI drafts your customer support replies, a human approves them, and every correction teaches it.",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=20"
