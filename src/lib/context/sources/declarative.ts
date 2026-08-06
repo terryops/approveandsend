@@ -118,7 +118,12 @@ export function readPath(value: unknown, path: string): unknown {
 
 function scalar(value: unknown): string | null {
   if (value == null) return null;
-  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  // A false flag is not a fact worth a sentence. Treating it as missing is
+  // what makes a flag usable as a condition: `"{isLifetime} — never quote
+  // them a renewal date."` disappears for everyone who is not, which is the
+  // only thing anyone wants from a boolean here. `no` on a card is noise; the
+  // absent row says the same thing.
+  if (typeof value === 'boolean') return value ? 'yes' : null;
   if (typeof value === 'object') return null;
   const text = String(value).trim();
   return text === '' ? null : text;
@@ -141,13 +146,18 @@ export function fill(template: string, data: unknown, subject: LookupSubject): F
   let complete = true;
 
   const text = template.replace(/\{([^{}]+)\}/g, (_, raw: string) => {
-    const path = raw.trim();
+    // `{?flag}` requires the value but prints nothing — a condition rather
+    // than a substitution. Without it, gating a sentence on a flag means
+    // printing the flag, and the sentence ends "... lifetime licence (yes)".
+    const gate = raw.trim().startsWith('?');
+    const path = gate ? raw.trim().slice(1).trim() : raw.trim();
+
     const found = scalar(readPath(data, path)) ?? fallback(path, subject);
     if (found === null) {
       complete = false;
       return '';
     }
-    return found;
+    return gate ? '' : found;
   });
 
   return { text, complete };

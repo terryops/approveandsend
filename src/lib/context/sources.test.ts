@@ -81,6 +81,23 @@ describe('reading values out of a response', () => {
     // A field that came back blank is not a fact worth a sentence.
     expect(fill('{empty}!', data, SUBJECT).complete).toBe(false);
   });
+
+  it('treats a false flag as missing, so a flag can gate a sentence', () => {
+    // The only useful thing a boolean does here: "they hold a lifetime
+    // licence, never quote them a renewal date" must vanish for everyone who
+    // does not, and there is no `if` in this format.
+    expect(fill('{user.deleted}', data, SUBJECT).complete).toBe(false);
+    expect(fill('{user.plan}', data, SUBJECT).complete).toBe(true);
+  });
+
+  it('gates on a value without printing it', () => {
+    // Otherwise the sentence reads "... a lifetime licence (yes)".
+    expect(fill('{?user.plan}They are a customer.', data, SUBJECT)).toEqual({
+      text: 'They are a customer.',
+      complete: true,
+    });
+    expect(fill('{?user.deleted}Closed account.', data, SUBJECT).complete).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

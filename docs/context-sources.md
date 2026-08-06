@@ -112,6 +112,11 @@ A few of those keys are load-bearing:
   dropped whole**. That is why there is no `if` in this format: the sentence
   about expiring credits simply is not there for someone who has none, and you
   never get "They have  credits left."
+- **`{?path}`** requires a value and prints nothing, which is how a flag gates
+  a sentence: `"{?isLifetime}They hold a lifetime licence, so never quote them
+  a renewal date."` disappears for everyone who does not. A `false` counts as
+  missing everywhere — on a card, `AppSumo: no` is noise, and the absent row
+  says the same thing.
 - **`requires`** handles the usual shape of "no such user": a `200` with an
   empty record. A card reading `Plan: —` is worse than no card.
 - **`${VAR}`** in a header reads the environment, so the token stays out of the
