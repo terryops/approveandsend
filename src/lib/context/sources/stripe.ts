@@ -1,87 +1,26 @@
+import {
+  DASHBOARD,
+  chargeState,
+  day,
+  findCustomer,
+  listCharges,
+  listSubscriptions,
+  money,
+  planOf,
+  stripeConfigured,
+  type StripeCharge,
+  type StripeCustomer,
+  type StripeSubscription,
+} from '../../billing/stripe';
 import type { ContextBlock, ContextField, ContextSource, LookupSubject } from '../types';
 
 /**
  * Who this person is to the billing system.
  *
- * Read-only, and only three GETs: the customer, their subscriptions, their
- * recent charges. It uses `/v1/customers?email=` rather than
- * `/v1/customers/search`, because search needs a broader permission than a
- * read-only restricted key is normally given and this should work with the
- * narrowest key Stripe will issue.
- *
- * Make that key restricted, and give it read on customers, subscriptions and
- * charges. Nothing here writes, so nothing here needs write.
+ * Three reads, turned into a paragraph. The client itself lives in
+ * `lib/billing/stripe.ts`, because the billing page makes the same three reads
+ * and wants a table out of them rather than prose.
  */
-
-const API = 'https://api.stripe.com/v1';
-const TIMEOUT_MS = 8_000;
-const DASHBOARD = 'https://dashboard.stripe.com/customers';
-
-interface StripeCustomer {
-  id: string;
-  email?: string | null;
-  name?: string | null;
-  created: number;
-  currency?: string | null;
-  delinquent?: boolean | null;
-}
-
-interface StripeSubscription {
-  id: string;
-  status: string;
-  current_period_end: number;
-  cancel_at_period_end: boolean;
-  items?: { data?: { price?: { nickname?: string | null; unit_amount?: number | null; currency?: string; recurring?: { interval?: string } | null } | null }[] };
-}
-
-interface StripeCharge {
-  amount: number;
-  currency: string;
-  paid: boolean;
-  refunded: boolean;
-  created: number;
-  status: string;
-}
-
-function key(): string {
-  return process.env.STRIPE_API_KEY?.trim() ?? '';
-}
-
-async function get<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
-    headers: { Authorization: `Bearer ${key()}` },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-    throw new Error(detail?.error?.message ?? `Stripe responded ${response.status}`);
-  }
-  return (await response.json()) as T;
-}
-
-function money(amount: number, currency: string): string {
-  // Stripe's minor units, except for the currencies that have none. Getting
-  // this wrong turns ¥5,000 into ¥50 in a sentence the model then repeats.
-  const zeroDecimal = ['jpy', 'krw', 'vnd', 'clp', 'isk'];
-  const value = zeroDecimal.includes(currency.toLowerCase()) ? amount : amount / 100;
-  return `${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${currency.toUpperCase()}`;
-}
-
-function day(epochSeconds: number): string {
-  return new Date(epochSeconds * 1000).toISOString().slice(0, 10);
-}
-
-function planOf(subscription: StripeSubscription): string {
-  const price = subscription.items?.data?.[0]?.price;
-  if (!price) return 'subscription';
-  const amount =
-    typeof price.unit_amount === 'number' && price.currency
-      ? money(price.unit_amount, price.currency)
-      : null;
-  const every = price.recurring?.interval ? `/${price.recurring.interval}` : '';
-  return [price.nickname, amount ? `${amount}${every}` : null].filter(Boolean).join(' — ') || 'subscription';
-}
 
 /**
  * The paragraph the model reads.
@@ -118,7 +57,7 @@ function describe(
     lines.push('Has never had a subscription. Do not assume they are paying for anything.');
   }
 
-  const paid = charges.filter(c => c.paid && !c.refunded);
+  const paid = charges.filter(c => chargeState(c) === 'paid');
   if (paid.length > 0) {
     const byCurrency = new Map<string, number>();
     for (const charge of paid) {
@@ -128,10 +67,19 @@ function describe(
     lines.push(`Has paid ${totals} across ${paid.length} charge(s); the most recent was ${day(paid[0]!.created)}.`);
   }
 
-  const refunded = charges.filter(c => c.refunded);
-  if (refunded.length > 0) {
-    // The single most useful thing to not get wrong in a refund thread.
-    lines.push(`${refunded.length} of their charges has already been refunded.`);
+  // Both kinds, and separately. A partial refund described as a refund is how
+  // somebody gets told their money is on the way back when half of it is not,
+  // and it is the single most expensive sentence a support desk can write.
+  const full = charges.filter(c => chargeState(c) === 'refunded');
+  const partial = charges.filter(c => chargeState(c) === 'partial');
+  if (full.length > 0) {
+    lines.push(`${full.length} of their charges has already been refunded in full.`);
+  }
+  if (partial.length > 0) {
+    const given = partial.map(c => money(c.amount_refunded ?? 0, c.currency)).join(', ');
+    lines.push(
+      `${partial.length} more has been partially refunded (${given} returned so far) — do not describe those as refunded.`,
+    );
   }
 
   if (customer.delinquent) {
@@ -145,13 +93,10 @@ export const stripeSource: ContextSource = {
   id: 'stripe',
   label: 'Billing (Stripe)',
 
-  configured: () => key() !== '',
+  configured: stripeConfigured,
 
   async lookup(subject: LookupSubject): Promise<ContextBlock | null> {
-    const found = await get<{ data: StripeCustomer[] }>(
-      `/customers?email=${encodeURIComponent(subject.email)}&limit=1`,
-    );
-    const customer = found.data[0];
+    const customer = await findCustomer(subject.email);
     // Not an error. Most people who write in have never paid for anything, and
     // "this person is not a customer" is itself worth telling the model.
     if (!customer) {
@@ -164,12 +109,12 @@ export const stripeSource: ContextSource = {
     }
 
     const [subscriptions, charges] = await Promise.all([
-      get<{ data: StripeSubscription[] }>(`/subscriptions?customer=${customer.id}&status=all&limit=10`),
-      get<{ data: StripeCharge[] }>(`/charges?customer=${customer.id}&limit=20`),
+      listSubscriptions(customer.id),
+      listCharges(customer.id, 20),
     ]);
 
-    const active = subscriptions.data.find(s => s.status === 'active' || s.status === 'trialing');
-    const paid = charges.data.filter(c => c.paid && !c.refunded);
+    const active = subscriptions.find(s => s.status === 'active' || s.status === 'trialing');
+    const paid = charges.filter(c => chargeState(c) === 'paid');
 
     const fields: ContextField[] = [
       { label: 'Customer', value: customer.name ?? customer.id, href: `${DASHBOARD}/${customer.id}` },
@@ -195,11 +140,23 @@ export const stripeSource: ContextSource = {
     }
     if (customer.delinquent) fields.push({ label: 'Status', value: 'payment failed' });
 
+    // The way in to the charge-by-charge screen. A card is a summary by
+    // design, and the question that follows a summary in a billing thread is
+    // always "which payment, and how much of it came back" — the one thing a
+    // sentence about totals cannot answer.
+    if (subject.email.trim()) {
+      fields.push({
+        label: 'Payments',
+        value: 'every charge and refund',
+        href: `/billing/${encodeURIComponent(subject.email.trim())}`,
+      });
+    }
+
     return {
       title: 'Billing (Stripe)',
       href: `${DASHBOARD}/${customer.id}`,
       fields,
-      prompt: describe(customer, subscriptions.data, charges.data),
+      prompt: describe(customer, subscriptions, charges),
     };
   },
 };

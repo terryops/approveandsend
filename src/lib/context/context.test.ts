@@ -405,7 +405,7 @@ describe('the Stripe source', () => {
     responses.set('/v1/charges', { data: charges });
   }
 
-  async function lookup() {
+  async function lookup(email = 'alex@example.com') {
     const { port } = server.address() as AddressInfo;
     // The source reads its base URL from nowhere, so point fetch at the stub by
     // overriding the module's constant through the environment it does read.
@@ -416,7 +416,7 @@ describe('the Stripe source', () => {
     try {
       return await stripeSource.lookup({
         taskId: 't',
-        email: 'alex@example.com',
+        email,
         name: 'Alex',
         subject: 'Refund',
       });
@@ -456,7 +456,31 @@ describe('the Stripe source', () => {
     expect(block!.prompt).toContain('active subscription (Pro — 19 USD/month)');
     expect(block!.prompt).toContain('renews 2026-03-31');
     expect(block!.prompt).toContain('Has paid 19 USD across 1 charge(s)');
-    expect(block!.fields.map(f => f.label)).toEqual(['Customer', 'Since', 'Subscription', 'Renews', 'Paid']);
+    expect(block!.fields.map(f => f.label)).toEqual([
+      'Customer',
+      'Since',
+      'Subscription',
+      'Renews',
+      'Paid',
+      'Payments',
+    ]);
+  });
+
+  it('offers a way through to the charge-by-charge screen', async () => {
+    // The card is a summary, and the question after a billing summary is
+    // always "which payment, and how much of it came back" — which a total
+    // cannot answer. The link has to survive an address with a + in it.
+    stub(
+      { id: 'cus_1', created: NOW, email: 'lin+billing@example.com' },
+      [],
+      [],
+    );
+
+    const block = await lookup('lin+billing@example.com');
+
+    expect(block!.fields.find(f => f.label === 'Payments')?.href).toBe(
+      '/billing/lin%2Bbilling%40example.com',
+    );
   });
 
   it('warns the model off treating a lapsed customer as current', async () => {
