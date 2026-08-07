@@ -149,11 +149,15 @@ export async function saveDraft(form: FormData): Promise<void> {
  *
  * No-ops when nothing changed, so pressing Redraft twice does not write two
  * identical versions.
+ *
+ * And nothing at all mid-send: `sendReply` is going to write `finalReply` from
+ * the text it was handed, so rewriting the draft underneath it produces a task
+ * whose record of what was proposed is text that was typed after it went.
  */
 async function keepEdits(form: FormData, id: string): Promise<void> {
   const draft = field(form, 'draft');
   const before = getTask(id);
-  if (!before || before.status === 'sent') return;
+  if (!before || before.status === 'sent' || before.status === 'sending') return;
   if (draft.trim() === (before.draft ?? '').trim()) return;
 
   updateTask(id, { draft });
@@ -235,7 +239,11 @@ export async function redraftTask(form: FormData): Promise<void> {
   const id = field(form, 'taskId');
   await keepEdits(form, id);
   const task = getTask(id);
-  if (task) {
+  // Not while a send holds the claim. Redrafting one moved it to `pending` and
+  // queued a drafter, the send then finished and wrote `sent` plus the reply
+  // that went out, and the drafting job — still in flight — overwrote that
+  // with a draft for a mail the customer had already read.
+  if (task && task.status !== 'sending') {
     // Back to pending first, or the job's own guard would see a task that is
     // already awaiting review and the queue would dedupe the request away.
     //
@@ -278,7 +286,9 @@ export async function restoreDraft(form: FormData): Promise<void> {
   const version = getVersion(field(form, 'versionId'));
   const task = getTask(id);
 
-  if (version && version.taskId === id && task && task.status !== 'sent') {
+  // `sending` alongside `sent` for the reason `keepEdits` refuses it: the draft
+  // column is what the in-flight send is about to be recorded against.
+  if (version && version.taskId === id && task && task.status !== 'sent' && task.status !== 'sending') {
     if (task.draft) recordDraft(id, task.draft, { source: 'human' });
     updateTask(id, { draft: version.body });
     recordEvent(id, 'edited', {
@@ -342,7 +352,7 @@ export async function askForOptions(form: FormData): Promise<void> {
   await keepEdits(form, id);
   const task = getTask(id);
 
-  if (task && task.status !== 'sent' && task.status !== 'dismissed') {
+  if (task && task.status !== 'sent' && task.status !== 'dismissed' && task.status !== 'sending') {
     // The notes go with it for the same reason Redraft carries them: "give me
     // options" plus "the tone is too formal" is a different request from
     // "give me options", and the box under the draft is where that sentence
@@ -369,7 +379,7 @@ export async function useAlternative(form: FormData): Promise<void> {
   const option = getAlternative(field(form, 'alternativeId'));
   const task = getTask(id);
 
-  if (option && option.taskId === id && task && task.status !== 'sent') {
+  if (option && option.taskId === id && task && task.status !== 'sent' && task.status !== 'sending') {
     if (task.draft) recordDraft(id, task.draft, { source: 'human' });
     recordDraft(id, option.body, { source: 'model', notes: option.strategy || null });
     updateTask(id, { draft: option.body });

@@ -32,7 +32,9 @@ export default async function DonePage() {
   const blocked = missing.filter(step => !step.optional);
   // Offered only while there is nothing to overwrite. Somebody who reaches
   // /setup again on a working desk does not need to be asked about this.
-  const rulebookEmpty = listRules({}).length === 0;
+  // Proposals count as something to overwrite: a desk with suggestions waiting
+  // has a rulebook, even if nobody has approved any of it yet.
+  const rulebookEmpty = listRules({ proposed: 'include' }).length === 0;
 
   return (
     <>

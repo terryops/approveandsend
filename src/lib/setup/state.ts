@@ -101,7 +101,12 @@ export function setupState(db: Db = getDb()): SetupState {
     { step: 'voice', title: 'Say who you are', href: '/setup/voice', done: hasVoice(), optional: true },
   ];
 
-  const empty = listTasks({ limit: 1 }, db).length === 0 && listRules({}, db).length === 0;
+  // "Has anybody used this yet?", so proposals count: a desk whose rulebook is
+  // all pending suggestions has been running long enough to learn something,
+  // and offering it the untouched-install treatment would be wrong.
+  const empty =
+    listTasks({ limit: 1 }, db).length === 0 &&
+    listRules({ proposed: 'include' }, db).length === 0;
 
   return {
     steps,

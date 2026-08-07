@@ -271,7 +271,14 @@ export interface SeedResult {
  * demo mail appearing in a real reviewer's queue.
  */
 export function seedDemoData(db: Db = getDb()): SeedResult {
-  if (listTasks({ limit: 1 }, db).length > 0 || listRules({}, db).length > 0) {
+  // Proposals included, and this is the load-bearing case: a rulebook of
+  // nothing but pending suggestions reads as empty to a query that hides them,
+  // and this check is the only thing standing between a live desk and a queue
+  // full of demo mail.
+  if (
+    listTasks({ limit: 1 }, db).length > 0 ||
+    listRules({ proposed: 'include' }, db).length > 0
+  ) {
     return { tasks: 0, rules: 0, skipped: true };
   }
 

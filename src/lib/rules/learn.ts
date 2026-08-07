@@ -6,7 +6,7 @@ import { clip, htmlToText } from '../thread-context';
 import { dedupeAndApplyRule, type DedupResult } from './dedup';
 import { diffSummary } from './diff';
 import { formatRulesForReview } from './prompt';
-import { listRules, updateRule } from './store';
+import { listRules, proposeRuleUpdate } from './store';
 import { coerceCategory, type Rule } from './types';
 
 /**
@@ -56,8 +56,12 @@ export interface LearningOutcome {
   /** False when the reply went out unedited and there was nothing to learn. */
   attempted: boolean;
   results: DedupResult[];
-  /** Existing rules the extractor rewrote, with the change already applied. */
-  amended: { ruleId: string; content: string }[];
+  /**
+   * Rewrites of existing rules, queued for approval rather than applied.
+   * `ruleId` is the rule the rewrite is aimed at; `proposalId` is the row
+   * holding the new text until somebody agrees to it.
+   */
+  amended: { ruleId: string; proposalId: string; content: string }[];
   /** Rejected ids and malformed proposals, for logging. */
   discarded: string[];
 }
@@ -247,13 +251,23 @@ async function apply(
       outcome.discarded.push(`amend:${amendment.ruleId ?? '(no id)'}`);
       continue;
     }
-    const updated = updateRule(
+    // Queued, not applied. The prompt that produced this had the customer's
+    // email in it and explicitly invites rewrites of existing rules, so an
+    // amendment is a stranger's sentence pointed at a rule that is already in
+    // every draft. That the target was approved says nothing about the text
+    // arriving now, and the revision it would leave is a record read
+    // afterwards, not a gate.
+    const queued = proposeRuleUpdate(
       target.id,
-      { content },
+      {
+        content,
+        sourceTaskId: input.taskId,
+        rationale: amendment.rationale?.trim() || null,
+      },
       { reason: 'learned', actor: input.taskId },
       db,
     );
-    if (updated) outcome.amended.push({ ruleId: updated.id, content: updated.content });
+    if (queued) outcome.amended.push({ ruleId: target.id, proposalId: queued.id, content });
   }
 
   // Shared pool, so two proposals from the same conversation dedupe against
@@ -274,8 +288,9 @@ async function apply(
         topics,
         // Everything on this path was written by a model that had a customer's
         // email in its context, so it waits for somebody to agree with it.
-        // Merges and replacements are not gated the same way: they only edit a
-        // rule a human already accepted, and every edit leaves a revision.
+        // This flag also follows the candidate into the deduper, where it
+        // decides whether a merge or a replacement may touch an existing rule
+        // or has to queue behind the same approval.
         proposed: true,
         sourceTaskId: input.taskId,
         rationale: proposal.rationale?.trim() || null,

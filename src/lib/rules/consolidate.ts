@@ -40,7 +40,7 @@ export const LAST_CONSOLIDATION = 'rules.lastConsolidation';
  * only ever goes up, so both comparisons are exact.
  */
 interface Watermark {
-  /** Highest rule rowid at the end of the pass. */
+  /** Highest approved-rule rowid at the end of the pass. */
   seq: number;
   /** Revisions made by anything other than a consolidation. */
   edits: number;
@@ -49,7 +49,14 @@ interface Watermark {
 }
 
 function watermark(db: Db): Watermark {
-  const seq = (db.prepare('SELECT COALESCE(MAX(rowid), 0) AS n FROM rules').get() as { n: number }).n;
+  // Approved rules only, for the same reason the gate counts only those: a
+  // watermark set past a queue of pending proposals would mean approving one
+  // of them later never registered as a change to the rulebook.
+  const seq = (
+    db.prepare('SELECT COALESCE(MAX(rowid), 0) AS n FROM rules WHERE proposed = 0').get() as {
+      n: number;
+    }
+  ).n;
   const edits = (
     db
       .prepare("SELECT COUNT(*) AS n FROM rule_revisions WHERE reason != 'consolidation'")
@@ -383,11 +390,19 @@ export function consolidationGate(
   const last = lastWatermark(db);
   const now = watermark(db);
 
+  // `proposed = 0`, matching what `planConsolidation` will actually be given.
+  // Proposals are stored enabled, so counting them meant three unapproved
+  // suggestions could push this over the threshold, the pass would run on a
+  // list that excluded them, find nothing to change, and leave the count
+  // exactly where it was — a gate stuck open, spending a model call every time
+  // anything touched it.
   const added = last
-    ? (db.prepare('SELECT COUNT(*) AS n FROM rules WHERE enabled = 1 AND rowid > ?').get(last.seq) as {
+    ? (db
+        .prepare('SELECT COUNT(*) AS n FROM rules WHERE enabled = 1 AND proposed = 0 AND rowid > ?')
+        .get(last.seq) as { n: number }).n
+    : (db.prepare('SELECT COUNT(*) AS n FROM rules WHERE enabled = 1 AND proposed = 0').get() as {
         n: number;
-      }).n
-    : (db.prepare('SELECT COUNT(*) AS n FROM rules WHERE enabled = 1').get() as { n: number }).n;
+      }).n;
 
   const changed = added + Math.max(0, now.edits - (last?.edits ?? 0));
 

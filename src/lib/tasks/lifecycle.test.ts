@@ -88,6 +88,18 @@ describe('rejectTask', () => {
   it('returns null for a task that does not exist', () => {
     expect(rejectTask('nope', { reason: 'why' }, db)).toBeNull();
   });
+
+  it('refuses one whose reply is already on its way to the provider', () => {
+    // Nothing here can unsend a mail SMTP already has. Writing `dismissed`
+    // over the claim only produced a task that said it was refused while the
+    // customer read the reply — and `sendReply` overwrote it seconds later.
+    const id = task('sending', 'Your refund is on its way.');
+
+    expect(rejectTask(id, { reason: 'Wrong answer' }, db)).toBeNull();
+
+    expect(getTask(id, db)?.status).toBe('sending');
+    expect(listEvents(id, db).some(e => e.action === 'dismissed')).toBe(false);
+  });
 });
 
 describe('reopenTask', () => {
@@ -146,6 +158,18 @@ describe('reopenTask', () => {
 
     expect(await reopenTask(id, { db })).toBe(false);
     expect(getTask(id, db)?.status).toBe('sent');
+  });
+
+  it('refuses a task that is mid-send', async () => {
+    // Reopening one queues a drafting job, and the send it raced is about to
+    // write `sent` plus the text that went out. The sweep releases a claim
+    // nobody came back for, and it is reopenable from there.
+    const id = task('sending', 'Your refund is on its way.');
+
+    expect(await reopenTask(id, { db })).toBe(false);
+
+    expect(getTask(id, db)?.status).toBe('sending');
+    expect(listJobs({}, db)).toHaveLength(0);
   });
 
   it('records who overruled the dismissal', async () => {

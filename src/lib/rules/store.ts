@@ -19,6 +19,7 @@ interface RuleRow {
   category: string;
   enabled: number;
   proposed: number;
+  replaces: string | null;
   source_task_id: string | null;
   rationale: string | null;
   applied_count: number;
@@ -56,6 +57,7 @@ function toRule(row: RuleRow): Rule {
     topics: row.topics ? row.topics.split(',').sort() : [],
     enabled: row.enabled === 1,
     proposed: row.proposed === 1,
+    replaces: row.replaces,
     sourceTaskId: row.source_task_id,
     rationale: row.rationale,
     appliedCount: row.applied_count,
@@ -159,15 +161,19 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
   const write = db.transaction(() => {
     db.prepare(
       `INSERT INTO rules
-         (id, content, summary, category, scope, enabled, proposed, source_task_id, rationale,
-          applied_count, last_applied_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, 1, ?, ?, ?, 0, NULL, ?, ?)`,
+         (id, content, summary, category, scope, enabled, proposed, replaces, source_task_id,
+          rationale, applied_count, last_applied_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, 0, NULL, ?, ?)`,
     ).run(
       id,
       content,
       input.summary?.trim() || null,
       input.category ?? 'general',
       input.proposed ? 1 : 0,
+      // Only a proposal can be aimed at another rule. An approved rule that
+      // claimed to replace something would be a rewrite that had already
+      // happened, wearing the label of one that had not.
+      (input.proposed && input.replaces) || null,
       input.sourceTaskId ?? null,
       input.rationale ?? null,
       now,
@@ -180,6 +186,16 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
   return getRule(id, db)!;
 }
 
+/**
+ * A direct edit. Everything here happens immediately and is injected from the
+ * next draft onwards, so this is for changes somebody made on purpose — a form
+ * on the rules page, or the consolidation pass rewording rules that were all
+ * approved already.
+ *
+ * There is deliberately no `proposed` here. A rewrite that needs approval is
+ * not a half-applied update, it is a separate row that has not been applied at
+ * all: see `proposeRuleUpdate`.
+ */
 export interface RuleUpdate {
   content?: string;
   /** Null clears it, which is what a rewritten rule wants until it is resummarised. */
@@ -275,17 +291,118 @@ export function updateRule(
   return getRule(id, db);
 }
 
+export interface ProposedUpdate {
+  content: string;
+  /** Defaults to the target's, so a rewrite does not silently recategorise it. */
+  category?: RuleCategory;
+  sourceTaskId?: string | null;
+  rationale?: string | null;
+}
+
 /**
- * A human has read the proposal and wants it. From here it is an ordinary
- * rule: injected, revisable, and no longer distinguishable from one somebody
- * typed — which is right, because somebody has now agreed to it.
+ * Queues a rewrite of an existing rule instead of performing one.
+ *
+ * This is what every model-driven change to an approved rule goes through —
+ * the learning pass's amendments, and the deduper's merges and replacements.
+ * All three take text a model wrote while reading a stranger's email and point
+ * it at a rule that is already in every prompt, which is the same escalation
+ * as writing a new rule and was not gated as one.
+ *
+ * The rewrite lands as an ordinary proposal carrying `replaces`, so it is
+ * stored, visible, deduped against, and inert. `approveRule` is the only thing
+ * that moves it onto the target.
+ *
+ * Returns null when there is nothing to queue, matching `updateRule`: the ids
+ * reaching this come from an LLM, so a miss is a normal outcome.
+ */
+export function proposeRuleUpdate(
+  targetId: string,
+  update: ProposedUpdate,
+  context: UpdateContext = {},
+  db: Db = getDb(),
+): Rule | null {
+  const target = getRule(targetId, db);
+  if (!target) return null;
+
+  const content = update.content.trim();
+  if (!content || content === target.content) return null;
+
+  // A target that is itself waiting for approval is not injected anywhere, so
+  // there is nothing to protect: rewrite it in place. Stacking a proposal on a
+  // proposal would only ask a human to approve the same sentence twice.
+  if (target.proposed) {
+    return updateRule(
+      targetId,
+      { content, ...(update.category ? { category: update.category } : {}) },
+      context,
+      db,
+    );
+  }
+
+  return createRule(
+    {
+      content,
+      category: update.category ?? target.category,
+      // The target's topics, not the candidate's: a rewrite must not quietly
+      // widen which mail the rule governs.
+      topics: target.topics,
+      proposed: true,
+      replaces: target.id,
+      sourceTaskId: update.sourceTaskId ?? null,
+      rationale: update.rationale ?? null,
+    },
+    db,
+  );
+}
+
+/**
+ * A human has read the proposal and wants it.
+ *
+ * A proposal that stands on its own becomes an ordinary rule: injected,
+ * revisable, and no longer distinguishable from one somebody typed — which is
+ * right, because somebody has now agreed to it.
+ *
+ * A proposal aimed at an existing rule is applied to that rule as a normal
+ * revision and then removed, so the target keeps its id, its usage counts and
+ * its history, and the text it used to say is recoverable. Either way this
+ * function is the single point where text a model wrote becomes text the
+ * drafter is told to obey.
  */
 export function approveRule(id: string, db: Db = getDb()): Rule | null {
-  const changed = db
-    .prepare('UPDATE rules SET proposed = 0, updated_at = ? WHERE id = ? AND proposed = 1')
-    .run(new Date().toISOString(), id).changes;
+  const proposal = getRule(id, db);
+  if (!proposal || !proposal.proposed) return null;
 
-  return changed ? getRule(id, db) : null;
+  const target = proposal.replaces ? getRule(proposal.replaces, db) : null;
+
+  // Nothing to apply it to — either it was always standalone, or the rule it
+  // was aimed at has since been deleted. The second case still approves the
+  // text on its own rather than discarding it: a human is reading this
+  // sentence and saying yes to it, and that is the whole test.
+  if (!target) {
+    const changed = db
+      .prepare(
+        'UPDATE rules SET proposed = 0, replaces = NULL, updated_at = ? WHERE id = ? AND proposed = 1',
+      )
+      .run(new Date().toISOString(), id).changes;
+    return changed ? getRule(id, db) : null;
+  }
+
+  const apply = db.transaction(() => {
+    // 'learned' rather than the merge/replace the deduper originally called
+    // it: by the time this runs the reason it lands is that somebody approved
+    // it, and the mechanism that suggested it is already recorded on the
+    // proposal's rationale and source task.
+    updateRule(
+      target.id,
+      { content: proposal.content, category: proposal.category },
+      { reason: 'learned', ...(proposal.sourceTaskId ? { actor: proposal.sourceTaskId } : {}) },
+      db,
+    );
+    deleteRule(proposal.id, db);
+  });
+  apply();
+
+  return getRule(target.id, db);
 }
 
 /**

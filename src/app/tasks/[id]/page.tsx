@@ -57,14 +57,23 @@ export default async function TaskPage({
   after(() => markOpened(id));
 
   const sent = task.status === 'sent';
+  // A claim `sendReply` is holding right now. Every button below is a write to
+  // a row the send is about to write itself, so none of them render — see the
+  // banner, which is the only thing this state has to say.
+  const sending = task.status === 'sending';
+  const sender = task.sentBy ? getOperator(task.sentBy) : null;
+  const body = task.finalReply ?? task.draft ?? '';
   // Sending is a decision, and these are the states where it has already been
   // made. Rendering the button anyway meant the one on a dismissed task threw
   // — `sendReply` refuses it — and the one on a superseded task worked, which
   // is worse: it answers a question the customer withdrew when they wrote
-  // again. `sending` is the in-flight claim; a second press has nothing to add.
-  const sendable = !sent && task.status !== 'dismissed' && task.status !== 'sending' && !task.supersededBy;
-  const sender = task.sentBy ? getOperator(task.sentBy) : null;
-  const body = task.finalReply ?? task.draft ?? '';
+  // again.
+  //
+  // The empty check covers `pending` and `drafting`, where the box holds
+  // nothing yet because the model has not written it: Send there throws the
+  // same refusal a dismissed task does, one status over.
+  const sendable =
+    !sent && !sending && task.status !== 'dismissed' && !task.supersededBy && body.trim() !== '';
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
   const thread = listMessages(task.id);
@@ -91,8 +100,9 @@ export default async function TaskPage({
 
   // Names, not ids, and resolved once each — a task drafted and edited six
   // times by the same person is six rows pointing at one operator.
-  // Hidden once the reply has gone: the choice they represent has been made.
-  const alternatives = sent ? [] : listAlternatives(task.id);
+  // Hidden once the reply has gone, or while it is going: the choice they
+  // represent has been made.
+  const alternatives = sent || sending ? [] : listAlternatives(task.id);
 
   const history = listEvents(task.id);
   const names = new Map<string, string>();
@@ -114,6 +124,12 @@ export default async function TaskPage({
       {typeof query.queued === 'string' && (
         <p className="meta">{t('task.redraftQueued')}</p>
       )}
+
+      {/* Otherwise this screen is a dead end: no Send button, no editable
+          draft, and nothing saying why either is missing. What it says is the
+          honest answer — including that the sweep will hand it back if the
+          send never finished, so waiting is a real option. */}
+      {sending && <p className="banner">{t('task.sendingBanner')}</p>}
 
       {/* The loudest thing on the page when it applies. A reviewer who opens a
           superseded task from a bookmark or the sent list is about to spend
@@ -316,11 +332,16 @@ export default async function TaskPage({
       <form className="card stack" action={approveAndSend}>
         <h2>{sent ? t('task.whatWentOut') : t('task.theReply')}</h2>
         <input type="hidden" name="taskId" value={task.id} />
+        {/* Named, not just prompted. A placeholder is the only label these
+            three had, which leaves a screen reader announcing "edit text" and
+            leaves everybody else with no label at all the moment they start
+            typing — the point at which knowing which box this is matters. */}
         <textarea
           className="draft"
           name="draft"
+          aria-label={t('task.draftLabel')}
           defaultValue={body}
-          readOnly={sent}
+          readOnly={sent || sending}
           placeholder={t('task.draftPlaceholder')}
         />
         {/* The nearest thing here to a confirmation step: what you are about
@@ -344,8 +365,9 @@ export default async function TaskPage({
         <textarea
           name="notes"
           rows={1}
+          aria-label={t('task.notesLabel')}
           defaultValue={task.reviewerNotes ?? ''}
-          readOnly={sent}
+          readOnly={sent || sending}
           placeholder={t('task.notesPlaceholder')}
         />
         {/* In the same form as the draft and the Send button, for the reason
@@ -353,13 +375,13 @@ export default async function TaskPage({
             in this form post the files too and ignore them — a wasted upload
             on a Save, and the price of not splitting the one form that must
             not be split. */}
-        {!sent && (
+        {!sent && !sending && (
           <label className="meta">
             {t('task.attach')}
             <input type="file" name="files" multiple />
           </label>
         )}
-        {!sent && (
+        {!sent && !sending && (
           <div className="actions">
             {sendable && (
               <button className="primary" type="submit">
@@ -394,6 +416,7 @@ export default async function TaskPage({
               className="reason"
               name="reason"
               rows={1}
+              aria-label={t('task.reasonLabel')}
               defaultValue={task.rejectionReason ?? ''}
               placeholder={t('task.reasonPlaceholder')}
             />
@@ -463,7 +486,7 @@ export default async function TaskPage({
                   {t(`task.versionBy.${version.source}`)}
                   {version.notes ? ` · ${version.notes}` : ''}
                 </span>
-                {!sent && <button type="submit">{t('task.restore')}</button>}
+                {!sent && !sending && <button type="submit">{t('task.restore')}</button>}
               </div>
               <pre className="email">{version.body}</pre>
             </form>

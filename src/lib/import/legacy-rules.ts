@@ -72,7 +72,12 @@ export function importLegacyRules(options: LegacyRulesOptions): LegacyRulesResul
     byCategory: {},
   };
 
-  const seen = new Set(listRules({}, db).map(rule => fingerprint(rule.content)));
+  // Including proposals: a re-import that adds a rule already queued for
+  // approval is not idempotent, it just puts the same sentence in front of the
+  // operator twice.
+  const seen = new Set(
+    listRules({ proposed: 'include' }, db).map(rule => fingerprint(rule.content)),
+  );
   const old = new Database(options.path, { readonly: true, fileMustExist: true });
 
   try {

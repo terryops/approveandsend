@@ -28,6 +28,9 @@ import type { Task } from './types';
  * reviewer refusing to send something is the strongest evidence there is that
  * the draft was wrong. When they say why, that sentence goes to the learning
  * loop as well as onto the record.
+ *
+ * Returns null when there was nothing to dismiss — no such task, or one whose
+ * reply is already on its way out.
  */
 export function rejectTask(
   id: string,
@@ -36,6 +39,11 @@ export function rejectTask(
 ): Task | null {
   const before = getTask(id, db);
   if (!before) return null;
+  // `sending` is a claim somebody else is holding, not a status. Writing
+  // `dismissed` over it does not stop the mail — the provider already has it —
+  // it just leaves a task that says it was refused next to a customer holding
+  // the reply, and `sendReply` overwrites the dismissal seconds later anyway.
+  if (before.status === 'sending') return null;
 
   const reason = input.reason?.trim() ?? '';
   const actor = input.actor ?? null;
@@ -101,7 +109,13 @@ export async function reopenTask(
 
   // Sent is the one status with no way back. The customer has the reply; the
   // task is now the record of that, and a record you can edit is not one.
-  if (!task || task.status === 'sent') return false;
+  //
+  // `sending` is refused for the nearer reason: the send is mid-flight and
+  // about to write its own status, so anything written here is overwritten or
+  // — worse — queues a drafting job that lands on top of what went out. The
+  // sweep hands a claim nobody came back for to `awaiting_review`, and it is
+  // reopenable from there.
+  if (!task || task.status === 'sent' || task.status === 'sending') return false;
 
   const hasDraft = Boolean(task.draft?.trim());
   updateTask(

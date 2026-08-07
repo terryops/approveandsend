@@ -93,6 +93,12 @@ export async function requireMachine(request: Request): Promise<boolean> {
   }
 
   if (process.env.AAS_MACHINE_SESSION?.trim() !== '1') return false;
+  // On an install with no password and no operators there is no session to
+  // check: `hasSession` is true for everyone, so the flag would open sync,
+  // worker, sweep, consolidate and the legacy import to anyone who can reach
+  // the port. The flag is meant to say "the browser session is enough", and on
+  // an unprotected desk the browser session is not a statement about anybody.
+  if (!isProtected()) return false;
   if (!sameOrigin(request)) return false;
   return hasSession();
 }

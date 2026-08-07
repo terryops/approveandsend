@@ -1,5 +1,6 @@
 import type { Db } from '../db';
 import { getDb } from '../db';
+import { t } from '../i18n';
 import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml } from '../mail/render';
 import type { MailProvider, OutgoingAttachment } from '../mail/types';
@@ -63,13 +64,32 @@ export async function sendReply(
 ): Promise<Task> {
   const db = options.db ?? getDb();
   const reply = input.finalReply.trim();
-  if (!reply) throw new Error('Refusing to send an empty reply');
+  // Translated at the throw site rather than thrown as a key the action
+  // decodes. Every one of these ends up in `?error=` and is rendered to the
+  // reviewer verbatim, so somewhere has to resolve it; `sweep.ts` already
+  // reaches for `t` in lib for the same reason, and the alternative — a second
+  // key-to-message table in `actions.ts` — would exist for these four lines
+  // alone and would drift the first time one of them changed.
+  if (!reply) throw new Error(t('task.errorEmptyReply'));
 
   const task = getTask(taskId, db);
-  if (!task) throw new Error(`No such task: ${taskId}`);
+  if (!task) throw new Error(t('task.errorNoSuchTask'));
   // Somebody already decided this must not go out. Saying so is better than
   // sending it, and better than pretending it was sent.
-  if (task.status === 'dismissed') throw new Error('This task was dismissed — reopen it first');
+  if (task.status === 'dismissed') throw new Error(t('task.errorDismissed'));
+
+  // Everything that can fail without changing anything, before the claim.
+  //
+  // Both of these throw on a misconfigured mailbox, and `mailProvider` only
+  // caches on success — so run after the claim, bad SMTP credentials left the
+  // task pinned at `sending` with no mail sent, and did it again to the next
+  // task the operator clicked, and the one after that. Nothing below this line
+  // and above the send can fail, which is what makes the claim safe to hold.
+  const provider = options.provider ?? mailProvider();
+
+  // Both parts, from the same string. `text` is what the reviewer read; the
+  // HTML is that text with paragraph breaks in it, so the two cannot disagree.
+  const html = sendsHtmlReplies() ? replyHtml(reply) : '';
 
   // Claim it before the mail server hears about it.
   //
@@ -89,14 +109,16 @@ export async function sendReply(
     )
     .run(new Date().toISOString(), taskId).changes;
 
-  // Not an error: a double-clicked Send should be a no-op, not a second email.
-  if (!claimed) return getTask(taskId, db) ?? task;
-
-  const provider = options.provider ?? mailProvider();
-
-  // Both parts, from the same string. `text` is what the reviewer read; the
-  // HTML is that text with paragraph breaks in it, so the two cannot disagree.
-  const html = sendsHtmlReplies() ? replyHtml(reply) : '';
+  if (!claimed) {
+    const current = getTask(taskId, db);
+    // The claim refuses for two reasons that read nothing alike. `sent` is a
+    // double-clicked Send, and returning the row is right — the customer has
+    // the mail. `sending` is somebody else's claim, or a dead attempt's, and
+    // returning it told the reviewer their retry had gone out when the caller
+    // then redirected to `?sent=1` having sent nothing at all.
+    if (current?.status === 'sending') throw new Error(t('task.errorSending'));
+    return current ?? task;
+  }
 
   try {
     await provider.send({

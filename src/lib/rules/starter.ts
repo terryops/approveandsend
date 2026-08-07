@@ -140,8 +140,13 @@ export interface StarterInstall {
  */
 export function installStarterRules(db: Db = getDb()): StarterInstall {
   // Every rule, not just the enabled ones: a rule somebody deliberately
-  // retired must not come back the next time this is pressed.
-  const existing = new Set(listRules({}, db).map(rule => rule.content.trim()));
+  // retired must not come back the next time this is pressed. Proposals count
+  // too — an identical suggestion already waiting for approval is exactly the
+  // duplicate this is checking for, and adding the starter alongside it gives
+  // the operator two copies of one sentence to reason about.
+  const existing = new Set(
+    listRules({ proposed: 'include' }, db).map(rule => rule.content.trim()),
+  );
 
   let added = 0;
   let skipped = 0;

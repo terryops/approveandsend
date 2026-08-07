@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
+import { t } from '../i18n';
 import type {
   DownloadedAttachment,
   MailAttachmentRef,
@@ -740,7 +741,7 @@ describe('sendReply', () => {
     const task = seed();
     const provider = new FakeMailbox();
     await expect(sendReply(task.id, { finalReply: '   ' }, { provider, db })).rejects.toThrow(
-      /empty reply/,
+      t('task.errorEmptyReply'),
     );
     expect(provider.sent).toHaveLength(0);
   });

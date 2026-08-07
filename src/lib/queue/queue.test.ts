@@ -317,6 +317,30 @@ describe('worker', () => {
     expect(outcomes.every(o => o.status === 'completed')).toBe(true);
   });
 
+  it('keeps draining past a job whose lease was reassigned', async () => {
+    // A fenced-out job produces no outcome, and reading that absence as "the
+    // queue is empty" stopped the drain dead with the rest of the work still
+    // sitting there — one preempted job was enough to abandon a full queue.
+    for (let i = 0; i < 3; i += 1) enqueue('demo', { payload: { i } }, db);
+
+    let first = true;
+    const outcomes = await worker({
+      demo: async (_payload, ctx) => {
+        // Somebody else's worker taking this one over, mid-handler. Our result
+        // is discarded on the way out, which is correct — theirs is the live
+        // one — but the two jobs behind it are still ours to run.
+        if (first) {
+          first = false;
+          db.prepare(`UPDATE jobs SET lease_token = 'someone-else' WHERE id = ?`).run(ctx.job.id);
+        }
+        return 'ran';
+      },
+    }).drain(10);
+
+    expect(outcomes).toHaveLength(2);
+    expect(listJobs({ status: 'completed' }, db)).toHaveLength(2);
+  });
+
   it('honours the drain limit', async () => {
     for (let i = 0; i < 5; i += 1) enqueue('demo', {}, db);
     expect(await worker({ demo: async () => null }).drain(2)).toHaveLength(2);

@@ -669,6 +669,69 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 24,
+    name: 'proposed_rewrites',
+    up: db => {
+      db.exec(`
+        -- The id of the rule this proposal wants to rewrite, or NULL for a
+        -- proposal that stands on its own.
+        --
+        -- v23 gated rule *creation* and left rule *mutation* open, which is the
+        -- same hole with an extra step: the learning pass could rewrite the
+        -- text of a rule that was already approved and already being injected,
+        -- and the approval it inherited was for the sentence it used to say.
+        -- So a model-driven rewrite now becomes a proposal carrying the new
+        -- text, and approving it is what moves that text onto the real rule.
+        ALTER TABLE rules ADD COLUMN replaces TEXT;
+      `);
+
+      // Retroactive quarantine, and the argument for it.
+      //
+      // Everything the ungated learning pass wrote before v23 is sitting in
+      // this table with proposed = 0, indistinguishable from a rule somebody
+      // typed, and going into every draft. Nobody ever agreed to those
+      // sentences; they were extracted by a model that had a stranger's email
+      // in its context. Leaving them is not a smaller decision than moving
+      // them — it is the same decision, made silently and permanently, in the
+      // direction that keeps the hole open.
+      //
+      // So they move. The cost is real and is the reason this is worth
+      // explaining: a desk upgrading with two hundred learned rules will draft
+      // its next reply without them and find two hundred items waiting on
+      // /rules. Nothing is deleted, every one of them is one click from coming
+      // back, and the operator can see exactly what the desk had been told.
+      // The alternative is a working desk that is quietly still steered by
+      // instructions no human read, with nothing anywhere to say so.
+      //
+      // Only enabled rules move. A rule somebody deliberately retired is
+      // already out of every prompt, and turning it into a pending proposal
+      // would ask them to re-decide something they have already decided.
+      //
+      // `source_task_id IS NOT NULL` is the marker: it is set only when a rule
+      // was learned from a conversation. Hand-written, starter and imported
+      // rules leave it NULL. Backfill rules (`backfill:<id>`) are included
+      // deliberately — they came from archived customer mail with no human in
+      // the loop at all, which is the weakest provenance in the table, not the
+      // strongest.
+      const moved = db
+        .prepare(
+          `UPDATE rules SET proposed = 1
+            WHERE proposed = 0 AND enabled = 1 AND source_task_id IS NOT NULL`,
+        )
+        .run().changes;
+
+      // Recorded rather than logged: the operator meets this days later, when
+      // whatever scrolled past during `docker compose up` is long gone.
+      if (moved > 0) {
+        const now = new Date().toISOString();
+        db.prepare(
+          `INSERT INTO meta (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        ).run('rules.quarantined_at_v24', JSON.stringify({ count: moved, at: now }), now);
+      }
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

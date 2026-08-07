@@ -57,14 +57,16 @@ export default async function QueuePage({
              them sideways is a stack of error strings one word wide. */
           <div className="scroll-x">
             <table className="plain">
-            <thead>
+              <thead>
               <tr>
                 <th>{t('queue.colType')}</th>
                 <th>{t('queue.colStatus')}</th>
                 <th>{t('queue.colTries')}</th>
                 <th>{t('queue.colCreated')}</th>
                 <th>{t('queue.colDetail')}</th>
-                <th />
+                {/* Named, not blank: a screen reader announcing the retry
+                    and delete buttons otherwise gives them no column. */}
+                <th className="visually-hidden">{t('queue.colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -72,7 +74,9 @@ export default async function QueuePage({
                 <tr key={job.id}>
                   <td>{job.type}</td>
                   <td>
-                    <span className={`tag ${job.status === 'failed' ? 'failed' : ''}`}>
+                    {/* The status word carries the meaning, but the colour is
+                        what gets a failed job found in a list of fifty. */}
+                    <span className={`tag ${job.status}`}>
                       {t(`queue.status.${job.status}`)}
                     </span>
                   </td>
@@ -112,7 +116,7 @@ export default async function QueuePage({
                   </td>
                 </tr>
               ))}
-            </tbody>
+              </tbody>
             </table>
           </div>
         )}

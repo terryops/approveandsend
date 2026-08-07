@@ -22,11 +22,12 @@ const FILTERS: (TaskStatus | 'all')[] = ['awaiting_review', 'pending', 'failed',
 
 // Built per request rather than at module scope: the locale is resolved from
 // the workspace config, which is not readable while this module is evaluated.
-function labels(): Record<string, string> {
+function labels(): Record<TaskStatus | 'all', string> {
   return {
     awaiting_review: t('inbox.statusAwaitingReview'),
     pending: t('inbox.statusPending'),
     drafting: t('inbox.statusDrafting'),
+    sending: t('inbox.statusSending'),
     failed: t('inbox.statusFailed'),
     sent: t('inbox.statusSent'),
     dismissed: t('inbox.statusDismissed'),

@@ -3,7 +3,7 @@ import { extractJson } from '../json-repair';
 import type { Db } from '../db';
 import { getDb } from '../db';
 import { shortlist } from './similarity';
-import { createRule, listRules, normaliseTopics, updateRule } from './store';
+import { createRule, listRules, normaliseTopics, proposeRuleUpdate, updateRule } from './store';
 import { coerceCategory, type NewRule, type Rule } from './types';
 
 /**
@@ -98,6 +98,16 @@ export async function dedupeAndApplyRule(
   // Proposals count as existing rules here and nowhere else. Two conversations
   // a week apart that suggest the same thing should produce one thing for a
   // human to look at, not two.
+  //
+  // This is the one place unapproved text reaches a model, and it is worth
+  // being explicit about what that buys an attacker: they can seed a proposal
+  // from one email and have it influence this comparison on a later one. The
+  // worst outcomes are a genuine rule being skipped as a duplicate, or a
+  // rewrite being aimed at the wrong rule — and neither reaches a draft,
+  // because every verdict this prompt can produce now ends in either a
+  // proposal or nothing. The alternative, comparing only against approved
+  // rules, means the same suggestion queues up once per email and buries the
+  // queue a human is supposed to be reading.
   const pool = options.against ?? listRules({ enabledOnly: true, proposed: 'include' }, db);
 
   // Only rules about the same subjects can duplicate each other: the same
@@ -156,17 +166,11 @@ export async function dedupeAndApplyRule(
   if (verdict.action === 'merge' && conflict) {
     const merged = verdict.mergedContent?.trim();
     if (merged) {
-      const updated = updateRule(
-        conflict.id,
-        { content: merged },
-        { reason: 'merge', actor: options.actor },
-        db,
-      );
-      if (updated) {
-        patchLocal(pool, updated);
+      const written = rewrite(input, conflict, { content: merged }, 'merge', options, pool, db);
+      if (written) {
         return {
           action: 'merge',
-          rule: updated,
+          rule: written,
           conflictRuleId: conflict.id,
           reason: reason || 'Merged into an existing rule',
         };
@@ -175,17 +179,11 @@ export async function dedupeAndApplyRule(
   }
 
   if (verdict.action === 'replace' && conflict) {
-    const updated = updateRule(
-      conflict.id,
-      { content, category },
-      { reason: 'replace', actor: options.actor },
-      db,
-    );
-    if (updated) {
-      patchLocal(pool, updated);
+    const written = rewrite(input, conflict, { content, category }, 'replace', options, pool, db);
+    if (written) {
       return {
         action: 'replace',
-        rule: updated,
+        rule: written,
         conflictRuleId: conflict.id,
         reason: reason || 'Replaced a conflicting rule',
       };
@@ -193,6 +191,59 @@ export async function dedupeAndApplyRule(
   }
 
   return insert(input, content, category, pool, db, reason, conflict?.id ?? null);
+}
+
+/**
+ * Applies a merge or a replacement, or queues it for approval.
+ *
+ * Which one depends on the candidate. A rule a human typed carries their
+ * authority into whatever it merges with, so that edit happens. A candidate
+ * the learning pass produced does not: the model wrote it with a customer's
+ * email in front of it, and letting it land on an approved rule would put a
+ * stranger's sentence into every draft without anybody agreeing to it — the
+ * same escalation the `proposed` flag exists to stop, reached by editing a
+ * rule instead of writing one.
+ *
+ * Returns the row a caller should report — the rewritten rule, or the proposal
+ * standing in for it — or null when there was nothing to write.
+ */
+function rewrite(
+  input: NewRule,
+  conflict: Rule,
+  update: { content: string; category?: ReturnType<typeof coerceCategory> },
+  reason: 'merge' | 'replace',
+  options: DedupOptions,
+  pool: Rule[],
+  db: Db,
+): Rule | null {
+  const context = { reason, ...(options.actor ? { actor: options.actor } : {}) };
+
+  if (!input.proposed) {
+    const updated = updateRule(conflict.id, update, context, db);
+    if (updated) patchLocal(pool, updated);
+    return updated;
+  }
+
+  const queued = proposeRuleUpdate(
+    conflict.id,
+    {
+      ...update,
+      sourceTaskId: input.sourceTaskId ?? null,
+      rationale: input.rationale ?? null,
+    },
+    context,
+    db,
+  );
+  // Into the pool either way, so the rest of the batch dedupes against what
+  // was just queued rather than proposing it a second time. A proposal aimed
+  // at an already-pending rule was written in place, so it is a patch; a new
+  // one is an addition, and the rule it targets stays in the pool unchanged
+  // because it is still the rule the drafter is being given.
+  if (queued) {
+    if (queued.id === conflict.id) patchLocal(pool, queued);
+    else pool.push(queued);
+  }
+  return queued;
 }
 
 function insert(

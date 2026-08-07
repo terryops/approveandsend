@@ -12,7 +12,7 @@ import {
   planConsolidation,
   salvageGroups,
 } from './consolidate';
-import { createRule, getRule, listRevisions, listRules, updateRule } from './store';
+import { approveRule, createRule, getRule, listRevisions, listRules, updateRule } from './store';
 import type { Rule } from './types';
 
 // A real HTTP server returning queued responses, so the prompt, the transport
@@ -294,5 +294,27 @@ describe('consolidationGate', () => {
     // Four more rules on top of that one hand-edit.
     for (let i = 0; i < 4; i++) seed(`Later rule ${i}.`);
     expect(consolidationGate({ db })).toMatchObject({ shouldRun: true, changed: 5 });
+  });
+
+  // The gate has to count the same rulebook the pass will be handed. It was
+  // counting proposals, which are stored enabled but never planned over, so a
+  // queue of unapproved suggestions asked for a pass that could not possibly
+  // reduce the count — and asked again every time, forever.
+  it('ignores proposals nobody has approved', async () => {
+    for (let i = 0; i < 4; i++) {
+      createRule({ content: `Proposed rule ${i}.`, category: 'policy', proposed: true }, db);
+    }
+
+    expect(consolidationGate({ db })).toMatchObject({ shouldRun: false, changed: 0 });
+
+    // And a pass over that rulebook leaves the gate where it found it, rather
+    // than resetting a watermark past rules that have yet to be approved.
+    queued.push('{"groups":[]}');
+    applyConsolidation(await planConsolidation({ db }), { db });
+    expect(consolidationGate({ db }).changed).toBe(0);
+
+    // Approving one is a real change to the rulebook and does count.
+    approveRule(listRules({ proposed: 'only' }, db)[0]!.id, db);
+    expect(consolidationGate({ db }).changed).toBe(1);
   });
 });

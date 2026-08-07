@@ -52,6 +52,17 @@ describe('seedDemoData', () => {
     expect(listRules({}, db)).toHaveLength(1);
   });
 
+  // The guard reads "is there anything here?", and a rulebook of nothing but
+  // pending proposals is something — a desk that has been taking real mail
+  // long enough to learn from it. Asking only about approved rules called that
+  // empty and let demo mail into a live queue.
+  it('refuses when the only rules so far are waiting for approval', () => {
+    createRule({ content: 'Something the learning pass suggested.', proposed: true }, db);
+
+    expect(seedDemoData(db)).toEqual({ tasks: 0, rules: 0, skipped: true });
+    expect(listTasks({}, db)).toHaveLength(0);
+  });
+
   it('is not applied twice by a double click', () => {
     const first = seedDemoData(db);
     const second = seedDemoData(db);

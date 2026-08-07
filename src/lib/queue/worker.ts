@@ -42,14 +42,28 @@ export interface Worker {
   drain(max?: number): Promise<JobOutcome[]>;
 }
 
+/**
+ * The three ways one turn of the worker can end.
+ *
+ * `runOnce` collapses the last two into `null`, which is all a single-shot
+ * caller needs, but `drain` has to tell them apart: an empty queue means stop
+ * and a reassigned lease means keep going. Reading `null` as "empty" halted
+ * the whole drain the moment one job was fenced out, leaving the rest queued
+ * with nothing coming back for them.
+ */
+type Attempt =
+  | { kind: 'ran'; outcome: JobOutcome }
+  | { kind: 'idle' }
+  | { kind: 'fenced' };
+
 export function createWorker(options: WorkerOptions): Worker {
   const db = options.db ?? getDb();
   const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
   const backoff = options.backoff ?? (attempts => backoffMs(attempts));
 
-  async function runOnce(): Promise<JobOutcome | null> {
+  async function attempt(): Promise<Attempt> {
     const job = claimNext({ type: options.type, leaseMs }, db);
-    if (!job) return null;
+    if (!job) return { kind: 'idle' };
 
     const handler = options.handlers[job.type];
     if (!handler) {
@@ -65,11 +79,11 @@ export function createWorker(options: WorkerOptions): Worker {
         // has the job now. Their answer is the live one; ours is thrown away
         // rather than written over the top of it.
         console.warn(`[queue] discarding a result for ${job.id}: the lease was reassigned`);
-        return null;
+        return { kind: 'fenced' };
       }
       const outcome: JobOutcome = { job, status: 'completed', result };
       options.onEvent?.({ kind: 'completed', job, result });
-      return outcome;
+      return { kind: 'ran', outcome };
     } catch (error) {
       return record({
         job,
@@ -79,28 +93,36 @@ export function createWorker(options: WorkerOptions): Worker {
     }
   }
 
-  function record({ job, permanent, error }: { job: Job; permanent: boolean; error: string }): JobOutcome | null {
+  function record({ job, permanent, error }: { job: Job; permanent: boolean; error: string }): Attempt {
     const delayMs = permanent ? 0 : backoff(job.attempts);
     const updated = failJob(job.id, error, { permanent, retryDelayMs: delayMs, leaseToken: job.leaseToken }, db);
     // Same fence as the success path, and it matters more here: a preempted
     // worker reporting a failure would put a job somebody else has already
     // completed back on the queue.
-    if (!updated) return null;
+    if (!updated) return { kind: 'fenced' };
     const status = updated.status === 'failed' ? 'failed' : 'retrying';
 
     options.onEvent?.(
       status === 'failed' ? { kind: 'failed', job: updated, error } : { kind: 'retrying', job: updated, error, delayMs },
     );
 
-    return { job: updated, status, error };
+    return { kind: 'ran', outcome: { job: updated, status, error } };
+  }
+
+  async function runOnce(): Promise<JobOutcome | null> {
+    const result = await attempt();
+    return result.kind === 'ran' ? result.outcome : null;
   }
 
   async function drain(max = 100): Promise<JobOutcome[]> {
     const outcomes: JobOutcome[] = [];
     for (let i = 0; i < max; i += 1) {
-      const outcome = await runOnce();
-      if (!outcome) break;
-      outcomes.push(outcome);
+      const result = await attempt();
+      // Only an empty queue ends the drain. A fenced-out job produced no
+      // outcome of ours, but the jobs behind it are still there and still
+      // ours to run — the turn counts against `max` and the loop goes on.
+      if (result.kind === 'idle') break;
+      if (result.kind === 'ran') outcomes.push(result.outcome);
     }
     return outcomes;
   }

@@ -3,7 +3,8 @@ import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
 import { STARTER_RULES } from '@/lib/rules/starter';
-import { listRules, revisionsByRule } from '@/lib/rules/store';
+import { getMeta } from '@/lib/db/meta';
+import { getRule, listRules, revisionsByRule } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
 
 import {
@@ -24,6 +25,25 @@ export const dynamic = 'force-dynamic';
  * keep changing", which the count in the summary already answers.
  */
 const HISTORY_SHOWN = 5;
+
+/**
+ * How many rules the v24 upgrade moved into the queue, if it moved any.
+ *
+ * The operator meets this days after the upgrade, on a desk whose replies have
+ * quietly stopped using rules it had been using for months. Without a line
+ * saying why, the only available reading is that something broke.
+ */
+function quarantineCount(): number {
+  const raw = getMeta('rules.quarantined_at_v24');
+  if (!raw) return 0;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const count = (parsed as { count?: unknown }).count;
+    return typeof count === 'number' ? count : 0;
+  } catch {
+    return 0;
+  }
+}
 
 /** Below this many rules there is nothing to scan, so nothing is collapsed. */
 const SCANNING_STARTS_AT = 12;
@@ -101,6 +121,7 @@ export default async function RulesPage({
   const gate = consolidationGate();
   const { topics } = getWorkspaceConfig();
   const history = revisionsByRule(rules.map((rule) => rule.id));
+  const quarantined = quarantineCount();
 
   return (
     <>
@@ -137,6 +158,14 @@ export default async function RulesPage({
         </p>
       )}
 
+      {/* Stays put rather than being dismissable: there is nowhere else on the
+          desk that explains why a rulebook that worked yesterday is empty. */}
+      {quarantined > 0 && proposals.length > 0 && (
+        <p className="banner" style={{ borderColor: 'var(--line)' }}>
+          {t('rules.quarantineNotice', { n: quarantined })}
+        </p>
+      )}
+
       {/* Above the rulebook, because a proposal nobody looks at is the failure
           mode this whole thing exists to avoid: the learning pass reads mail
           written by strangers, and a rule it wrote from that mail steers every
@@ -146,10 +175,35 @@ export default async function RulesPage({
         <div className="card stack">
           <h2>{t('rules.proposedHeading', { n: proposals.length })}</h2>
           <p className="meta" style={{ margin: 0 }}>{t('rules.proposedExplainer')}</p>
-          {proposals.map((rule) => (
+          {proposals.map((rule) => {
+            // A proposal aimed at an existing rule replaces its wording on
+            // approval. Approving that without seeing which rule, or what it
+            // says today, is a gate in name only — the operator would be
+            // agreeing to a deletion nothing on the page mentions.
+            const target = rule.replaces ? getRule(rule.replaces) : null;
+            return (
             <form key={rule.id} className="stack" action={approveProposedRule}>
               <input type="hidden" name="ruleId" value={rule.id} />
-              <textarea name="content" defaultValue={rule.content} rows={2} readOnly />
+              {rule.replaces &&
+                (target ? (
+                  <>
+                    <p className="meta" style={{ margin: 0 }}>{t('rules.proposedRewrite')}</p>
+                    <p className="meta" style={{ margin: 0 }}>{t('rules.proposedCurrent')}</p>
+                    <pre className="email">{target.content}</pre>
+                    <p className="meta" style={{ margin: 0 }}>{t('rules.proposedReplacement')}</p>
+                  </>
+                ) : (
+                  // The rule it was written against has been deleted since. It
+                  // lands as a new rule instead, which is a different thing to
+                  // agree to than the one the proposal was written for.
+                  <p className="meta" style={{ margin: 0 }}>{t('rules.proposedTargetGone')}</p>
+                ))}
+              {/* Shown, not offered for editing. A `readOnly` textarea looks
+                  exactly like the editable one further down the page, so it
+                  invites a rewrite and then silently swallows the keystrokes.
+                  What is being approved here is this sentence; changing it is
+                  what the rulebook below is for. */}
+              <pre className="email">{rule.content}</pre>
               <div className="row">
                 <span className="grow meta">
                   {rule.category} · {t('rules.proposedTag')}
@@ -167,13 +221,19 @@ export default async function RulesPage({
               </div>
               {rule.rationale && <p className="meta" style={{ margin: 0 }}>{rule.rationale}</p>}
             </form>
-          ))}
+            );
+          })}
         </div>
       )}
 
       <form className="card stack" action={addRule}>
         <h2>{t('rules.writeHeading')}</h2>
-        <input type="text" name="content" placeholder={t('rules.contentPlaceholder')} />
+        <input
+          type="text"
+          name="content"
+          aria-label={t('rules.contentLabel')}
+          placeholder={t('rules.contentPlaceholder')}
+        />
         <div className="row">
           <select name="category" defaultValue="general" style={{ width: 160 }}>
             {RULE_CATEGORIES.map((category) => (
@@ -223,7 +283,12 @@ export default async function RulesPage({
                   {rule.enabled ? '' : ` · ${t('rules.retiredTag')}`}
                 </span>
               </summary>
-              <textarea name="content" defaultValue={rule.content} rows={2} />
+              <textarea
+                name="content"
+                aria-label={t('rules.contentLabel')}
+                defaultValue={rule.content}
+                rows={2}
+              />
             <div className="row">
               <select name="category" defaultValue={rule.category} style={{ width: 140 }}>
                 {RULE_CATEGORIES.map((category) => (

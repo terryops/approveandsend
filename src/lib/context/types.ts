@@ -125,7 +125,10 @@ function safeHref(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed;
-  if (/^\/(?!\/)/.test(trimmed)) return trimmed;
+  // A backslash counts as a slash: URL parsers treat `/\evil.example` exactly
+  // like `//evil.example`, so checking only for the second forward slash lets
+  // the off-site link straight through.
+  if (/^\/(?![/\\])/.test(trimmed)) return trimmed;
   return undefined;
 }
 

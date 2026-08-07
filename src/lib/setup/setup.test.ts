@@ -177,6 +177,15 @@ describe('setupState', () => {
     expect(state.untouched).toBe(true);
   });
 
+  // A rulebook of pending proposals is evidence the desk has been running,
+  // even though none of it has been approved. Counting only approved rules
+  // called such a desk untouched and offered it the first-run treatment.
+  it('does not call a desk untouched when it has proposals waiting', () => {
+    createRule({ content: 'Something the learning pass suggested.', proposed: true }, db);
+
+    expect(setupState(db).untouched).toBe(false);
+  });
+
   it('reads the configuration rather than counting clicks', () => {
     saveEnv({ ADMIN_PASSWORD: 'a-password', AI_MODEL: 'a-model' });
 

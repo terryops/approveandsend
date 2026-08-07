@@ -1,7 +1,9 @@
 import { getDb, type Db } from '../db';
+import { t } from '../i18n';
 import { COMPOSE_MESSAGE, enqueueCompose } from '../queue/handlers/compose-message';
 import { ENRICH_CONTEXT, enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { DRAFT_REPLY } from '../queue/handlers/draft-reply';
+import { recordEvent } from './events';
 import { getTask, updateTask } from './store';
 
 /**
@@ -24,8 +26,16 @@ import { getTask, updateTask } from './store';
  * This finds them.
  */
 
-/** Statuses that mean "the machine still owes this one something". */
-const IN_FLIGHT = ['pending', 'drafting'] as const;
+/**
+ * Statuses that mean "the machine still owes this one something".
+ *
+ * `sending` is here for a different reason than the other two. It is the claim
+ * `sendReply` takes before handing the mail to the provider, released in its
+ * own `catch` — so the only way to be left holding it is for the process to
+ * stop between those two lines. That leaves a task nobody can send and nobody
+ * can reopen, which is the exact shape of stuck this sweep exists for.
+ */
+const IN_FLIGHT = ['pending', 'drafting', 'sending'] as const;
 
 export interface SweepOptions {
   /**
@@ -42,10 +52,12 @@ export interface SweepOptions {
 }
 
 export interface SweepResult {
-  /** Stuck tasks found. The other three numbers sum to this. */
+  /** Stuck tasks found. The other four numbers sum to this. */
   found: number;
   /** Put back in the queue: there was no job left to finish them. */
   requeued: number;
+  /** Handed back to the reviewer: a send claim whose sender never came back. */
+  released: number;
   /** Marked failed: their job gave up, and retrying it is a human's call. */
   failed: number;
   /** Neither: enqueueing threw. Left alone for the next sweep. */
@@ -114,11 +126,20 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
       limit: options.limit ?? 50,
     }) as StuckRow[];
 
-  const result: SweepResult = { found: rows.length, requeued: 0, failed: 0, errors: [] };
+  const result: SweepResult = { found: rows.length, requeued: 0, released: 0, failed: 0, errors: [] };
 
   for (const row of rows) {
     try {
-      if (row.job_status === 'failed') {
+      if (row.status === 'sending') {
+        // Not requeued and not failed: there is no job behind a send, only the
+        // claim. Handing it back to `awaiting_review` puts the Send button in
+        // front of the reviewer again — which is right, because whether the
+        // mail actually went out before the process died is a question only
+        // they can answer, and the alternative is a task nobody can touch.
+        updateTask(row.id, { status: 'awaiting_review' }, db);
+        recordEvent(row.id, 'reopened', { detail: t('sweep.sendReleased'), db });
+        result.released += 1;
+      } else if (row.job_status === 'failed') {
         updateTask(
           row.id,
           {

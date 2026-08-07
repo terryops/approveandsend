@@ -55,6 +55,17 @@ export interface Rule {
    * is put a suggestion in front of a human.
    */
   proposed: boolean;
+  /**
+   * The rule this proposal wants to rewrite, or null for a proposal that is
+   * simply new.
+   *
+   * A model that has read a customer's email may not edit an approved rule
+   * either — the human agreed to the sentence that rule used to say, not to
+   * whatever replaced it. So an amendment, a merge and a replacement all take
+   * the same shape as a new rule: text nobody has agreed to, parked next to
+   * the rule it is aimed at, applied to it only on approval.
+   */
+  replaces: string | null;
   /** The conversation this was learned from, when it was learned rather than typed. */
   sourceTaskId: string | null;
   /** Why the extractor thought this was worth keeping. */
@@ -92,6 +103,8 @@ export interface NewRule {
   topics?: string[];
   /** True for anything a model wrote. See `Rule.proposed`. */
   proposed?: boolean;
+  /** Set to aim this proposal at an existing rule. See `Rule.replaces`. */
+  replaces?: string | null;
   sourceTaskId?: string | null;
   rationale?: string | null;
   /**
