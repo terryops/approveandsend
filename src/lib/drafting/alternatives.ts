@@ -24,8 +24,19 @@ import { clip, htmlToText } from '../thread-context';
 
 const MAX_BODY_CHARS = 12_000;
 
-/** How many are asked for, and the hard ceiling on how many are kept. */
-export const MAX_ALTERNATIVES = 3;
+/**
+ * How many choices end up in front of the reviewer, the draft included.
+ *
+ * The draft is one of them — tab A is the reply already on the table, and the
+ * model is asked for `MAX_OPTIONS - 1` others. That is not bookkeeping: a strip
+ * of three where none of them is what is in the box leaves the reviewer holding
+ * a fourth text nobody described, no tab lit on arrival, and no way back to the
+ * draft once they have clicked away from it.
+ */
+export const MAX_OPTIONS = 3;
+
+/** How many genuinely new approaches the model is asked to invent. */
+const NEW_APPROACHES = MAX_OPTIONS - 1;
 
 export interface DraftOption {
   /** A few words on what this approach commits the desk to. */
@@ -53,19 +64,28 @@ ${clip(htmlToText(task.body), MAX_BODY_CHARS)}${filesBlock}
 ${clip(current, 4000)}
 
 ## What is wanted
-${MAX_ALTERNATIVES} ways this could be answered that differ in what we actually
-do, not in how it is worded. Refunding, asking a diagnostic question first,
-explaining why the answer is no, offering a workaround and offering an
-escalation are different approaches; the same reply in a warmer tone is not,
-and returning one is a wasted option.
+Two things, and the first is not a rewrite.
+
+First, name what the reply above already commits us to, in the same few words
+you would use for any other approach. The reviewer sees it as one choice among
+the others, so it needs a label in the same voice as theirs — not a review of
+it, and not a suggestion for improving it.
+
+Then ${NEW_APPROACHES} other ways this could be answered that differ in what we
+actually do, not in how it is worded. Refunding, asking a diagnostic question
+first, explaining why the answer is no, offering a workaround and offering an
+escalation are different approaches; the same reply in a warmer tone is not, and
+returning one is a wasted option. Neither of them may be the approach the draft
+above already takes — that one is already on the table.
 
 Every one of them has to obey the rules above and be ready to send as written.
 An option nobody could send is not an option. If the case honestly admits fewer
-than ${MAX_ALTERNATIVES} defensible approaches, return the ones that exist
+than ${NEW_APPROACHES} further defensible approaches, return the ones that exist
 rather than padding the list with an answer you would not stand behind.
 
 JSON only, no prose around it:
 {
+  "current": "a few words on what the reply already drafted commits us to",
   "options": [
     {
       "strategy": "a few words on what this one commits us to, e.g. refund immediately, ask for the export id first",
@@ -76,9 +96,12 @@ JSON only, no prose around it:
 }
 
 /**
- * Ask for the alternatives. Returns [] rather than throwing on a bad response:
- * the reviewer still has the draft they had before, and the button not working
- * is a smaller failure than the screen not loading.
+ * Ask for the choices, the draft included, in the order they will be shown.
+ *
+ * The first is always the reply that was already on the table — the model only
+ * supplies its label. Returns [] rather than throwing on a bad response: the
+ * reviewer still has their draft, and a missing tab strip is a smaller failure
+ * than a screen that will not load.
  */
 export async function suggestAlternatives(
   task: Task,
@@ -97,7 +120,7 @@ export async function suggestAlternatives(
 
   const signature = blocks.workspace.signature;
 
-  return parsed.options
+  const others = parsed.options
     .flatMap(value => {
       if (!value || typeof value !== 'object') return [];
       const option = value as Record<string, unknown>;
@@ -112,5 +135,21 @@ export async function suggestAlternatives(
         } satisfies DraftOption,
       ];
     })
-    .slice(0, MAX_ALTERNATIVES);
+    .slice(0, NEW_APPROACHES);
+
+  // Nothing new to offer, so there is no choice to present — one tab is not a
+  // strip, and a strip with the draft alone in it implies the model looked and
+  // found nothing, which is not distinguishable here from the call failing.
+  if (others.length === 0) return [];
+
+  // The draft first, exactly as it stands. No signature appended: whatever is
+  // in the box already went through that when it was drafted, and doing it
+  // again is how tab A grows a second sign-off.
+  return [
+    {
+      strategy: typeof parsed.current === 'string' ? parsed.current.trim() : '',
+      body: current.trim(),
+    },
+    ...others,
+  ];
 }

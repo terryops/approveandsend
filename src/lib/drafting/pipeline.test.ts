@@ -12,10 +12,16 @@ import {
   describeWorkspace,
   loadWorkspaceConfig,
   resetWorkspaceConfig,
+  topicLabel,
   type WorkspaceConfig,
 } from '../config/workspace';
 import { openDb, type Db } from '../db';
-import { enqueueDraftReply, DRAFT_REPLY, draftReplyHandler } from '../queue/handlers';
+import {
+  enqueueDraftReply,
+  DRAFT_REPLY,
+  draftReplyHandler,
+  SUGGEST_ALTERNATIVES,
+} from '../queue/handlers';
 import { enqueue, listJobs } from '../queue/store';
 import { createWorker } from '../queue/worker';
 import { createRule, listRules } from '../rules/store';
@@ -172,6 +178,52 @@ describe('workspace config', () => {
     ]);
   });
 
+  it('keeps a reviewer-facing label and leaves it off when there is none', () => {
+    writeConfig({
+      topics: [
+        { slug: 'refunds', label: '  退款与取消  ', description: 'money back' },
+        { slug: 'press', label: '   ', description: 'journalists' },
+        { slug: 'api', description: 'integrations' },
+      ],
+    });
+
+    expect(loadWorkspaceConfig().topics).toEqual([
+      { slug: 'refunds', label: '退款与取消', description: 'money back' },
+      // A blank label is no label, not an empty one that renders as a gap.
+      { slug: 'press', description: 'journalists' },
+      { slug: 'api', description: 'integrations' },
+    ]);
+  });
+
+  it('shows the label, and falls back to the slug for anything unlabelled', () => {
+    const config: WorkspaceConfig = {
+      ...DEFAULT_WORKSPACE,
+      topics: [
+        { slug: 'refunds', label: '退款与取消', description: 'money back' },
+        { slug: 'api', description: 'integrations' },
+      ],
+    };
+
+    expect(topicLabel('refunds', config)).toBe('退款与取消');
+    expect(topicLabel('api', config)).toBe('api');
+    // A scope with no topic behind it: a free-form slug, or a topic somebody
+    // deleted from the config while tasks were still tagged with it.
+    expect(topicLabel('churn', config)).toBe('churn');
+  });
+
+  it('gives the classifier slugs and descriptions, never the label', () => {
+    const config: WorkspaceConfig = {
+      ...DEFAULT_WORKSPACE,
+      topics: [{ slug: 'refunds', label: '退款与取消', description: 'money back' }],
+    };
+
+    // The label is for the reviewer. Offering it here would invite the model
+    // to answer with it, and a scope of "退款与取消" matches no rule.
+    const block = describeTopics(config);
+    expect(block).toContain('- refunds: money back');
+    expect(block).not.toContain('退款与取消');
+  });
+
   it('tells the classifier to choose a name rather than invent one', () => {
     const config: WorkspaceConfig = {
       ...DEFAULT_WORKSPACE,
@@ -281,7 +333,7 @@ describe('task store', () => {
     const b = createTask({ subject: 'b' }, db).task;
     updateTask(b.id, { status: 'sent' }, db);
 
-    expect(countTasksByStatus(db)).toEqual({ pending: 1, sent: 1 });
+    expect(countTasksByStatus({}, db)).toEqual({ pending: 1, sent: 1 });
   });
 
   it('leaves untouched fields alone on a partial update', () => {
@@ -777,6 +829,25 @@ describe('draft-reply job', () => {
     expect(listVersions(task.id, db)).toMatchObject([
       { body: 'We have escalated this and will update you shortly.', notes: 'make it shorter' },
     ]);
+  });
+
+  it('queues the other ways it could have answered, without being asked', async () => {
+    const { task } = createTask(INCOMING, db);
+    enqueueDraftReply(task.id, { critic: false, db });
+
+    queued.push(GOOD_DRAFT);
+    await worker().runOnce();
+
+    // These were behind a button, and the button was indistinguishable from a
+    // broken one: two and a half minutes on a page with no client-side
+    // JavaScript to notice the answer arriving.
+    const options = listJobs({ type: SUGGEST_ALTERNATIVES }, db);
+    expect(options).toHaveLength(1);
+    expect(options[0]!.payload).toEqual({ taskId: task.id });
+    // Behind drafting, not in front of it as it was while somebody was waiting
+    // on the page for it. Now it runs for every mail, and jumping the queue
+    // would leave unanswered mail waiting on extra replies to answered mail.
+    expect(options[0]!.priority).toBeGreaterThan(5);
   });
 
   it('drafts one reply per task however many times it is enqueued', () => {

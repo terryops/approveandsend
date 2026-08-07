@@ -349,53 +349,54 @@ export async function composeEmail(form: FormData): Promise<void> {
   redirect(`/tasks/${task.id}?queued=1`);
 }
 
-/**
- * Asking what else this reply could have said.
+/*
+ * There was an "Other options" button here, and it is gone on purpose.
  *
- * A separate button from Redraft because they answer different questions.
- * Redraft says this draft is wrong and here is why; this says the reviewer
- * does not yet know what right looks like, and would like to see the choice
- * laid out before committing the desk to one of them.
+ * It enqueued the same job that drafting now enqueues for every mail. Behind a
+ * button it was indistinguishable from a broken one: the options took two and a
+ * half minutes, this screen has no client-side JavaScript to notice them
+ * arriving, and the only feedback was a grey line that said "redraft queued"
+ * because the wording had been copied from the button beside it. The options
+ * landed, correctly, on a page nobody was still looking at.
  *
- * Deliberately not automatic. Most mail is answered by the first draft, and
- * three replies to every routine question is three times the bill for the one
- * task in ten that is actually a judgement call.
+ * The set is generated with the draft now and sits above the box as tabs, which
+ * is where the upstream desk had it all along.
  */
-export async function askForOptions(form: FormData): Promise<void> {
+
+/**
+ * Switching the draft box to one of the options.
+ *
+ * What is in the box now is kept first, so picking B, reading C and coming back
+ * does not cost anybody their editing. That is `keepEdits` rather than a copy of
+ * the stored draft, and the difference is the whole point once these became
+ * tabs: a reviewer who has been typing and then clicks another tab has edits
+ * that are *only* in the textarea, and reading `task.draft` would file the text
+ * they had before they started typing and drop the rest on the floor.
+ *
+ * The set is left on the page — a reviewer who picks one and then changes their
+ * mind should not have to pay for the other two again.
+ */
+/*
+ * The option's id arrives bound rather than in the form, and it has to.
+ *
+ * The obvious HTML is `<button name="alternativeId" value={id} formAction={…}>`:
+ * a submit button contributes its own name and value, which is exactly how four
+ * tabs are supposed to share one form. It does not survive a Server Action —
+ * React builds the payload for the action itself and the clicked button's
+ * name/value is not in it — so every tab posted an empty id, `getAlternative`
+ * returned null, and clicking a tab did nothing at all while looking like it
+ * should have. Binding is the supported way to give one action per-button
+ * arguments, and it leaves the textarea in the FormData, which is the whole
+ * reason these tabs live inside the draft's form.
+ */
+export async function useAlternative(alternativeId: string, form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
+  const option = getAlternative(alternativeId);
   await keepEdits(form, id);
   const task = getTask(id);
 
-  if (task && task.status !== 'sent' && task.status !== 'dismissed' && task.status !== 'sending') {
-    // The notes go with it for the same reason Redraft carries them: "give me
-    // options" plus "the tone is too formal" is a different request from
-    // "give me options", and the box under the draft is where that sentence
-    // already is.
-    updateTask(id, { reviewerNotes: field(form, 'notes') || null });
-    enqueueAlternatives(id);
-  }
-
-  revalidatePath(`/tasks/${id}`);
-  redirect(`/tasks/${id}?queued=1`);
-}
-
-/**
- * Putting one of the options in the draft box.
- *
- * The same shape as a restore, and for the same reason: what is in the box now
- * is kept first, so picking B and then wanting A back does not cost anybody
- * their editing. The set is left on the page — a reviewer who picks one and
- * then changes their mind should not have to pay for the other two again.
- */
-export async function useAlternative(form: FormData): Promise<void> {
-  await requireApi();
-  const id = field(form, 'taskId');
-  const option = getAlternative(field(form, 'alternativeId'));
-  const task = getTask(id);
-
   if (option && option.taskId === id && task && task.status !== 'sent' && task.status !== 'sending') {
-    if (task.draft) recordDraft(id, task.draft, { source: 'human' });
     recordDraft(id, option.body, { source: 'model', notes: option.strategy || null });
     updateTask(id, { draft: option.body });
     recordEvent(id, 'edited', {

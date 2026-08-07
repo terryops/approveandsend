@@ -18,7 +18,6 @@ import { reviewLanguage } from '@/lib/translation/translate';
 
 import {
   approveAndSend,
-  askForOptions,
   dismissTask,
   redraftTask,
   reopenTask,
@@ -103,6 +102,15 @@ export default async function TaskPage({
   // Hidden once the reply has gone, or while it is going: the choice they
   // represent has been made.
   const alternatives = sent || sending ? [] : listAlternatives(task.id);
+
+  // Which tab is lit.
+  //
+  // Matched on the text rather than stored on the row, and the mismatch case is
+  // the useful one: once the reviewer edits, the box is nobody's option any
+  // more, so no option tab is active and the leftmost tab — their own draft —
+  // takes it. Storing a `selected` column would leave a tab claiming credit for
+  // a paragraph the reviewer wrote themselves.
+  const selected = alternatives.find(option => option.body.trim() === body.trim());
 
   const history = listEvents(task.id);
   const names = new Map<string, string>();
@@ -318,6 +326,46 @@ export default async function TaskPage({
             readOnly={sent || sending}
             placeholder={t('task.subjectPlaceholder')}
           />
+          {/* The other ways this could have been answered.
+
+              Above the box rather than in a fold below it, and always there
+              rather than behind a button, because the choice between approaches
+              is one to make *before* reading a draft closely — not after
+              deciding the one on screen is wrong. Tab A is the draft itself, so
+              one of them is always lit on arrival.
+
+              Submit buttons inside the draft's own form rather than a form
+              each: nesting forms is not a thing HTML does, and posting the
+              textarea along with the switch is the point rather than a side
+              effect — switching keeps whatever is in the box first, so a
+              reviewer who edits B, reads C and comes back finds their editing
+              in the drafts panel rather than gone. The id is bound to the
+              action instead of carried as the button's value; see the note on
+              `useAlternative` for why the obvious HTML silently does nothing. */}
+          {alternatives.length > 0 && (
+            <div className="alt-tabs" role="group" aria-label={t('task.optionsLabel')}>
+              {alternatives.map(option => (
+                <button
+                  key={option.id}
+                  type="submit"
+                  formAction={useAlternative.bind(null, option.id)}
+                  className={selected?.id === option.id ? 'active' : ''}
+                  aria-current={selected?.id === option.id ? 'true' : undefined}
+                >
+                  <span className="alt-label">{option.label}</span>
+                  <span className="alt-strategy">{option.strategy || t('task.optionUnlabelled')}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* No tab is lit, which now means one thing only: the reviewer has
+              edited. Tab A is the draft as generated, so on arrival A matches
+              and this line is absent. Worth saying out loud when it applies — a
+              strip with none of its tabs active otherwise reads as a rendering
+              fault rather than as an answer to "where am I". */}
+          {alternatives.length > 0 && !selected && (
+            <p className="meta">{t('task.optionsEdited')}</p>
+          )}
           {/* Draft on the left, translation on the right — same shape as the
               incoming pair above, so the reviewer's eye can compare the reply
               they are approving against the reply the customer will read. */}
@@ -386,13 +434,6 @@ export default async function TaskPage({
               <button type="submit" formAction={redraftTask}>
                 {t('task.redraft')}
               </button>
-              {/* A different question from Redraft, which is why it is a
-                  different button: this one is for a reviewer who does not yet
-                  know what the right answer is, rather than one who knows this
-                  is the wrong one. */}
-              <button type="submit" formAction={askForOptions}>
-                {t('task.askForOptions')}
-              </button>
               {/* Only where there is something to come back from. A task that is
                   already awaiting review has nowhere to be reopened to. */}
               {(task.status === 'dismissed' || task.status === 'failed') && (
@@ -436,30 +477,6 @@ export default async function TaskPage({
             <h2>{t('task.draftYouChanged')}</h2>
             <pre className="email">{task.draft}</pre>
           </div>
-        )}
-
-        {/* Above the version history: these are a decision waiting to be made,
-            and that is a record of one already taken. Each is its own form for
-            the same reason a restore is — it must not carry the textarea. */}
-        {!sent && alternatives.length > 0 && (
-          <details className="card" open>
-            <summary>{t('task.options', { n: alternatives.length })}</summary>
-            <p className="meta">{t('task.optionsHint')}</p>
-            {alternatives.map(option => (
-              <form action={useAlternative} key={option.id} style={{ marginTop: 12 }}>
-                <input type="hidden" name="taskId" value={task.id} />
-                <input type="hidden" name="alternativeId" value={option.id} />
-                <div className="row">
-                  <span className="meta grow">
-                    <strong>{option.label}</strong>
-                    {option.strategy ? ` · ${option.strategy}` : ''}
-                  </span>
-                  <button type="submit">{t('task.useOption')}</button>
-                </div>
-                <pre className="email">{option.body}</pre>
-              </form>
-            ))}
-          </details>
         )}
 
         {/* Everything the draft box used to say. Its own form, outside the one

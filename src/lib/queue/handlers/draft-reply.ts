@@ -8,6 +8,7 @@ import { recordDraft } from '../../tasks/versions';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
+import { enqueueAlternatives } from './suggest-alternatives';
 import { enqueueForTranslation } from './translate-task';
 
 /**
@@ -112,6 +113,22 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     // Now that both halves exist — their mail and our answer — one job can
     // render the pair for whoever has to read it.
     enqueueForTranslation(taskId, { db: context.db });
+
+    // The other ways this could have been answered, generated now rather than
+    // when somebody asks.
+    //
+    // This was a button, and the button was indistinguishable from a broken
+    // one: pressing it bought a two-and-a-half minute wait on a page with no
+    // client-side JavaScript to notice the answer arriving, so the options
+    // landed on a screen the reviewer had already left. A choice that is only
+    // there if you know to ask for it, and then only two minutes later, is not
+    // a choice anybody makes.
+    //
+    // It costs roughly four model calls per mail instead of one. That is the
+    // deliberate trade and the reason this line is worth finding later: delete
+    // it and the desk is back to one draft per email, with the tab strip
+    // simply not appearing.
+    enqueueAlternatives(taskId, { db: context.db });
 
     return {
       appliedRules: result.appliedRuleIds.length,

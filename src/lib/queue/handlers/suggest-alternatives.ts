@@ -28,13 +28,15 @@ export function enqueueAlternatives(
     SUGGEST_ALTERNATIVES,
     {
       payload: { taskId } satisfies SuggestAlternativesPayload,
-      // One set in flight per task. A reviewer who presses the button twice
-      // because nothing happened yet should not pay twice.
+      // One set in flight per task, so a redraft that lands while the previous
+      // set is still in flight does not pay for two.
       dedupeKey: `${SUGGEST_ALTERNATIVES}:${taskId}`,
-      // Above drafting: somebody is sitting on the page waiting for this,
-      // whereas a draft for mail that arrived while they were at lunch is not
-      // holding anybody up.
-      priority: options.priority ?? 3,
+      // Behind drafting, which it used to sit in front of. That was right while
+      // this was a button — somebody was on the page waiting for it. Now it
+      // runs for every mail automatically and nobody is waiting, so jumping the
+      // queue would mean today's unanswered mail waits behind three extra
+      // replies to mail that already has one.
+      priority: options.priority ?? 6,
       // Not retried to death. The reviewer has a draft either way, and a
       // second attempt they are no longer waiting for is a bill for nothing.
       maxAttempts: 2,

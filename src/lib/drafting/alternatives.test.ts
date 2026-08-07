@@ -12,7 +12,7 @@ import { SUGGEST_ALTERNATIVES, suggestAlternativesHandler } from '../queue/handl
 import { createRule } from '../rules/store';
 import { listAlternatives, replaceAlternatives } from '../tasks/alternatives';
 import { createTask, updateTask } from '../tasks/store';
-import { suggestAlternatives } from './alternatives';
+import { MAX_OPTIONS, suggestAlternatives } from './alternatives';
 
 let server: Server | undefined;
 const queued: string[] = [];
@@ -44,6 +44,7 @@ async function startAi(): Promise<void> {
 }
 
 const OPTIONS = JSON.stringify({
+  current: 'send them the workaround',
   options: [
     { strategy: 'refund now', body: 'Refunded — sorry about that.' },
     { strategy: 'ask first', body: 'Could you send me the export id?' },
@@ -84,16 +85,22 @@ function task() {
 }
 
 describe('suggestAlternatives', () => {
-  it('returns each approach with what it commits us to', async () => {
+  it('puts the draft first, labelled, then the other approaches', async () => {
     queued.push(OPTIONS);
 
     const options = await suggestAlternatives(task(), 'The draft we already have.', { db });
 
+    // The reply already on the table is one of the choices, not a fourth text
+    // sitting outside the set. Without it the strip has no tab lit when the
+    // reviewer arrives and no way back once they click away from the draft.
     expect(options).toMatchObject([
+      { strategy: 'send them the workaround', body: 'The draft we already have.' },
       { strategy: 'refund now', body: 'Refunded — sorry about that.' },
       { strategy: 'ask first' },
-      { strategy: 'explain the policy' },
     ]);
+    // Three choices on screen, so two are invented. The model offered a third
+    // and it is dropped rather than shown as a fourth tab.
+    expect(options).toHaveLength(MAX_OPTIONS);
   });
 
   it('shows the model the draft it is offering an alternative to', async () => {
@@ -140,8 +147,18 @@ describe('suggestAlternatives', () => {
     queued.push(JSON.stringify({ options: [{ strategy: 'nothing' }, { body: 'Something.' }] }));
 
     expect(await suggestAlternatives(task(), 'A.', { db })).toMatchObject([
+      { strategy: '', body: 'A.' },
       { strategy: '', body: 'Something.' },
     ]);
+  });
+
+  it('offers nothing at all when the model invented no new approach', async () => {
+    // The draft on its own is not a choice, and one tab is not a strip. Showing
+    // it would say the model looked and found nothing, which from here is
+    // indistinguishable from the call having failed.
+    queued.push(JSON.stringify({ current: 'what we already said', options: [] }));
+
+    expect(await suggestAlternatives(task(), 'A.', { db })).toEqual([]);
   });
 
   it('returns nothing rather than throwing when the model returns rubbish', async () => {
