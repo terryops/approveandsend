@@ -8,10 +8,12 @@ import { LEARN_FROM_SENT, learnFromSentHandler } from './learn-from-sent';
 import { SUGGEST_ALTERNATIVES, suggestAlternativesHandler } from './suggest-alternatives';
 import { SUMMARISE_RULES, summariseRulesHandler } from './summarise-rules';
 import { TRANSLATE_TASK, translateTaskHandler } from './translate-task';
+import { TRIAGE, triageHandler } from './triage';
 import type { JobHandler } from '../types';
 
 /** The handlers a stock deployment runs. */
 export const DEFAULT_HANDLERS: Record<string, JobHandler> = {
+  [TRIAGE]: triageHandler,
   [ENRICH_CONTEXT]: enrichContextHandler,
   [DRAFT_REPLY]: draftReplyHandler,
   [COMPOSE_MESSAGE]: composeMessageHandler,
@@ -35,3 +37,4 @@ export * from './learn-from-sent';
 export * from './suggest-alternatives';
 export * from './summarise-rules';
 export * from './translate-task';
+export * from './triage';

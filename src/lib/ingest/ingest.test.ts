@@ -137,9 +137,9 @@ describe('syncInbox', () => {
     expect(tasks).toHaveLength(2);
     // The summary body is replaced by the real one after the detail fetch.
     expect(tasks.map(t => t.body).sort()).toEqual(['full body of a', 'full body of b']);
-    // Enrichment, not drafting: looking the sender up comes first, and that
-    // job is what enqueues the draft.
-    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(2);
+    // Triage, not drafting: deciding whether this needs answering at all
+    // comes first, and that job is what starts the rest of the pipeline.
+    expect(listJobs({ type: 'triage' }, db)).toHaveLength(2);
   });
 
   it('does not queue a draft for mail somebody already answered', async () => {
@@ -455,7 +455,7 @@ describe('syncInbox', () => {
     expect(result).toMatchObject({ created: 1, failures: [] });
     const task = (db.prepare('SELECT id FROM tasks').get() as { id: string }).id;
     expect(listMessages(task, db)).toEqual([]);
-    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(1);
+    expect(listJobs({ type: 'triage' }, db)).toHaveLength(1);
   });
 
   it('files a sent reply against the conversation', async () => {
@@ -478,7 +478,7 @@ describe('syncInbox', () => {
 
     expect(second).toMatchObject({ created: 0, skipped: 1 });
     expect(provider.detailFetches).toEqual([]);
-    expect(listJobs({ type: 'enrich-context' }, db)).toHaveLength(1);
+    expect(listJobs({ type: 'triage' }, db)).toHaveLength(1);
   });
 
   it('carries the threading headers through so the reply can be threaded', async () => {

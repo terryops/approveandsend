@@ -5,6 +5,7 @@ import { getTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
 import { enqueueDraftReply } from './draft-reply';
+import { enqueueTriage } from './triage';
 
 /**
  * Looking the sender up before anything is written about them.
@@ -45,13 +46,13 @@ export function enqueueEnrichContext(
 }
 
 /**
- * Get a freshly-ingested task moving.
+ * Look the sender up, then draft — or just draft.
  *
  * Callers should not have to know whether this install has any context sources
  * — an extra no-op job per email would clutter the queue view of the many
  * installs that have none.
  */
-export async function enqueueForDrafting(
+export async function enqueueContextThenDraft(
   taskId: string,
   options: { db?: Db } = {},
 ): Promise<EnqueueResult> {
@@ -59,6 +60,21 @@ export async function enqueueForDrafting(
   return (await hasContextSources())
     ? enqueueEnrichContext(taskId, { db })
     : enqueueDraftReply(taskId, { db });
+}
+
+/**
+ * Get a freshly-ingested task moving.
+ *
+ * Triage first, which may end the task here — see `handlers/triage`. Reopening
+ * skips it and calls `enqueueContextThenDraft` directly: a human who has just
+ * undone a dismissal has answered the only question triage asks, and asking a
+ * model to overrule them would make the reopen button do nothing.
+ */
+export async function enqueueForDrafting(
+  taskId: string,
+  options: { db?: Db } = {},
+): Promise<EnqueueResult> {
+  return enqueueTriage(taskId, { db: options.db ?? getDb() });
 }
 
 export const enrichContextHandler: JobHandler = async (payload, context) => {

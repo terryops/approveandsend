@@ -12,7 +12,7 @@
  */
 
 import { getDb, type Db } from '../db';
-import { enqueueForDrafting } from '../queue/handlers/enrich-context';
+import { enqueueContextThenDraft } from '../queue/handlers/enrich-context';
 import { enqueueLearnFromRejection } from '../queue/handlers/learn-from-rejection';
 
 import { recordEvent } from './events';
@@ -135,7 +135,9 @@ export async function reopenTask(
 
   recordEvent(id, 'reopened', { ...(actor ? { actor } : {}), db });
 
-  if (!hasDraft) await enqueueForDrafting(id, { db });
+  // Not `enqueueForDrafting`: that runs triage first, and a person
+  // reopening a task has already answered the question triage asks.
+  if (!hasDraft) await enqueueContextThenDraft(id, { db });
   return true;
 }
 

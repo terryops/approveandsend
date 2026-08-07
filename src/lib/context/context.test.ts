@@ -11,7 +11,9 @@ import { listJobs } from '../queue/store';
 import {
   DRAFT_REPLY,
   ENRICH_CONTEXT,
+  enqueueContextThenDraft,
   enqueueForDrafting,
+  TRIAGE,
   enrichContextHandler,
 } from '../queue/handlers';
 import { createTask } from '../tasks/store';
@@ -314,10 +316,22 @@ describe('the registry', () => {
 });
 
 describe('the enrichment job', () => {
+  it('triages before anything is looked up or written', async () => {
+    // The step that can make both of the others unnecessary, so it goes
+    // first — see `handlers/triage`.
+    setContextSources([source('a', BLOCK)]);
+    const t = task();
+    await enqueueForDrafting(t.id, { db });
+
+    expect(listJobs({ type: TRIAGE }, db)).toHaveLength(1);
+    expect(listJobs({ type: ENRICH_CONTEXT }, db)).toHaveLength(0);
+    expect(listJobs({ type: DRAFT_REPLY }, db)).toHaveLength(0);
+  });
+
   it('drafts directly when no sources are configured', async () => {
     setContextSources([]);
     const t = task();
-    await enqueueForDrafting(t.id, { db });
+    await enqueueContextThenDraft(t.id, { db });
 
     expect(listJobs({ type: DRAFT_REPLY }, db)).toHaveLength(1);
     // No no-op job cluttering the queue of an install that has no sources.
@@ -327,7 +341,7 @@ describe('the enrichment job', () => {
   it('looks the sender up first when there are sources', async () => {
     setContextSources([source('a', BLOCK)]);
     const t = task();
-    await enqueueForDrafting(t.id, { db });
+    await enqueueContextThenDraft(t.id, { db });
 
     const [job] = listJobs({ type: ENRICH_CONTEXT }, db);
     expect(job).toBeDefined();
