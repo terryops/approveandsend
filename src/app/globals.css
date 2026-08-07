@@ -119,6 +119,37 @@ nav a.active {
   font-size: 13px;
 }
 
+/*
+ * The task screen in two columns: the reply and what it answers on the left,
+ * what the model made of it on the right. The split only happens when there is
+ * room for the left column to still be a comfortable reading width — below
+ * that the aside drops underneath, which is also the order a screen reader
+ * takes it in either way.
+ */
+.detail {
+  display: grid;
+  align-items: start;
+}
+
+.detail-main,
+.detail-side {
+  min-width: 0;
+}
+
+@media (min-width: 1000px) {
+  .detail {
+    grid-template-columns: minmax(0, 1fr) 288px;
+    column-gap: 18px;
+  }
+
+  /* Follows the reviewer down a long thread, since its whole job is to be
+     glanceable while they read something else. */
+  .detail-side {
+    position: sticky;
+    top: 16px;
+  }
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
