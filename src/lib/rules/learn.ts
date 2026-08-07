@@ -258,7 +258,7 @@ async function apply(
 
   // Shared pool, so two proposals from the same conversation dedupe against
   // each other and not only against what was stored before this run.
-  const pool = listRules({ enabledOnly: true }, db);
+  const pool = listRules({ enabledOnly: true, proposed: 'include' }, db);
 
   for (const proposal of (extraction.newRules ?? []).slice(0, maxNewRules)) {
     const content = proposal.content?.trim();
@@ -272,6 +272,11 @@ async function apply(
         content,
         category: coerceCategory(proposal.category),
         topics,
+        // Everything on this path was written by a model that had a customer's
+        // email in its context, so it waits for somebody to agree with it.
+        // Merges and replacements are not gated the same way: they only edit a
+        // rule a human already accepted, and every edit leaves a revision.
+        proposed: true,
         sourceTaskId: input.taskId,
         rationale: proposal.rationale?.trim() || null,
       },

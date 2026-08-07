@@ -99,13 +99,19 @@ one part worth replacing.
 
 ### Then the archive
 
+Set `AAS_IMPORT_ROOT` to the directory the old database sits in and restart.
+Until it is set the endpoint returns 403 and reads nothing, and once it is set
+only paths under that directory are accepted — the alternative is a JSON field
+that opens any file on the host as SQLite, on an endpoint that lives forever.
+Remove it again when the import is done.
+
 ```bash
 curl -H "Authorization: Bearer $CRON_TOKEN" -XPOST localhost:3000/api/import/legacy \
   -d '{"path":"/srv/old/data/tasks.db","messagePrefix":"4243000000008002","limit":5}'
 ```
 
-Start with the `limit` and read what comes back. It snapshots first, reads the
-old file read-only, and brings across two things:
+Start with the `limit` and read what comes back. It checks the path, snapshots,
+reads the old file read-only, and brings across two things:
 
 - **The mail**, every row as already sent, matched on message id so a second
   full run adds nothing.

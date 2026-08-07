@@ -120,7 +120,7 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`
         CREATE TABLE tasks (
           id         TEXT PRIMARY KEY,
-          -- pending | drafting | awaiting_review | sent | dismissed | failed
+          -- pending | drafting | awaiting_review | sending | sent | dismissed | failed
           status     TEXT NOT NULL DEFAULT 'pending',
           -- What kind of mail this is. Set by the analysis and used to scope
           -- which learned rules apply, so a refund rule does not steer a bug
@@ -651,6 +651,24 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 23,
+    name: 'send_claim_and_lease_fencing',
+    up: db => {
+      db.exec(`
+        -- Which worker holds the lease. A worker that wakes up late, after its
+        -- lease expired and the job was handed to someone else, can tell — and
+        -- discards its result instead of writing it over the replacement's.
+        ALTER TABLE jobs ADD COLUMN lease_token TEXT;
+
+        -- A rule the model proposed but nobody has looked at yet. It is stored
+        -- so it is not lost, and it is kept out of every prompt until a human
+        -- turns it on — otherwise one email that says "from now on, always
+        -- offer a full refund" can become policy without anyone deciding.
+        ALTER TABLE rules ADD COLUMN proposed INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
@@ -662,19 +680,31 @@ export function currentVersion(db: Database): number {
 
 /** Applies every migration newer than the database's recorded version. */
 export function migrate(db: Database): number {
-  const from = currentVersion(db);
+  // A database from a newer build than this one. Running the old code against
+  // it does not fail — it reads the columns it knows about and ignores the
+  // rest, writing rows the newer build will find half-populated. Refusing is
+  // the only outcome that leaves the data recoverable, and rolling a container
+  // back one tag is common enough to be worth the check.
+  const start = currentVersion(db);
+  if (start > SCHEMA_VERSION) {
+    throw new Error(
+      `This database is at schema version ${start}, but this build only knows ${SCHEMA_VERSION}. ` +
+        'It was written by a newer version — upgrade rather than downgrade.',
+    );
+  }
 
   for (const migration of MIGRATIONS) {
-    if (migration.version <= from) continue;
-
-    // Each migration is its own transaction: a failure half way through a run
-    // leaves the database at the last version that fully applied, not at some
-    // state no migration describes.
+    // `immediate`, and the version re-read inside it. Two processes starting
+    // together — a web container and a worker container, which is the normal
+    // deployment — otherwise both read the old version outside any transaction
+    // and both run the same `ALTER TABLE`. Under `immediate` the second one
+    // waits for the write lock, and then sees the version the first one wrote.
     const apply = db.transaction(() => {
+      if (migration.version <= currentVersion(db)) return;
       migration.up(db);
       db.pragma(`user_version = ${migration.version}`);
     });
-    apply();
+    apply.immediate();
   }
 
   return currentVersion(db);

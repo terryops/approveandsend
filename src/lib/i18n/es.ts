@@ -58,6 +58,7 @@ export const es: Dictionary = {
   "task.status.pending": "en espera",
   "task.status.drafting": "redactando",
   "task.status.awaiting_review": "pendiente de revisión",
+  "task.status.sending": "enviando",
   "task.status.sent": "enviado",
   "task.status.dismissed": "descartado",
   "task.status.failed": "fallido",
@@ -186,6 +187,7 @@ export const es: Dictionary = {
   "queue.released": "Trabajo liberado a la cola.",
   "queue.deleted": "Trabajo eliminado.",
   "queue.notFailed": "Ese trabajo ya no está fallido; no hay nada que reintentar.",
+  "queue.retrySuperseded": "El mismo trabajo ya está en cola; este ha quedado obsoleto.",
   "queue.notStuck": "Ese trabajo ya no se está ejecutando; no hay nada que liberar.",
 
   // --- The rulebook ---
@@ -194,6 +196,10 @@ export const es: Dictionary = {
   "rules.writtenSinceTidy": "{n} escritas desde la última limpieza",
   "rules.filterActive": "Activas",
   "rules.filterIncludingRetired": "Incluyendo las retiradas",
+  "rules.proposedHeading": "Reglas propuestas ({n})",
+  "rules.proposedExplainer": "Escritas por el modelo a partir de una conversación. No se usan hasta que las apruebes.",
+  "rules.approveButton": "Aprobar",
+  "rules.proposedTag": "propuesta",
   "rules.tidyButton": "Limpiar el reglamento",
   "rules.tidyAlreadyQueued": "Ya hay una limpieza en la cola.",
   "rules.tidyQueued": "En la cola. Fusiona las casi duplicadas en segundo plano — ejecuta la cola y luego recarga.",

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { resetWorkspaceConfig } from '../config/workspace';
 import { openDb, type Db } from '../db';
 import { listJobs } from '../queue/store';
 import {
@@ -56,10 +57,14 @@ beforeEach(() => {
   delete process.env.AAS_CONTEXT_SOURCES;
   delete process.env.STRIPE_API_KEY;
   resetContextSources();
+  // The workspace config is memoised, so without this every test after the
+  // first reads the first one's AAS_CONFIG however often it is re-pointed.
+  resetWorkspaceConfig();
 });
 
 afterEach(() => {
   db.close();
+  resetWorkspaceConfig();
   rmSync(dir, { recursive: true, force: true });
   delete process.env.AAS_CONFIG;
   delete process.env.AAS_CONTEXT_SOURCES;
@@ -101,6 +106,46 @@ describe('what a source is allowed to return', () => {
     expect(coerceBlock(null)).toBeNull();
     expect(coerceBlock({ title: 'Billing', fields: [], prompt: '' })).toBeNull();
     expect(coerceBlock({ fields: [{ label: 'a', value: 'b' }] })).toBeNull();
+  });
+
+  it('drops a link the review screen would run as script', () => {
+    // React escapes text and does nothing at all to an href, so this string
+    // reaching `<a href>` executes with the reviewer's session on one click.
+    // The block still stands — the reviewer loses a link, not the card.
+    const block = coerceBlock({
+      title: 'Billing',
+      fields: [
+        { label: 'Account', value: 'cus_1', href: 'javascript:fetch("/api/x",{method:"POST"})' },
+        { label: 'Invoice', value: 'in_1', href: 'data:text/html,<script>alert(1)</script>' },
+        { label: 'Portal', value: 'open', href: '//evil.example/looks-like-a-path' },
+      ],
+      prompt: 'ok',
+      href: 'JavaScript:alert(1)',
+    });
+
+    expect(block?.href).toBeUndefined();
+    expect(block?.fields.every(f => f.href === undefined)).toBe(true);
+  });
+
+  it('keeps the links a system of record is actually written in', () => {
+    const block = coerceBlock({
+      title: 'Billing',
+      fields: [
+        { label: 'Customer', value: 'Alex', href: 'https://dashboard.stripe.com/customers/cus_1' },
+        { label: 'Email', value: 'alex@example.com', href: 'mailto:alex@example.com' },
+        // The built-in sources link into this app by path.
+        { label: 'Payments', value: '3', href: '/billing/alex%40example.com' },
+      ],
+      prompt: 'ok',
+      href: 'http://crm.internal/alex',
+    });
+
+    expect(block?.fields.map(f => f.href)).toEqual([
+      'https://dashboard.stripe.com/customers/cus_1',
+      'mailto:alex@example.com',
+      '/billing/alex%40example.com',
+    ]);
+    expect(block?.href).toBe('http://crm.internal/alex');
   });
 
   it('allows a display-only block that costs no tokens', () => {
@@ -372,15 +417,31 @@ describe('the Stripe source', () => {
   let server: Server;
   let requests: string[];
   let responses: Map<string, unknown>;
+  /** Set by the one test about a key Stripe will not accept. */
+  let rejectKey: boolean;
 
   beforeEach(async () => {
     requests = [];
     responses = new Map();
+    rejectKey = false;
 
     server = createServer((req, res) => {
       requests.push(`${req.method} ${req.url}`);
       const path = (req.url ?? '').split('?')[0]!;
       const body = responses.get(path);
+
+      if (rejectKey) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: {
+              type: 'invalid_request_error',
+              message: 'Invalid API Key provided: rk_test_***',
+            },
+          }),
+        );
+        return;
+      }
 
       if (body === undefined) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -521,7 +582,12 @@ describe('the Stripe source', () => {
   });
 
   it('surfaces a rejected key as an error the job can report', async () => {
-    responses.set('/v1/customers', undefined as never);
-    await expect(lookup()).rejects.toThrow(/no stub|401|Stripe responded/);
+    // A 401 turned into `null` would read as "not a customer", and the model
+    // would tell a paying subscriber they have never bought anything. The
+    // failure has to reach the job, which is the only thing that can say so.
+    stub({ id: 'cus_1', created: NOW });
+    rejectKey = true;
+
+    await expect(lookup()).rejects.toThrow(/Invalid API Key/);
   });
 });

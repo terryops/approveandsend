@@ -58,6 +58,7 @@ export const ja: Dictionary = {
   "task.status.pending": "待機中",
   "task.status.drafting": "下書き中",
   "task.status.awaiting_review": "レビュー待ち",
+  "task.status.sending": "送信中",
   "task.status.sent": "送信済み",
   "task.status.dismissed": "見送り",
   "task.status.failed": "失敗",
@@ -186,6 +187,7 @@ export const ja: Dictionary = {
   "queue.released": "ジョブをキューに戻しました。",
   "queue.deleted": "ジョブを削除しました。",
   "queue.notFailed": "このジョブはもう失敗状態ではありません。",
+  "queue.retrySuperseded": "同じ処理がすでにキューにあります。このジョブは不要です。",
   "queue.notStuck": "このジョブはもう実行中ではありません。",
 
   // --- The rulebook ---
@@ -194,6 +196,10 @@ export const ja: Dictionary = {
   "rules.writtenSinceTidy": "前回の整理から {n} 件追加",
   "rules.filterActive": "有効のみ",
   "rules.filterIncludingRetired": "停止したものも表示",
+  "rules.proposedHeading": "承認待ちのルール（{n}）",
+  "rules.proposedExplainer": "モデルがやり取りから書き起こしたものです。承認するまで使われません。",
+  "rules.approveButton": "承認",
+  "rules.proposedTag": "承認待ち",
   "rules.tidyButton": "ルールブックを整理",
   "rules.tidyAlreadyQueued": "整理はすでにキューに入っています。",
   "rules.tidyQueued": "キューに入れました。重複に近いルールをバックグラウンドで統合します。キューを実行してから再読み込みしてください。",

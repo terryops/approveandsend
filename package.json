@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "^20.11.0 || >=22"
   },
   "scripts": {
     "dev": "next dev -p 3000",
@@ -34,6 +34,8 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/smtp-server": "^3.5.13",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.0",
     "smtp-server": "^3.19.2",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

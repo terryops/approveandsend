@@ -41,7 +41,7 @@ export default async function SetupLayout({ children }: { children: ReactNode })
           </a>
         ))}
       </nav>
-      <div className="grow stack">{children}</div>
+      <div className="setup-body stack">{children}</div>
     </div>
   );
 }

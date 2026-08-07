@@ -53,7 +53,10 @@ export default async function QueuePage({
         {jobs.length === 0 ? (
           <p className="empty">{t('queue.empty')}</p>
         ) : (
-          <table className="plain">
+          /* Six columns will not fit a phone, and the alternative to scrolling
+             them sideways is a stack of error strings one word wide. */
+          <div className="scroll-x">
+            <table className="plain">
             <thead>
               <tr>
                 <th>{t('queue.colType')}</th>
@@ -110,7 +113,8 @@ export default async function QueuePage({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </>

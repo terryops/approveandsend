@@ -9,6 +9,7 @@ import { RULE_CATEGORIES } from '@/lib/rules/types';
 import {
   addRule,
   addStarterRules,
+  approveProposedRule,
   editRule,
   removeRule,
   tidyRulebook,
@@ -95,6 +96,7 @@ export default async function RulesPage({
   const query = await searchParams;
   const showDisabled = query.show === 'all';
   const rules = listRules({ ...(showDisabled ? {} : { enabledOnly: true }) });
+  const proposals = listRules({ proposed: 'only' });
   const active = rules.filter((rule) => rule.enabled).length;
   const gate = consolidationGate();
   const { topics } = getWorkspaceConfig();
@@ -133,6 +135,40 @@ export default async function RulesPage({
         <p className="banner" style={{ borderColor: 'var(--line)' }}>
           {query.tidy === 'already' ? t('rules.tidyAlreadyQueued') : t('rules.tidyQueued')}
         </p>
+      )}
+
+      {/* Above the rulebook, because a proposal nobody looks at is the failure
+          mode this whole thing exists to avoid: the learning pass reads mail
+          written by strangers, and a rule it wrote from that mail steers every
+          reply afterwards. Kept, so nothing is lost — inert, until somebody
+          here reads it and presses the button. */}
+      {proposals.length > 0 && (
+        <div className="card stack">
+          <h2>{t('rules.proposedHeading', { n: proposals.length })}</h2>
+          <p className="meta" style={{ margin: 0 }}>{t('rules.proposedExplainer')}</p>
+          {proposals.map((rule) => (
+            <form key={rule.id} className="stack" action={approveProposedRule}>
+              <input type="hidden" name="ruleId" value={rule.id} />
+              <textarea name="content" defaultValue={rule.content} rows={2} readOnly />
+              <div className="row">
+                <span className="grow meta">
+                  {rule.category} · {t('rules.proposedTag')}
+                  {rule.sourceTaskId && !rule.sourceTaskId.startsWith('backfill:') && (
+                    <>
+                      {` · ${t('rules.sourceFrom')} `}
+                      <a href={`/tasks/${rule.sourceTaskId}`}>{t('rules.sourceTaskLink')}</a>
+                    </>
+                  )}
+                </span>
+                <button type="submit">{t('rules.approveButton')}</button>
+                <button className="danger" type="submit" formAction={removeRule}>
+                  {t('rules.deleteButton')}
+                </button>
+              </div>
+              {rule.rationale && <p className="meta" style={{ margin: 0 }}>{rule.rationale}</p>}
+            </form>
+          ))}
+        </div>
       )}
 
       <form className="card stack" action={addRule}>

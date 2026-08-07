@@ -8,8 +8,17 @@ import { AiError } from './types';
 interface Recorded {
   path: string;
   headers: http.IncomingHttpHeaders;
+  /**
+   * Whatever the provider put on the wire. Deliberately `any`: giving it our
+   * own type would let a provider stop sending a field and still typecheck,
+   * which is the one thing these tests exist to notice.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   body: any;
 }
+
+/** Every server a test started, so a failed assertion cannot leak one. */
+const started: (() => Promise<void>)[] = [];
 
 /** A stand-in model server, so the tests exercise real HTTP, not a mock. */
 function startServer(
@@ -34,11 +43,9 @@ function startServer(
   return new Promise(resolve => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo;
-      resolve({
-        url: `http://127.0.0.1:${port}/v1`,
-        calls,
-        close: () => new Promise<void>(done => server.close(() => done())),
-      });
+      const close = () => new Promise<void>(done => server.close(() => done()));
+      started.push(close);
+      resolve({ url: `http://127.0.0.1:${port}/v1`, calls, close });
     });
   });
 }
@@ -65,7 +72,10 @@ beforeEach(() => {
   process.env.AI_TIMEOUT_MS = '5000';
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Each test closes its own server on the way out, but only on the way out:
+  // an assertion that throws first would otherwise leave a socket listening.
+  for (const close of started.splice(0)) await close();
   process.env = { ...ORIGINAL_ENV };
   resetAiConfig();
 });
@@ -139,12 +149,14 @@ describe('OpenAI-compatible provider', () => {
     process.env.AI_BASE_URL = server.url;
     process.env.AI_MODEL = 'm';
     process.env.AI_MAX_RETRIES = '1';
+    // The real backoff is ten seconds, which is a third of the suite's wall
+    // time for one sleep. The pause is not what is under test; the retry is.
+    process.env.AI_RETRY_BASE_MS = '10';
 
-    // backoff for a non-429 first attempt is 10s; keep the test honest but bounded
     await expect(callAI('hi')).resolves.toBe('recovered');
     expect(server.calls).toHaveLength(2);
     await server.close();
-  }, 30_000);
+  });
 });
 
 describe('Anthropic provider', () => {

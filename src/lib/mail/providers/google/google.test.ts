@@ -25,6 +25,9 @@ interface Fake {
 
 type Handler = (req: IncomingMessage, res: ServerResponse, body: string) => void;
 
+/** Every server any test started, so a failed assertion cannot leak one. */
+const started: Fake[] = [];
+
 function startFake(handler: Handler): Promise<Fake> {
   const requests: Recorded[] = [];
   const server: Server = createServer((req, res) => {
@@ -45,14 +48,16 @@ function startFake(handler: Handler): Promise<Fake> {
   return new Promise(resolve => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo;
-      resolve({
+      const fake: Fake = {
         origin: `http://127.0.0.1:${port}`,
         requests,
         close: () =>
           new Promise<void>(done => {
             server.close(() => done());
           }),
-      });
+      };
+      started.push(fake);
+      resolve(fake);
     });
   });
 }
@@ -66,7 +71,9 @@ function json(res: ServerResponse, status: number, payload: unknown): void {
 let fake: Fake | undefined;
 
 afterEach(async () => {
-  await fake?.close();
+  // All of them, not just `fake`: several tests start a second server, and a
+  // test that fails before its own close() would leave one listening.
+  for (const server of started.splice(0)) await server.close();
   fake = undefined;
 });
 
@@ -485,8 +492,10 @@ describe('GmailProvider', () => {
   });
 
   it('fetches a whole thread in one request, oldest first', async () => {
-    fake = await startGmailFake((req, res) => {
-      expect(req.url).toContain('/threads/t1');
+    // Asserted after the call, not inside the handler: a failed expectation
+    // in a Node listener never writes the response, and the provider then
+    // waits out its whole timeout instead of reporting the mismatch.
+    fake = await startGmailFake((_req, res) => {
       json(res, 200, {
         messages: [
           {
@@ -531,6 +540,7 @@ describe('GmailProvider', () => {
     // One API call for the thread, no per-message round trips.
     const threadCalls = fake.requests.filter(r => r.url.includes('/threads/'));
     expect(threadCalls).toHaveLength(1);
+    expect(threadCalls[0]!.url).toContain('/threads/t1');
   });
 
   it('sends base64url RFC822 with the threadId, and reads back the id Gmail assigned', async () => {

@@ -16,6 +16,11 @@ export interface Job {
   /** Not claimable before this. Also carries the retry backoff. */
   runAfter: string;
   leaseExpiresAt: string | null;
+  /**
+   * Issued by the claim that produced this job, and required to write its
+   * outcome. A worker preempted by lease expiry still holds the old one.
+   */
+  leaseToken: string | null;
   /** The handler's return value, JSON-encoded. */
   result: string | null;
   error: string | null;

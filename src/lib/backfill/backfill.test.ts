@@ -25,6 +25,7 @@ import {
   maybeConsolidate,
 } from '../queue/handlers';
 import { listJobs } from '../queue/store';
+import { PermanentJobError } from '../queue/types';
 import { createRule, listRules } from '../rules/store';
 import { findAnsweredMessage, runBackfillItem } from './learn';
 import { scanSentMail } from './scan';
@@ -289,7 +290,7 @@ describe('learning from one archived exchange', () => {
     expect(result.status).toBe('learned');
     expect(result.rulesLearned).toBe(1);
 
-    const rules = listRules({}, db);
+    const rules = listRules({ proposed: 'only' }, db);
     expect(rules).toHaveLength(1);
     expect(rules[0]!.content).toMatch(/refund date/i);
     // Provenance points at the archive, which is what the rules screen needs
@@ -308,8 +309,11 @@ describe('learning from one archived exchange', () => {
     const [item] = listBackfillItems({}, db);
 
     queued.push(DRAFT, APPROVED, NO_RULES);
-    await runBackfillItem(item!.id, { provider, db });
+    const result = await runBackfillItem(item!.id, { provider, db });
 
+    // The run has to have happened: an empty outbox proves nothing about an
+    // item that bailed before it got as far as drafting.
+    expect(result.status).toBe('learned');
     expect(provider.sends).toEqual([]);
   });
 
@@ -422,9 +426,11 @@ describe('the queue handlers', () => {
   });
 
   it('rejects a payload with no item id, permanently', async () => {
+    // The class, not the wording: it is what stops the retry loop, and a
+    // plain Error here would be re-attempted until the job ran out of tries.
     await expect(
       backfillLearnHandler({}, { db, job: { id: 'j', type: BACKFILL_LEARN } as never }),
-    ).rejects.toThrow(/itemId/);
+    ).rejects.toThrow(PermanentJobError);
   });
 });
 

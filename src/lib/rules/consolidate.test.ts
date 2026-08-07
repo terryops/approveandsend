@@ -227,9 +227,10 @@ describe('applyConsolidation', () => {
   });
 
   it('never rewrites a rule the model was told to keep', async () => {
+    // Both in one category on purpose: a category holding a single rule never
+    // reaches the model at all, and this is a test about what the model said.
     const rule = seed('Exactly this wording.');
-    const other = seed('Something else entirely.', 'tone');
-    void other;
+    seed('Something else entirely.');
 
     // The model "keeps" it but reflows the text — the failure this guards.
     queued.push(
@@ -241,12 +242,13 @@ describe('applyConsolidation', () => {
     const plan = await planConsolidation({ db });
     const summary = applyConsolidation(plan, { db });
 
+    expect(prompts).toHaveLength(1);
     expect(summary).toEqual({ merged: 0, rewritten: 0, disabled: 0 });
     expect(getRule(rule.id, db)!.content).toBe('Exactly this wording.');
   });
 
   it('is one transaction — nothing is half applied', async () => {
-    const { rules, plan } = await planMerge('One.', 'Two.');
+    const { plan } = await planMerge('One.', 'Two.');
     // A group naming a rule that has since been deleted must not stop the
     // rest of the plan, but must also not leave a dangling disable.
     plan.categories[0]!.groups.push({ content: 'Ghost.', absorbs: ['gone-1', 'gone-2'], note: null });

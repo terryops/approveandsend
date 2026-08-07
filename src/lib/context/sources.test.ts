@@ -110,6 +110,9 @@ describe('a lookup declared against an HTTP endpoint', () => {
 
   beforeEach(async () => {
     seen = [];
+    // Reset too: the 404 and 500 tests below leave it broken for whatever
+    // runs next, and a test that silently reads a 500 asserts nothing.
+    respond = () => ({ status: 200, body: {} });
     server = createServer((req, res) => {
       let body = '';
       req.on('data', chunk => (body += chunk));

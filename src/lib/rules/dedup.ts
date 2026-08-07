@@ -95,7 +95,10 @@ export async function dedupeAndApplyRule(
     return { action: 'skip', rule: null, conflictRuleId: null, reason: 'Empty rule' };
   }
 
-  const pool = options.against ?? listRules({ enabledOnly: true }, db);
+  // Proposals count as existing rules here and nowhere else. Two conversations
+  // a week apart that suggest the same thing should produce one thing for a
+  // human to look at, not two.
+  const pool = options.against ?? listRules({ enabledOnly: true, proposed: 'include' }, db);
 
   // Only rules about the same subjects can duplicate each other: the same
   // sentence about refunds is not redundant with the same sentence about

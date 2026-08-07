@@ -146,9 +146,10 @@ describe('importLegacy', () => {
 
     const tasks = listTasks({}, db);
     expect(tasks).toHaveLength(2);
-    expect(new Set(tasks.map(task => task.draft))).toEqual(
-      new Set([null, 'Refunded — sorry about that.']),
-    );
+    // Per task, not as a set: which row lost its draft is the whole claim.
+    const byMessageId = new Map(tasks.map(task => [task.messageId, task]));
+    expect(byMessageId.get('f1:1784236614442153000')?.draft).toBe('Refunded — sorry about that.');
+    expect(byMessageId.get('f1:m2')?.draft).toBeNull();
     // Both still carry what went out. It is only the claim about what the
     // model wrote that is withheld.
     expect(tasks.every(task => task.finalReply === 'Refunded — sorry about that.')).toBe(true);

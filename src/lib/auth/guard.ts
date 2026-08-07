@@ -63,8 +63,23 @@ export async function requireApi(): Promise<void> {
  * Cron and other machine callers, which have no cookie jar.
  *
  * `CRON_TOKEN` is separate from the admin password so that a scheduler
- * compromise does not hand over the review UI, and both are compared with the
- * same constant-time helper the login path uses.
+ * compromise does not hand over the review UI, and it is compared with the same
+ * constant-time helper the login path uses.
+ *
+ * Set the token and it is the whole answer: a wrong one is rejected outright
+ * rather than falling through to the cookie. This used to end in
+ * `return hasSession()`, which made six endpoints — sync, worker, sweep,
+ * consolidate, context write, legacy import — reachable by any browser session,
+ * and on an install with no `ADMIN_PASSWORD` and no operators reachable by
+ * anyone at all, token or not.
+ *
+ * With no token there is nothing to authenticate a machine *as*, so the cookie
+ * fallback is opt-in through `AAS_MACHINE_SESSION=1` — for the setup where
+ * these are driven from a logged-in browser tab rather than a scheduler. Even
+ * then the request must be same-origin: `/api` has no CSRF token and leans
+ * entirely on `SameSite=Lax`, which is a default a browser may relax and not a
+ * check this code performs. A cross-site POST that arrives with a valid cookie
+ * is exactly the request that must not drain the queue.
  */
 export async function requireMachine(request: Request): Promise<boolean> {
   const token = process.env.CRON_TOKEN?.trim();
@@ -74,7 +89,32 @@ export async function requireMachine(request: Request): Promise<boolean> {
     const { timingSafeEqual } = await import('node:crypto');
     const a = Buffer.from(presented, 'utf8');
     const b = Buffer.from(token, 'utf8');
-    if (a.length === b.length && timingSafeEqual(a, b)) return true;
+    return a.length === b.length && timingSafeEqual(a, b);
   }
+
+  if (process.env.AAS_MACHINE_SESSION?.trim() !== '1') return false;
+  if (!sameOrigin(request)) return false;
   return hasSession();
+}
+
+/**
+ * Whether the request came from the page it claims to have come from.
+ *
+ * No `origin` header means no cross-site form or fetch put it there — curl and
+ * same-origin navigations both look like this — so absence is allowed. A header
+ * that is present and names a different host is the case worth refusing.
+ */
+function sameOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+
+  const host = request.headers.get('host');
+  if (!host) return false;
+
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    // An unparseable Origin is not a same-origin one.
+    return false;
+  }
 }

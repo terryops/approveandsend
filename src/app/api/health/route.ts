@@ -12,16 +12,18 @@ export const dynamic = 'force-dynamic';
  * turns one outage into a crash loop.
  *
  * The response says nothing a stranger could not learn by loading the login
- * page, which is why it needs no token.
+ * page, which is why it needs no token — and why the failure case says only
+ * that it failed. A better-sqlite3 error carries the absolute path of the
+ * database file, and an unauthenticated endpoint that names a directory on the
+ * host has stopped being a health check and started being reconnaissance. The
+ * orchestrator only reads the status code anyway.
  */
 export function GET(): Response {
   try {
     getDb().prepare('SELECT 1').get();
   } catch (error) {
-    return Response.json(
-      { ok: false, error: error instanceof Error ? error.message : String(error) },
-      { status: 503 },
-    );
+    console.error('[health] database unreachable', error);
+    return Response.json({ ok: false }, { status: 503 });
   }
 
   return Response.json({ ok: true });

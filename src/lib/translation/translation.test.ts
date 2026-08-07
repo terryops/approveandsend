@@ -61,7 +61,7 @@ function task(body: string, draft?: string): string {
   return created.id;
 }
 
-function context(id: string) {
+function context() {
   return {
     job: {
       id: 'job-1',
@@ -74,6 +74,7 @@ function context(id: string) {
       maxAttempts: 2,
       runAfter: '',
       leaseExpiresAt: null,
+      leaseToken: null,
       result: null,
       error: null,
       createdAt: '',
@@ -223,7 +224,7 @@ describe('the translation job', () => {
     const id = task('Bonjour, remboursement?', 'Bien sûr, sous 5 jours.');
     queued.push('你好，退款？', '当然，5天内。');
 
-    const result = (await translateTaskHandler({ taskId: id }, context(id))) as {
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
       translated: string[];
     };
 
@@ -239,10 +240,10 @@ describe('the translation job', () => {
   it('does not pay to translate what is already current', async () => {
     const id = task('Bonjour', 'Merci');
     queued.push('你好', '谢谢');
-    await translateTaskHandler({ taskId: id }, context(id));
+    await translateTaskHandler({ taskId: id }, context());
     expect(prompts).toHaveLength(2);
 
-    await translateTaskHandler({ taskId: id }, context(id));
+    await translateTaskHandler({ taskId: id }, context());
 
     // The body never changes and the draft usually has not. Re-translating
     // what is already on file is the easiest money to stop spending.
@@ -252,11 +253,11 @@ describe('the translation job', () => {
   it('re-translates only the half that changed', async () => {
     const id = task('Bonjour', 'Merci');
     queued.push('你好', '谢谢');
-    await translateTaskHandler({ taskId: id }, context(id));
+    await translateTaskHandler({ taskId: id }, context());
 
     updateTask(id, { draft: 'Merci beaucoup' }, db);
     queued.push('非常感谢');
-    const result = (await translateTaskHandler({ taskId: id }, context(id))) as {
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
       translated: string[];
     };
 
@@ -269,7 +270,7 @@ describe('the translation job', () => {
     updateTask(id, { finalReply: 'The edited version', status: 'sent' }, db);
     queued.push('你好', '编辑后的版本');
 
-    await translateTaskHandler({ taskId: id }, context(id));
+    await translateTaskHandler({ taskId: id }, context());
 
     expect(getTranslation(id, 'draft', 'The edited version', 'Chinese', db)?.content).toBe(
       '编辑后的版本',
@@ -281,7 +282,7 @@ describe('the translation job', () => {
     const id = task('您好，我需要帮助', '好的，马上处理');
     queued.push('SAME', 'SAME');
 
-    const result = (await translateTaskHandler({ taskId: id }, context(id))) as {
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
       translated: string[];
       alreadyInLanguage: string[];
     };
@@ -296,7 +297,7 @@ describe('the translation job', () => {
     queued.push('你好');
     answerLimit = 1; // the body is answered, the draft is not
 
-    const result = (await translateTaskHandler({ taskId: id }, context(id))) as {
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
       translated: string[];
       failed: string[];
     };
@@ -312,7 +313,7 @@ describe('the translation job', () => {
     const id = task('Bonjour', 'Merci');
     answerLimit = 0;
 
-    await expect(translateTaskHandler({ taskId: id }, context(id))).rejects.toThrow();
+    await expect(translateTaskHandler({ taskId: id }, context())).rejects.toThrow();
   });
 
   it('does nothing when no review language is configured', async () => {
@@ -320,7 +321,7 @@ describe('the translation job', () => {
     delete process.env.AAS_REVIEW_LANGUAGE;
     resetWorkspaceConfig();
 
-    const result = await translateTaskHandler({ taskId: id }, context(id));
+    const result = await translateTaskHandler({ taskId: id }, context());
 
     expect(result).toEqual({ skipped: 'no review language configured' });
     expect(prompts).toHaveLength(0);

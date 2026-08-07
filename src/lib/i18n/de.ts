@@ -58,6 +58,7 @@ export const de: Dictionary = {
   "task.status.pending": "wartet",
   "task.status.drafting": "Entwurf läuft",
   "task.status.awaiting_review": "wartet auf Prüfung",
+  "task.status.sending": "wird gesendet",
   "task.status.sent": "gesendet",
   "task.status.dismissed": "verworfen",
   "task.status.failed": "fehlgeschlagen",
@@ -186,6 +187,7 @@ export const de: Dictionary = {
   "queue.released": "Auftrag zurück in die Warteschlange.",
   "queue.deleted": "Auftrag gelöscht.",
   "queue.notFailed": "Dieser Auftrag ist nicht mehr fehlgeschlagen.",
+  "queue.retrySuperseded": "Dieselbe Arbeit steht bereits in der Warteschlange; dieser Auftrag ist überholt.",
   "queue.notStuck": "Dieser Auftrag läuft nicht mehr.",
 
   // --- The rulebook ---
@@ -194,6 +196,10 @@ export const de: Dictionary = {
   "rules.writtenSinceTidy": "{n} seit dem letzten Aufräumen geschrieben",
   "rules.filterActive": "Aktiv",
   "rules.filterIncludingRetired": "Mit stillgelegten",
+  "rules.proposedHeading": "Vorgeschlagene Regeln ({n})",
+  "rules.proposedExplainer": "Vom Modell aus einem Gespräch geschrieben. Sie werden erst verwendet, wenn Sie sie freigeben.",
+  "rules.approveButton": "Freigeben",
+  "rules.proposedTag": "vorgeschlagen",
   "rules.tidyButton": "Regelwerk aufräumen",
   "rules.tidyAlreadyQueued": "Ein Aufräumen steht schon in der Warteschlange.",
   "rules.tidyQueued": "Eingereiht. Es führt Fast-Duplikate im Hintergrund zusammen — Warteschlange abarbeiten, dann neu laden.",

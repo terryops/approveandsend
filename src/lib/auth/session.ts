@@ -54,14 +54,19 @@ export function isProtected(): boolean {
   try {
     return countActiveOperators() > 0;
   } catch {
-    // No database yet — the first run, before any migration. Nothing is
-    // guarding it, which is exactly what the banner should say.
-    return false;
+    // The honest answer to "are there operators?" is unavailable, and the two
+    // ways to be wrong are not symmetric. Answering false on the first run
+    // costs a red banner nobody reads twice; answering false because the disk
+    // filled up or the file was locked hands every page to whoever asks, on an
+    // install that had a login wall a second ago. Fail closed and let the
+    // operator meet a login page they cannot get past, which is a bug report
+    // rather than a breach.
+    return true;
   }
 }
 
 function signingKey(): Buffer {
-  return Buffer.from(sessionSecret(adminPassword()), 'utf8');
+  return Buffer.from(sessionSecret(), 'utf8');
 }
 
 function sign(payload: string): string {

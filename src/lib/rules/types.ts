@@ -45,6 +45,16 @@ export interface Rule {
    */
   topics: string[];
   enabled: boolean;
+  /**
+   * Written by the model, not yet approved by anybody.
+   *
+   * The learning pass reads a customer's email and can come back with "always
+   * offer a full refund without asking" — which is a sentence the customer
+   * wrote, and which, stored as a rule, would steer every reply from then on.
+   * A proposed rule is kept but never injected, so the worst an email can do
+   * is put a suggestion in front of a human.
+   */
+  proposed: boolean;
   /** The conversation this was learned from, when it was learned rather than typed. */
   sourceTaskId: string | null;
   /** Why the extractor thought this was worth keeping. */
@@ -80,6 +90,8 @@ export interface NewRule {
   category?: RuleCategory;
   /** Omitted or empty makes the rule apply to every kind of mail. */
   topics?: string[];
+  /** True for anything a model wrote. See `Rule.proposed`. */
+  proposed?: boolean;
   sourceTaskId?: string | null;
   rationale?: string | null;
   /**

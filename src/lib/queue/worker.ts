@@ -60,7 +60,13 @@ export function createWorker(options: WorkerOptions): Worker {
 
     try {
       const result = await handler(job.payload, { job, db });
-      completeJob(job.id, result, db);
+      if (!completeJob(job.id, result, db, job.leaseToken)) {
+        // The lease ran out while the handler was working and somebody else
+        // has the job now. Their answer is the live one; ours is thrown away
+        // rather than written over the top of it.
+        console.warn(`[queue] discarding a result for ${job.id}: the lease was reassigned`);
+        return null;
+      }
       const outcome: JobOutcome = { job, status: 'completed', result };
       options.onEvent?.({ kind: 'completed', job, result });
       return outcome;
@@ -73,9 +79,13 @@ export function createWorker(options: WorkerOptions): Worker {
     }
   }
 
-  function record({ job, permanent, error }: { job: Job; permanent: boolean; error: string }): JobOutcome {
+  function record({ job, permanent, error }: { job: Job; permanent: boolean; error: string }): JobOutcome | null {
     const delayMs = permanent ? 0 : backoff(job.attempts);
-    const updated = failJob(job.id, error, { permanent, retryDelayMs: delayMs }, db) ?? job;
+    const updated = failJob(job.id, error, { permanent, retryDelayMs: delayMs, leaseToken: job.leaseToken }, db);
+    // Same fence as the success path, and it matters more here: a preempted
+    // worker reporting a failure would put a job somebody else has already
+    // completed back on the queue.
+    if (!updated) return null;
     const status = updated.status === 'failed' ? 'failed' : 'retrying';
 
     options.onEvent?.(

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listTasks } from '@/lib/tasks/store';
@@ -43,7 +45,7 @@ export default async function SenderPage({
   return (
     <>
       <p className="meta">
-        <a href="/">{t('task.backToInbox')}</a>
+        <Link href="/">{t('task.backToInbox')}</Link>
       </p>
 
       <h1>{email}</h1>

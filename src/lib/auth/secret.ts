@@ -5,19 +5,24 @@ import { getMeta, setMeta } from '../db/meta';
 /**
  * The key the session cookie is signed with.
  *
- * Three sources, in order, and the order is the whole point:
+ * Two sources: `SESSION_SECRET` when someone has set one deliberately, else a
+ * random 32 bytes generated once and kept in `meta`.
  *
- * 1. `SESSION_SECRET`, when someone has set one deliberately.
- * 2. `aas:<ADMIN_PASSWORD>`, so changing the password signs everyone out. In a
- *    system with no session store that is the only revocation there is, and it
- *    is worth keeping.
- * 3. A random string generated once and kept in `meta`.
+ * There used to be a third, between them: `aas:<ADMIN_PASSWORD>`. It bought one
+ * real thing — changing the password signed everyone out, which in a system
+ * with no session store is the only revocation there is — and it cost far more.
+ * A cookie is a payload and its HMAC, handed to the browser and therefore to
+ * anyone who gets a copy of it, and with a password-derived key that pair is an
+ * offline oracle: one unsalted SHA-256 per guess, no rate limit, no lockout, no
+ * log line. A support desk password does not survive that for an afternoon.
  *
- * The third exists because of operators. Before them, no password meant no
- * auth at all, so a predictable key signed tokens nobody was checking. Now an
- * install can have operators and no `ADMIN_PASSWORD` — a real login wall — and
- * deriving the key from an empty password would make every such install share
- * the constant `aas:`, which anyone who has read this file could forge against.
+ * So the trade is stated plainly: **changing `ADMIN_PASSWORD` no longer signs
+ * anyone out.** Existing cookies stay valid until they expire, up to a week.
+ * That is worth it, because the revocation it replaces was never the property
+ * being defended — an attacker who already has the cookie does not need the
+ * password, and the person who has the password can disable the operator or set
+ * `SESSION_SECRET` to something new and cut every session at once. Losing a
+ * weak eviction is cheaper than shipping a crackable one.
  */
 
 const META_KEY = 'auth.session_secret';
@@ -33,19 +38,18 @@ function installSecret(): string {
     return existing;
   }
 
-  // Written on first use rather than in the migration: a database that only
-  // ever uses ADMIN_PASSWORD never needs one, and a secret that exists in
-  // every backup is a secret in more places than it has to be.
+  // Written on first use rather than in the migration: an install that pins
+  // SESSION_SECRET never needs one, and a secret that exists in every backup
+  // is a secret in more places than it has to be.
   const fresh = randomBytes(32).toString('base64url');
   setMeta(META_KEY, fresh);
   cached = fresh;
   return fresh;
 }
 
-export function sessionSecret(password: string | null): string {
+export function sessionSecret(): string {
   const explicit = process.env.SESSION_SECRET?.trim();
   if (explicit) return explicit;
-  if (password) return `aas:${password}`;
   return installSecret();
 }
 

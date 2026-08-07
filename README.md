@@ -172,9 +172,16 @@ their threads, and its rulebook comes across matched on rule text rather than on
 ids, so running it twice imports nothing twice:
 
 ```bash
+# In the environment, for the duration of the import and no longer:
+#   AAS_IMPORT_ROOT=/srv/old/data
 curl -H "Authorization: Bearer $CRON_TOKEN" -XPOST localhost:3000/api/import/legacy \
   -d '{"path":"/srv/old/data/tasks.db","messagePrefix":"4243...0002"}'
 ```
+
+The endpoint answers 403 until `AAS_IMPORT_ROOT` names a directory, and refuses
+any path that resolves outside it. Without that, a body field would be a request
+to open an arbitrary file on the host as SQLite; take it back out once the
+import has run.
 
 Two details that matter. The old reply is stored as the draft **only if** its
 history shows nobody edited it — otherwise the learning loop would read a human's

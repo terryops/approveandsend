@@ -58,6 +58,7 @@ export const fr: Dictionary = {
   "task.status.pending": "en attente",
   "task.status.drafting": "rédaction",
   "task.status.awaiting_review": "en attente de relecture",
+  "task.status.sending": "envoi en cours",
   "task.status.sent": "envoyé",
   "task.status.dismissed": "écarté",
   "task.status.failed": "échec",
@@ -186,6 +187,7 @@ export const fr: Dictionary = {
   "queue.released": "Tâche renvoyée dans la file.",
   "queue.deleted": "Tâche supprimée.",
   "queue.notFailed": "Cette tâche n'est plus en échec ; rien à réessayer.",
+  "queue.retrySuperseded": "Le même travail est déjà en file d'attente ; celui-ci est obsolète.",
   "queue.notStuck": "Cette tâche ne tourne plus ; rien à débloquer.",
 
   // --- The rulebook ---
@@ -194,6 +196,10 @@ export const fr: Dictionary = {
   "rules.writtenSinceTidy": "{n} écrite(s) depuis le dernier nettoyage",
   "rules.filterActive": "Actives",
   "rules.filterIncludingRetired": "Y compris les retirées",
+  "rules.proposedHeading": "Règles proposées ({n})",
+  "rules.proposedExplainer": "Écrites par le modèle à partir d'une conversation. Elles ne servent à rien tant que vous ne les approuvez pas.",
+  "rules.approveButton": "Approuver",
+  "rules.proposedTag": "proposée",
   "rules.tidyButton": "Nettoyer le recueil de règles",
   "rules.tidyAlreadyQueued": "Un nettoyage est déjà en file d'attente.",
   "rules.tidyQueued": "En file d'attente. Il fusionne les quasi-doublons en arrière-plan — exécutez la file, puis rechargez.",

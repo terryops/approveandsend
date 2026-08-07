@@ -14,6 +14,12 @@ export const TASK_STATUSES = [
   'pending',
   'drafting',
   'awaiting_review',
+  // Handed to the mail server, no answer yet. It exists because the gap
+  // between "the SMTP call started" and "the row says sent" is a gap in which
+  // a second click, a second tab or a browser's retry of a timed-out POST
+  // sends the same reply again. A task claimed into this state cannot be
+  // claimed again, so the second attempt has something to lose to.
+  'sending',
   'sent',
   'dismissed',
   'failed',

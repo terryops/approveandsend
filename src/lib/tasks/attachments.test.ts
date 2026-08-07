@@ -84,6 +84,15 @@ describe('attachmentSummary', () => {
     expect(attachmentSummary(listAttachments(taskId, db))).toBe('');
   });
 
+  it('skips an unnamed part sitting beside a named one', () => {
+    // Dropping the name check only shows up here: on its own an unnamed part
+    // joins to the empty string, and the line reads 'export.log, '.
+    addAttachment(taskId, { messageId: 'm', attachmentId: '1', filename: 'export.log' }, db);
+    addAttachment(taskId, { messageId: 'm', attachmentId: '2', filename: '' }, db);
+
+    expect(attachmentSummary(listAttachments(taskId, db))).toBe('export.log');
+  });
+
   it('names a file once when the same one is quoted down the thread', () => {
     addAttachment(taskId, { messageId: 'm1', attachmentId: '1', filename: 'export.log' }, db);
     addAttachment(taskId, { messageId: 'm2', attachmentId: '9', filename: 'export.log' }, db);

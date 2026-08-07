@@ -104,9 +104,7 @@ export default async function VoicePage({ searchParams }: { searchParams: Promis
 
       <div className="card stack">
         <h2>{t('setup.voice.readbackTitle')}</h2>
-        <pre className="snippet" style={{ whiteSpace: 'pre-wrap' }}>
-          {describeWorkspace(config)}
-        </pre>
+        <pre className="block">{describeWorkspace(config)}</pre>
       </div>
 
       <div className="row">

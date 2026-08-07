@@ -18,6 +18,7 @@ interface RuleRow {
   summary: string | null;
   category: string;
   enabled: number;
+  proposed: number;
   source_task_id: string | null;
   rationale: string | null;
   applied_count: number;
@@ -54,6 +55,7 @@ function toRule(row: RuleRow): Rule {
     category: coerceCategory(row.category),
     topics: row.topics ? row.topics.split(',').sort() : [],
     enabled: row.enabled === 1,
+    proposed: row.proposed === 1,
     sourceTaskId: row.source_task_id,
     rationale: row.rationale,
     appliedCount: row.applied_count,
@@ -65,6 +67,14 @@ function toRule(row: RuleRow): Rule {
 
 export interface ListRulesOptions {
   enabledOnly?: boolean;
+  /**
+   * What to do about rules waiting for approval. Excluded unless asked for,
+   * which is the whole point: every existing caller feeds a prompt, and the
+   * safe answer for a prompt is "a human has not seen this yet, so no".
+   * 'include' is for the deduper, which should compare a new proposal against
+   * the ones already queued; 'only' is for the page that approves them.
+   */
+  proposed?: 'exclude' | 'include' | 'only';
   /**
    * Return rules that carry no topic *or* carry this one. Omit to return
    * every rule — which is what an admin listing wants and what a drafting
@@ -96,6 +106,8 @@ export function listRules(options: ListRulesOptions = {}, db: Db = getDb()): Rul
   const params: unknown[] = [];
 
   if (options.enabledOnly) where.push('r.enabled = 1');
+  if (options.proposed === 'only') where.push('r.proposed = 1');
+  else if (options.proposed !== 'include') where.push('r.proposed = 0');
   if (options.unsummarisedOnly) where.push('r.summary IS NULL');
   if (options.category) {
     where.push('r.category = ?');
@@ -147,14 +159,15 @@ export function createRule(input: NewRule, db: Db = getDb()): Rule {
   const write = db.transaction(() => {
     db.prepare(
       `INSERT INTO rules
-         (id, content, summary, category, scope, enabled, source_task_id, rationale,
+         (id, content, summary, category, scope, enabled, proposed, source_task_id, rationale,
           applied_count, last_applied_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, 1, ?, ?, 0, NULL, ?, ?)`,
+       VALUES (?, ?, ?, ?, NULL, 1, ?, ?, ?, 0, NULL, ?, ?)`,
     ).run(
       id,
       content,
       input.summary?.trim() || null,
       input.category ?? 'general',
+      input.proposed ? 1 : 0,
       input.sourceTaskId ?? null,
       input.rationale ?? null,
       now,
@@ -260,6 +273,19 @@ export function updateRule(
   apply();
 
   return getRule(id, db);
+}
+
+/**
+ * A human has read the proposal and wants it. From here it is an ordinary
+ * rule: injected, revisable, and no longer distinguishable from one somebody
+ * typed — which is right, because somebody has now agreed to it.
+ */
+export function approveRule(id: string, db: Db = getDb()): Rule | null {
+  const changed = db
+    .prepare('UPDATE rules SET proposed = 0, updated_at = ? WHERE id = ? AND proposed = 1')
+    .run(new Date().toISOString(), id).changes;
+
+  return changed ? getRule(id, db) : null;
 }
 
 /**

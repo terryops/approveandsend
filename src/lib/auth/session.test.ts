@@ -79,18 +79,35 @@ describe('sessions', () => {
     expect(verifyToken(issueToken(null, -1))).toBeNull();
   });
 
-  it('invalidates existing tokens when the password changes', () => {
+  it('survives a password change, which is the price of not signing with it', () => {
+    // The key used to be `aas:<ADMIN_PASSWORD>`, so this returned null and a
+    // password change was a logout. It bought one unsalted SHA-256 per guess
+    // for anyone holding a cookie, and this is the documented cost of not
+    // selling that any more.
     setEnv({ ADMIN_PASSWORD: 'hunter2' });
     const token = issueToken();
     setEnv({ ADMIN_PASSWORD: 'something-else' });
+    expect(verifyToken(token)).toEqual({ operatorId: null });
+  });
+
+  it('signs everyone out when SESSION_SECRET changes, which is how you do it now', () => {
+    setEnv({ ADMIN_PASSWORD: 'hunter2', SESSION_SECRET: 'pinned' });
+    const token = issueToken();
+    expect(verifyToken(token)).toEqual({ operatorId: null });
+
+    setEnv({ ADMIN_PASSWORD: 'hunter2', SESSION_SECRET: 'rotated' });
     expect(verifyToken(token)).toBeNull();
   });
 
-  it('keeps tokens alive across a password change when SESSION_SECRET is pinned', () => {
-    setEnv({ ADMIN_PASSWORD: 'hunter2', SESSION_SECRET: 'pinned' });
+  it('does not share a key between two installs that have the same password', () => {
+    // The old derivation made this identical, so a token minted against one
+    // desk verified against every other desk whose owner also typed hunter2.
+    setEnv({ ADMIN_PASSWORD: 'hunter2' });
     const token = issueToken();
-    setEnv({ ADMIN_PASSWORD: 'something-else', SESSION_SECRET: 'pinned' });
-    expect(verifyToken(token)).toEqual({ operatorId: null });
+
+    setDb(openDb(':memory:'));
+    resetSessionSecret();
+    expect(verifyToken(token)).toBeNull();
   });
 
   it('compares passwords without leaking length through an exception', () => {
@@ -111,6 +128,17 @@ describe('sessions', () => {
   it('treats a whitespace-only password as no password at all', () => {
     setEnv({ ADMIN_PASSWORD: '   ' });
     expect(isProtected()).toBe(false);
+  });
+
+  it('claims to be protected when it cannot find out, rather than opening', () => {
+    setEnv({ ADMIN_PASSWORD: undefined });
+    const closed = openDb(':memory:');
+    closed.close();
+    setDb(closed);
+
+    // A locked file or a full disk used to answer "nothing is guarding this",
+    // which is the same answer as the first run and hands over every page.
+    expect(isProtected()).toBe(true);
   });
 
   it('counts operators as protection, with no password at all', () => {

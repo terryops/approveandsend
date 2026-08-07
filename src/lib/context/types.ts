@@ -105,6 +105,30 @@ export function isContextSource(value: unknown): value is ContextSource {
  * it does not get to put `undefined` into a template string on the review
  * screen.
  */
+/**
+ * A link the review screen may put in an `href`, or nothing.
+ *
+ * React escapes text; it does not sanitise URLs, so `javascript:alert(1)` in a
+ * field a source returned runs with the reviewer's session the moment they
+ * click it. The route that writes context takes these over HTTP, and a source
+ * may be reflecting a string a customer typed, so this is reachable by someone
+ * who never had an account. An allowlist of the two schemes a system-of-record
+ * link is ever written in, and nothing else: not `data:`, not `vbscript:`, not
+ * a bare word a browser would resolve into a scheme it knows.
+ *
+ * A path into this app is allowed too, because the built-in sources link that
+ * way — but one leading slash only. `//evil.example` is a URL to another host
+ * wearing a path's clothes, and it is the one that gets past a reader checking
+ * for "starts with /".
+ */
+function safeHref(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed;
+  if (/^\/(?!\/)/.test(trimmed)) return trimmed;
+  return undefined;
+}
+
 export function coerceBlock(value: unknown): ContextBlock | null {
   const raw = value as Record<string, unknown> | null;
   if (!raw || typeof raw !== 'object') return null;
@@ -115,7 +139,7 @@ export function coerceBlock(value: unknown): ContextBlock | null {
     ? raw.fields.flatMap((entry): ContextField[] => {
         const field = entry as Record<string, unknown> | null;
         if (!field || typeof field.label !== 'string') return [];
-        const href = typeof field.href === 'string' && field.href.trim() ? field.href.trim() : undefined;
+        const href = safeHref(field.href);
         return [
           {
             label: field.label.trim(),
@@ -129,6 +153,6 @@ export function coerceBlock(value: unknown): ContextBlock | null {
   // Nothing to show and nothing to say is the same as no result at all.
   if (!title || (fields.length === 0 && !prompt)) return null;
 
-  const href = typeof raw.href === 'string' && raw.href.trim() ? raw.href.trim() : undefined;
+  const href = safeHref(raw.href);
   return { title, fields, prompt, ...(href ? { href } : {}) };
 }

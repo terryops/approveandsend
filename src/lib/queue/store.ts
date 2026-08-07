@@ -24,6 +24,7 @@ interface JobRow {
   max_attempts: number;
   run_after: string;
   lease_expires_at: string | null;
+  lease_token: string | null;
   result: string | null;
   error: string | null;
   created_at: string;
@@ -51,12 +52,27 @@ function mapJob(row: JobRow): Job {
     maxAttempts: row.max_attempts,
     runAfter: row.run_after,
     leaseExpiresAt: row.lease_expires_at,
+    leaseToken: row.lease_token,
     result: row.result,
     error: row.error,
     createdAt: row.created_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };
+}
+
+/**
+ * better-sqlite3 puts the real reason on `code`. Matching on the message text
+ * would break the day SQLite rewords it, which is exactly the kind of failure
+ * that shows up as jobs quietly not running.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === 'string' &&
+    (error as { code: string }).code.startsWith('SQLITE_CONSTRAINT')
+  );
 }
 
 export interface EnqueueOptions {
@@ -102,6 +118,12 @@ export function enqueue(type: string, options: EnqueueOptions = {}, db: Db = get
 
     return { job: mapJob(row), deduped: false };
   } catch (error) {
+    // Only a uniqueness failure means "somebody already asked for this". A
+    // disk-full or a locked database landing here would have been reported as
+    // a successful dedupe, which is the worst possible way to lose a job:
+    // silently, and looking like the system working.
+    if (!isUniqueViolation(error)) throw error;
+
     // The unique index did its job. Return the job already holding the key
     // rather than an error: the caller asked for the work to happen, and it
     // is going to happen.
@@ -160,13 +182,18 @@ export function claimNext(options: ClaimOptions = {}, db: Db = getDb()): Job | n
         AND attempts >= max_attempts`,
   ).run(now, now);
 
+  // Fresh per claim, so the worker that held the previous one can be told
+  // apart from the worker holding this one. See `completeJob`.
+  const token = randomUUID();
+
   const row = db
     .prepare(
       `UPDATE jobs
           SET status = 'processing',
               attempts = attempts + 1,
               started_at = COALESCE(started_at, :now),
-              lease_expires_at = :lease
+              lease_expires_at = :lease,
+              lease_token = :token
         WHERE id = (
           SELECT id FROM jobs
            WHERE run_after <= :now
@@ -181,18 +208,43 @@ export function claimNext(options: ClaimOptions = {}, db: Db = getDb()): Job | n
         )
         RETURNING *`,
     )
-    .get({ now, lease, type: options.type ?? null }) as JobRow | undefined;
+    .get({ now, lease, token, type: options.type ?? null }) as JobRow | undefined;
 
   return row ? mapJob(row) : null;
 }
 
-export function completeJob(id: string, result: unknown, db: Db = getDb()): void {
-  db.prepare(
-    `UPDATE jobs
-        SET status = 'completed', finished_at = ?, result = ?, error = NULL,
-            lease_expires_at = NULL
-      WHERE id = ?`,
-  ).run(new Date().toISOString(), result === undefined ? null : JSON.stringify(result), id);
+/**
+ * Records the result, unless somebody else owns the job now.
+ *
+ * A handler slower than its lease is not hypothetical here — the lease is
+ * fifteen minutes and the handlers make LLM calls. When one overruns, the job
+ * is reclaimed and re-run, and the original worker eventually returns with a
+ * stale answer. Without the fence it writes that answer over the replacement's,
+ * which for the drafting job means the reviewer reads a draft that was thrown
+ * away. Returns false when the write was refused.
+ */
+export function completeJob(
+  id: string,
+  result: unknown,
+  db: Db = getDb(),
+  leaseToken?: string | null,
+): boolean {
+  const changes = db
+    .prepare(
+      `UPDATE jobs
+          SET status = 'completed', finished_at = :now, result = :result, error = NULL,
+              lease_expires_at = NULL, lease_token = NULL
+        WHERE id = :id
+          AND (:fence IS NULL OR lease_token = :fence)`,
+    )
+    .run({
+      now: new Date().toISOString(),
+      result: result === undefined ? null : JSON.stringify(result),
+      id,
+      fence: leaseToken ?? null,
+    }).changes;
+
+  return changes > 0;
 }
 
 export interface FailOptions {
@@ -200,6 +252,8 @@ export interface FailOptions {
   permanent?: boolean;
   /** Delay before the retry becomes claimable. Ignored when permanent. */
   retryDelayMs?: number;
+  /** The same fence as `completeJob`. Null returned when it does not match. */
+  leaseToken?: string | null;
 }
 
 export function failJob(id: string, error: string, options: FailOptions = {}, db: Db = getDb()): Job | null {
@@ -209,20 +263,27 @@ export function failJob(id: string, error: string, options: FailOptions = {}, db
   const current = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as JobRow | undefined;
   if (!current) return null;
 
+  // A worker whose lease was reassigned reporting a failure is worse than one
+  // reporting a success: it would put a job somebody else has already finished
+  // back on the queue.
+  if (options.leaseToken != null && current.lease_token !== options.leaseToken) return null;
+
   const exhausted = options.permanent || current.attempts >= current.max_attempts;
 
   const row = exhausted
     ? (db
         .prepare(
           `UPDATE jobs
-              SET status = 'failed', finished_at = ?, error = ?, lease_expires_at = NULL
+              SET status = 'failed', finished_at = ?, error = ?,
+                  lease_expires_at = NULL, lease_token = NULL
             WHERE id = ? RETURNING *`,
         )
         .get(nowIso, error, id) as JobRow)
     : (db
         .prepare(
           `UPDATE jobs
-              SET status = 'pending', error = ?, run_after = ?, lease_expires_at = NULL
+              SET status = 'pending', error = ?, run_after = ?,
+                  lease_expires_at = NULL, lease_token = NULL
             WHERE id = ? RETURNING *`,
         )
         .get(error, new Date(now + (options.retryDelayMs ?? 0)).toISOString(), id) as JobRow);
@@ -302,19 +363,57 @@ export function cleanupJobs(hours = 168, db: Db = getDb()): number {
     .run(cutoff).changes;
 }
 
-/** Puts a failed job back in the queue with its attempt counter reset. */
+/**
+ * Puts a failed job back in the queue with its attempt counter reset.
+ *
+ * The `NOT EXISTS` is the whole subtlety. Once a job fails, the next `enqueue`
+ * with the same dedupe key legitimately inserts a fresh row — which is the
+ * normal thing to happen, because Redraft does exactly that. Retrying the old
+ * one then violates the partial unique index over `pending|processing` and
+ * throws out of a server action as a 500. Returning null instead lets the
+ * caller say "there is already one of these queued", which is both true and
+ * what the reviewer wanted.
+ */
 export function retryJob(id: string, db: Db = getDb()): Job | null {
   const row = db
     .prepare(
       `UPDATE jobs
           SET status = 'pending', attempts = 0, error = NULL, finished_at = NULL,
-              lease_expires_at = NULL, run_after = ?
+              lease_expires_at = NULL, lease_token = NULL, run_after = ?
         WHERE id = ? AND status = 'failed'
+          AND NOT EXISTS (
+                SELECT 1 FROM jobs other
+                 WHERE other.dedupe_key IS NOT NULL
+                   AND other.dedupe_key = jobs.dedupe_key
+                   AND other.id <> jobs.id
+                   AND other.status IN ('pending', 'processing')
+              )
         RETURNING *`,
     )
     .get(new Date().toISOString(), id) as JobRow | undefined;
 
   return row ? mapJob(row) : null;
+}
+
+/**
+ * Whether another unfinished job holds this one's dedupe key — which is the
+ * reason `retryJob` refuses that is worth explaining rather than the one that
+ * just means somebody got there first.
+ */
+export function hasLiveDuplicate(id: string, db: Db = getDb()): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM jobs j
+           JOIN jobs self ON self.id = ?
+          WHERE j.id <> self.id
+            AND j.dedupe_key IS NOT NULL
+            AND j.dedupe_key = self.dedupe_key
+            AND j.status IN ('pending', 'processing')
+          LIMIT 1`,
+      )
+      .get(id) !== undefined
+  );
 }
 
 /**
@@ -334,7 +433,7 @@ export function releaseJob(id: string, db: Db = getDb()): Job | null {
   const row = db
     .prepare(
       `UPDATE jobs
-          SET status = 'pending', lease_expires_at = NULL, run_after = ?
+          SET status = 'pending', lease_expires_at = NULL, lease_token = NULL, run_after = ?
         WHERE id = ? AND status = 'processing'
         RETURNING *`,
     )

@@ -44,10 +44,10 @@ async function importSource(path: string): Promise<ContextSource | null> {
   const absolute = isAbsolute(path) ? path : resolve(process.cwd(), path);
 
   try {
-    const module = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ pathToFileURL(absolute).href)) as {
+    const loaded = (await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ pathToFileURL(absolute).href)) as {
       default?: unknown;
     };
-    const source = module.default;
+    const source = loaded.default;
 
     if (!isContextSource(source)) {
       console.error(`[context] ${path} does not export a context source; ignoring it`);

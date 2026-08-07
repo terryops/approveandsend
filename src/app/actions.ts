@@ -31,11 +31,12 @@ import {
   enqueueForTranslation,
   enqueueSummariseRules,
   deleteJob,
+  hasLiveDuplicate,
   releaseJob,
   retryJob,
 } from '@/lib/queue';
 import { coerceCategory } from '@/lib/rules/types';
-import { createRule, deleteRule, updateRule } from '@/lib/rules/store';
+import { approveRule, createRule, deleteRule, getRule, updateRule } from '@/lib/rules/store';
 import { installStarterRules } from '@/lib/rules/starter';
 import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
 import { getAlternative } from '@/lib/tasks/alternatives';
@@ -136,6 +137,30 @@ export async function saveDraft(form: FormData): Promise<void> {
   redirect(`/tasks/${id}?saved=1`);
 }
 
+/**
+ * Whatever is in the draft box, kept before something else overwrites it.
+ *
+ * Every button on the review screen posts the whole form, so the text a
+ * reviewer has been editing for ten minutes arrives with the click — and until
+ * this existed, Redraft, Ask for options and Reopen all threw it away. That is
+ * a quiet loss: nothing says it happened, the box simply comes back with the
+ * machine's words in it, and the reviewer's are gone. Kept as a version too,
+ * so it is one click to get back.
+ *
+ * No-ops when nothing changed, so pressing Redraft twice does not write two
+ * identical versions.
+ */
+async function keepEdits(form: FormData, id: string): Promise<void> {
+  const draft = field(form, 'draft');
+  const before = getTask(id);
+  if (!before || before.status === 'sent') return;
+  if (draft.trim() === (before.draft ?? '').trim()) return;
+
+  updateTask(id, { draft });
+  recordDraft(id, draft, { source: 'human' });
+  recordEvent(id, 'edited', { actor: (await currentOperator())?.id ?? null });
+}
+
 export async function approveAndSend(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
@@ -197,6 +222,7 @@ export async function dismissTask(form: FormData): Promise<void> {
 export async function reopenTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
+  await keepEdits(form, id);
   await reopen(id, { actor: (await currentOperator())?.id ?? null });
 
   revalidatePath('/');
@@ -207,6 +233,7 @@ export async function reopenTask(form: FormData): Promise<void> {
 export async function redraftTask(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
+  await keepEdits(form, id);
   const task = getTask(id);
   if (task) {
     // Back to pending first, or the job's own guard would see a task that is
@@ -312,9 +339,15 @@ export async function composeEmail(form: FormData): Promise<void> {
 export async function askForOptions(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
+  await keepEdits(form, id);
   const task = getTask(id);
 
   if (task && task.status !== 'sent' && task.status !== 'dismissed') {
+    // The notes go with it for the same reason Redraft carries them: "give me
+    // options" plus "the tone is too formal" is a different request from
+    // "give me options", and the box under the draft is where that sentence
+    // already is.
+    updateTask(id, { reviewerNotes: field(form, 'notes') || null });
     enqueueAlternatives(id);
   }
 
@@ -428,6 +461,24 @@ export async function addRule(form: FormData): Promise<void> {
 }
 
 /**
+ * Turns a rule the model proposed into one the desk actually follows.
+ *
+ * The click is the entire security boundary. Everything the learning pass
+ * writes has had a customer's words in its context, so until somebody here
+ * reads a proposal and agrees with it, it is a suggestion and is kept out of
+ * every prompt. Discarding one is `removeRule`, which is already on the page.
+ */
+export async function approveProposedRule(form: FormData): Promise<void> {
+  await requireApi();
+  const rule = approveRule(field(form, 'ruleId'));
+  // It was never summarised — proposals are not in that queue — and now that
+  // it is a real rule it needs the one line the list is scanned by.
+  if (rule) enqueueSummariseRules();
+  revalidatePath('/rules');
+  redirect('/rules');
+}
+
+/**
  * Installs the starter rulebook.
  *
  * Only ever reached by somebody pressing the button. Nothing seeds these on
@@ -467,11 +518,32 @@ export async function editRule(form: FormData): Promise<void> {
 
 export async function toggleRule(form: FormData): Promise<void> {
   await requireApi();
+  const id = field(form, 'ruleId');
+  const content = field(form, 'content');
+
+  // The whole card posts, edits included. Toggling used to send only the flag,
+  // so opening a rule, rewording it, then switching it off threw the rewording
+  // away — silently, because the page reloads looking exactly as expected.
+  const before = getRule(id);
+  const rewritten = before != null && content !== '' && content !== before.content;
+
   updateRule(
-    field(form, 'ruleId'),
-    { enabled: field(form, 'enabled') === 'true' },
+    id,
+    {
+      enabled: field(form, 'enabled') === 'true',
+      ...(rewritten
+        ? {
+            content,
+            category: coerceCategory(field(form, 'category')),
+            topics: form.getAll('topics').map(String),
+          }
+        : {}),
+    },
     { reason: 'manual', actor: await actorName() },
   );
+
+  // Only a changed sentence needs a new summary; a flag does not.
+  if (rewritten) enqueueSummariseRules();
   revalidatePath('/rules');
   redirect('/rules');
 }
@@ -581,9 +653,20 @@ export async function runQueue(): Promise<void> {
  */
 export async function retryJobNow(form: FormData): Promise<void> {
   await requireApi();
-  const job = retryJob(field(form, 'jobId'));
+  const id = field(form, 'jobId');
+  const job = retryJob(id);
   revalidatePath('/queue');
-  redirect(job ? '/queue?retried=1' : `/queue?error=${encodeURIComponent(t('queue.notFailed'))}`);
+  if (job) redirect('/queue?retried=1');
+
+  // Two ways to refuse, and they read completely differently to whoever
+  // pressed the button. "Not failed" means somebody got there first; the other
+  // means a newer job already holds this one's dedupe key — the usual cause
+  // being a Redraft, which enqueued a replacement while this one sat here.
+  redirect(
+    `/queue?error=${encodeURIComponent(
+      t(hasLiveDuplicate(id) ? 'queue.retrySuperseded' : 'queue.notFailed'),
+    )}`,
+  );
 }
 
 export async function releaseJobNow(form: FormData): Promise<void> {

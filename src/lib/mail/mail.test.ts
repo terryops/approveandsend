@@ -38,6 +38,9 @@ interface Captured {
   envelopeFrom: string;
 }
 
+/** Every server a test started, so a failed assertion cannot leak one. */
+const started: (() => Promise<void>)[] = [];
+
 function startSmtp(): Promise<{ port: number; received: Captured[]; close: () => Promise<void> }> {
   const received: Captured[] = [];
   const server = new SMTPServer({
@@ -63,11 +66,9 @@ function startSmtp(): Promise<{ port: number; received: Captured[]; close: () =>
     server.listen(0, '127.0.0.1', () => {
       // SMTPServer wraps a net.Server rather than extending it.
       const { port } = server.server.address() as AddressInfo;
-      resolve({
-        port,
-        received,
-        close: () => new Promise<void>(done => server.close(() => done())),
-      });
+      const close = () => new Promise<void>(done => server.close(() => done()));
+      started.push(close);
+      resolve({ port, received, close });
     });
   });
 }
@@ -83,6 +84,12 @@ function provider(smtpPort: number): ImapSmtpProvider {
 }
 
 describe('send', () => {
+  // Each test closes its own server last, which is exactly when a failed
+  // assertion means it never gets there.
+  afterEach(async () => {
+    for (const close of started.splice(0)) await close();
+  });
+
   it('puts the right headers on the wire and threads the reply', async () => {
     const server = await startSmtp();
     const mail = provider(server.port);

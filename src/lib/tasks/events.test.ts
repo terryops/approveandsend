@@ -36,10 +36,15 @@ describe('recordEvent', () => {
 
   it('leaves a blank detail null rather than empty', () => {
     const id = task();
+    // `createTask` already wrote a 'received' event whose detail is null, so
+    // the assertion has to name this event and check one arrived at all.
+    const before = listEvents(id, db).length;
 
     recordEvent(id, 'dismissed', { detail: '   ', db });
 
-    expect(listEvents(id, db).at(-1)?.detail).toBeNull();
+    const events = listEvents(id, db);
+    expect(events).toHaveLength(before + 1);
+    expect(events.at(-1)).toMatchObject({ action: 'dismissed', detail: null });
   });
 
   it('truncates a detail long enough to be someone pasting a stack trace', () => {

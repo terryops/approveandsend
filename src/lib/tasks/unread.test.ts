@@ -34,11 +34,15 @@ describe('markOpened', () => {
     // reads. If opening a task bumped it, reading the queue would make the
     // whole queue look freshly changed.
     const id = waiting('Help');
-    const before = getTask(id, db)!.updatedAt;
+    // Backdated on purpose: created and opened in the same millisecond, a
+    // `updated_at` that did move would still read as unchanged.
+    const BEFORE = '2026-01-01T00:00:00.000Z';
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(BEFORE, id);
+    expect(getTask(id, db)!.updatedAt).toBe(BEFORE);
 
     markOpened(id, db);
 
-    expect(getTask(id, db)?.updatedAt).toBe(before);
+    expect(getTask(id, db)?.updatedAt).toBe(BEFORE);
   });
 
   it('is not upset by a task that has since been deleted', () => {

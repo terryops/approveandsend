@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { after } from 'next/server';
 
@@ -56,6 +57,12 @@ export default async function TaskPage({
   after(() => markOpened(id));
 
   const sent = task.status === 'sent';
+  // Sending is a decision, and these are the states where it has already been
+  // made. Rendering the button anyway meant the one on a dismissed task threw
+  // — `sendReply` refuses it — and the one on a superseded task worked, which
+  // is worse: it answers a question the customer withdrew when they wrote
+  // again. `sending` is the in-flight claim; a second press has nothing to add.
+  const sendable = !sent && task.status !== 'dismissed' && task.status !== 'sending' && !task.supersededBy;
   const sender = task.sentBy ? getOperator(task.sentBy) : null;
   const body = task.finalReply ?? task.draft ?? '';
   const rulesInPlay = listRules({ enabledOnly: true }).length;
@@ -99,7 +106,7 @@ export default async function TaskPage({
   return (
     <>
       <p className="meta">
-        <a href="/">{t('task.backToInbox')}</a>
+        <Link href="/">{t('task.backToInbox')}</Link>
       </p>
 
       {typeof query.error === 'string' && <p className="banner">{query.error}</p>}
@@ -329,9 +336,14 @@ export default async function TaskPage({
         {language && !outgoing && body.trim() !== '' && (
           <p className="meta">{t('task.noTranslation', { language })}</p>
         )}
-        <input
-          type="text"
+        {/* A textarea rather than a text input, and the reason is Enter. In a
+            form whose first submit button is Send, a single-line input turns
+            the return key into "send this email" — which is the muscle memory
+            of everyone who has ever used a chat box, and an irreversible
+            action to attach to it. A textarea takes the keystroke itself. */}
+        <textarea
           name="notes"
+          rows={1}
           defaultValue={task.reviewerNotes ?? ''}
           readOnly={sent}
           placeholder={t('task.notesPlaceholder')}
@@ -349,9 +361,11 @@ export default async function TaskPage({
         )}
         {!sent && (
           <div className="actions">
-            <button className="primary" type="submit">
-              {t('task.approveAndSend')}
-            </button>
+            {sendable && (
+              <button className="primary" type="submit">
+                {t('task.approveAndSend')}
+              </button>
+            )}
             <button type="submit" formAction={saveDraft}>
               {t('task.save')}
             </button>
@@ -376,10 +390,10 @@ export default async function TaskPage({
                 click, because a rejection with no explanation teaches nothing
                 and asking afterwards never works. Optional: somebody clearing
                 an email that needed no answer has nothing to explain. */}
-            <input
-              type="text"
+            <textarea
               className="reason"
               name="reason"
+              rows={1}
               defaultValue={task.rejectionReason ?? ''}
               placeholder={t('task.reasonPlaceholder')}
             />

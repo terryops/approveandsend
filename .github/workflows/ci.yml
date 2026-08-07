@@ -1,0 +1,35 @@
+name: CI
+
+# Every push and every pull request, because the three commands below are the
+# ones a reviewer would otherwise have to trust somebody ran locally.
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The floor in package.json's engines, not the latest release: if the
+          # oldest supported Node breaks, CI is where that should show up.
+          node-version: '20.11.0'
+          cache: npm
+
+      # `ci`, not `install`: the lockfile is the point, and a run that quietly
+      # resolved a different tree would not be testing what ships.
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # Last because it is the slowest and the least likely to be the thing
+      # that broke; a type error should not cost a full build to discover.
+      - run: npm run build

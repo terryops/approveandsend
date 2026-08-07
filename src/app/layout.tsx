@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { APP_NAME } from '@/lib/brand';
@@ -21,20 +22,20 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <span className="brand">{APP_NAME}</span>
             <span className="tagline">{t('brand.tagline')}</span>
             <nav>
-              <a href="/">{t('nav.inbox')}</a>
-              <a href="/compose">{t('nav.compose')}</a>
-              <a href="/rules">{t('nav.rules')}</a>
-              <a href="/backfill">{t('nav.archive')}</a>
-              <a href="/queue">{t('nav.queue')}</a>
-              <a href="/operators">{t('nav.operators')}</a>
-              <a href="/setup">{t('nav.setup')}</a>
+              <Link href="/">{t('nav.inbox')}</Link>
+              <Link href="/compose">{t('nav.compose')}</Link>
+              <Link href="/rules">{t('nav.rules')}</Link>
+              <Link href="/backfill">{t('nav.archive')}</Link>
+              <Link href="/queue">{t('nav.queue')}</Link>
+              <Link href="/operators">{t('nav.operators')}</Link>
+              <Link href="/setup">{t('nav.setup')}</Link>
             </nav>
           </header>
           {!isProtected() && (
             <p className="banner">
               <strong>{t('brand.unprotectedLabel')}</strong> {t('brand.unprotectedLead')}{' '}
               <code>ADMIN_PASSWORD</code> {t('brand.unprotectedRest')}{' '}
-              <a href="/setup">{t('brand.unprotectedSetOne')}</a>.
+              <Link href="/setup">{t('brand.unprotectedSetOne')}</Link>.
             </p>
           )}
           {children}

@@ -1,7 +1,8 @@
 import { getDb, type Db } from '../db';
+import { COMPOSE_MESSAGE, enqueueCompose } from '../queue/handlers/compose-message';
 import { ENRICH_CONTEXT, enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { DRAFT_REPLY } from '../queue/handlers/draft-reply';
-import { updateTask } from './store';
+import { getTask, updateTask } from './store';
 
 /**
  * Finding the tasks nothing is going to finish.
@@ -77,7 +78,13 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
   // Jobs are matched on dedupe_key rather than by digging the task id out of
   // the JSON payload: the key is `type:taskId` by construction, and it is the
   // column the queue already has an index on.
-  const keys = `(:draft || t.id, :enrich || t.id)`;
+  //
+  // All three job types, because a composed message reaches `awaiting_review`
+  // by a different route than an inbound one. Leaving `compose-message` out
+  // made every stuck composition look like a task with no job at all, and the
+  // repair below then enqueued a *drafting* job for it — which has no customer
+  // email to work from.
+  const keys = `(:draft || t.id, :enrich || t.id, :compose || t.id)`;
   const rows = db
     .prepare(
       `SELECT t.id, t.status,
@@ -102,6 +109,7 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
     .all({
       draft: `${DRAFT_REPLY}:`,
       enrich: `${ENRICH_CONTEXT}:`,
+      compose: `${COMPOSE_MESSAGE}:`,
       cutoff,
       limit: options.limit ?? 50,
     }) as StuckRow[];
@@ -122,6 +130,11 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
           db,
         );
         result.failed += 1;
+      } else if (getTask(row.id, db)?.origin === 'composed') {
+        // Same repair, the other pipeline. Sending this one down the drafting
+        // path would produce a reply to an email nobody sent.
+        enqueueCompose(row.id, { db });
+        result.requeued += 1;
       } else {
         await enqueueForDrafting(row.id, { db });
         result.requeued += 1;

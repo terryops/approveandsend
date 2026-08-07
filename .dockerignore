@@ -9,7 +9,7 @@ data
 .env
 .env.*
 !.env.example
-aas.config.json
+*aas.config.json
 coverage
 *.log
 .DS_Store

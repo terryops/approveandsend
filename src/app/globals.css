@@ -184,6 +184,22 @@ nav a.active {
   margin: 0;
 }
 
+/* The setup form, beside its step list. `.grow` would be wrong here: it shrinks
+   to nothing, so on a phone the 190px step list keeps its width and the form
+   next to it gets what is left — about 140px, which is not a form. Asking for
+   320 makes the flex row wrap instead, putting the steps above the form. */
+.setup-body {
+  flex: 1;
+  min-width: min(320px, 100%);
+}
+
+/* Explanatory paragraphs, as opposed to data. Capped at a readable measure —
+   a full-width line of text on a wide monitor is a line the eye loses its
+   place on halfway back. */
+.prose {
+  max-width: 68ch;
+}
+
 .snippet {
   color: var(--muted);
   font-size: 13px;
@@ -192,6 +208,23 @@ nav a.active {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+/* Something to be read in full and usually copied — a crontab, a readback of
+   what was just configured. Deliberately not `.snippet`, which clamps to two
+   lines: four lines of crontab silently becoming two is how somebody ends up
+   with a desk that syncs and never sends. */
+pre.block {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
 }
 
 .tag {
@@ -356,13 +389,19 @@ button.danger:hover {
 }
 
 /* Sits in the action row next to the button it belongs to, so it has to stop
-   being a full-width input without stopping being an input. */
-input[type='text'].reason {
+   being full-width without stopping being a box you can type in. A textarea
+   rather than an input, because this form's default submit is Send and a
+   single-line field would make the return key mail the customer. */
+textarea.reason {
   width: auto;
   flex: 1;
   min-width: 180px;
   padding: 6px 10px;
   font-size: 13px;
+  /* One line by default and no taller unless dragged: it lives in a row of
+     buttons, and a box that grows pushes them off the line. */
+  height: 32px;
+  min-height: 32px;
 }
 
 /* The audit trail. Numbered, because the order is the information. */
@@ -437,6 +476,17 @@ ol.history .detail {
 .rule[open] > summary {
   margin-bottom: 10px;
   color: var(--muted);
+}
+
+/* Lets a wide table stay a table on a narrow screen. `min-width` on the table
+   rather than nothing, or flexbox happily squeezes it to fit and there is
+   nothing to scroll. */
+.scroll-x {
+  overflow-x: auto;
+}
+
+.scroll-x > table.plain {
+  min-width: 620px;
 }
 
 table.plain {

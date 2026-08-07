@@ -43,9 +43,12 @@ describe('groupIntoThreads', () => {
     expect(groupIntoThreads([])).toEqual([]);
   });
 
+  // The header tests below all give each message its own subject. Sharing one
+  // would let the subject fallback join them on its own, and the test would
+  // then pass with the header passes deleted.
   it('links a reply to its parent by In-Reply-To', () => {
-    const a = msg({ id: 'a', messageIdHeader: 'a@m' });
-    const b = msg({ id: 'b', messageIdHeader: 'b@m', inReplyTo: 'a@m' });
+    const a = msg({ id: 'a', subject: 'Broken invoice', messageIdHeader: 'a@m' });
+    const b = msg({ id: 'b', subject: 'A different line entirely', messageIdHeader: 'b@m', inReplyTo: 'a@m' });
 
     const groups = groupIntoThreads([b, a]);
     expect(groups).toHaveLength(1);
@@ -53,8 +56,13 @@ describe('groupIntoThreads', () => {
   });
 
   it('links a whole chain through References even with a missing middle', () => {
-    const a = msg({ id: 'a', messageIdHeader: 'a@m' });
-    const c = msg({ id: 'c', messageIdHeader: 'c@m', references: ['a@m', 'b@m'] });
+    const a = msg({ id: 'a', subject: 'Broken invoice', messageIdHeader: 'a@m' });
+    const c = msg({
+      id: 'c',
+      subject: 'A different line entirely',
+      messageIdHeader: 'c@m',
+      references: ['a@m', 'b@m'],
+    });
 
     const groups = groupIntoThreads([a, c]);
     expect(groups).toHaveLength(1);
@@ -62,8 +70,8 @@ describe('groupIntoThreads', () => {
   });
 
   it('tolerates angle brackets in headers', () => {
-    const a = msg({ id: 'a', messageIdHeader: '<a@m>' });
-    const b = msg({ id: 'b', inReplyTo: '<a@m>' });
+    const a = msg({ id: 'a', subject: 'Broken invoice', messageIdHeader: '<a@m>' });
+    const b = msg({ id: 'b', subject: 'A different line entirely', inReplyTo: '<a@m>' });
     expect(groupIntoThreads([a, b])).toHaveLength(1);
   });
 
@@ -123,8 +131,8 @@ describe('groupIntoThreads', () => {
 
 describe('findThreadFor', () => {
   it('returns the conversation containing the target', () => {
-    const a = msg({ id: 'a', messageIdHeader: 'a@m' });
-    const b = msg({ id: 'b', inReplyTo: 'a@m' });
+    const a = msg({ id: 'a', subject: 'Broken invoice', messageIdHeader: 'a@m' });
+    const b = msg({ id: 'b', subject: 'A different line entirely', inReplyTo: 'a@m' });
     const other = msg({ id: 'z', subject: 'Unrelated', messageIdHeader: 'z@m' });
 
     expect(findThreadFor(b, [a, b, other]).map(m => m.id)).toEqual(['a', 'b']);

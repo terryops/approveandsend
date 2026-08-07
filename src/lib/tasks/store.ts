@@ -360,12 +360,19 @@ export function supersedeThread(threadId: string, newerTaskId: string, db: Db = 
     )
     .all(threadId, newerTaskId) as { id: string }[];
 
-  for (const row of rows) {
-    // Dismissed, so it leaves the queue the way a human dismissal does, and
-    // `superseded_by` so a month from now the row explains itself.
-    updateTask(row.id, { status: 'dismissed', supersededBy: newerTaskId }, db);
-    recordEvent(row.id, 'superseded', { detail: newerTaskId, db });
-  }
+  // One transaction over the whole batch. A thread with three unanswered
+  // messages that fails after the second leaves one task dismissed with no
+  // event saying why and two still in the queue — three rows in three
+  // different states, from one ingestion.
+  const retire = db.transaction(() => {
+    for (const row of rows) {
+      // Dismissed, so it leaves the queue the way a human dismissal does, and
+      // `superseded_by` so a month from now the row explains itself.
+      updateTask(row.id, { status: 'dismissed', supersededBy: newerTaskId }, db);
+      recordEvent(row.id, 'superseded', { detail: newerTaskId, db });
+    }
+  });
+  retire();
 
   return rows.map(row => row.id);
 }

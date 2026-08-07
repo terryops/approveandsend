@@ -76,6 +76,7 @@ export const en = {
   "task.status.pending": "pending",
   "task.status.drafting": "drafting",
   "task.status.awaiting_review": "awaiting review",
+  "task.status.sending": "sending",
   "task.status.sent": "sent",
   "task.status.dismissed": "dismissed",
   "task.status.failed": "failed",
@@ -205,6 +206,7 @@ export const en = {
   "queue.released": "Job released back to the queue.",
   "queue.deleted": "Job deleted.",
   "queue.notFailed": "That job is no longer failed — nothing to retry.",
+  "queue.retrySuperseded": "The same work is already queued — this one has been superseded.",
   "queue.notStuck": "That job is no longer running — nothing to release.",
 
   // --- The rulebook ---
@@ -213,6 +215,10 @@ export const en = {
   "rules.writtenSinceTidy": "{n} written since the last tidy",
   "rules.filterActive": "Active",
   "rules.filterIncludingRetired": "Including retired",
+  "rules.proposedHeading": "Proposed rules ({n})",
+  "rules.proposedExplainer": "Written by the model from a conversation. They are not used until you approve them.",
+  "rules.approveButton": "Approve",
+  "rules.proposedTag": "proposed",
   "rules.tidyButton": "Tidy the rulebook",
   "rules.tidyAlreadyQueued": "A tidy is already queued.",
   "rules.tidyQueued": "Queued. It merges near-duplicates in the background — run the queue, then reload.",

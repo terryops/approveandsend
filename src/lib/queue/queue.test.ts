@@ -465,7 +465,7 @@ describe('learn-from-sent', () => {
 
     expect(outcome?.status).toBe('completed');
 
-    const rules = listRules({}, db);
+    const rules = listRules({ proposed: 'only' }, db);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.content).toMatch(/refund date/);
     expect(rules[0]?.category).toBe('policy');
@@ -507,7 +507,9 @@ describe('learn-from-sent', () => {
   });
 
   it('retries a learning job that fails on a transient error', async () => {
-    server?.close();
+    // Awaited, because clearing `server` is what stops afterEach awaiting it:
+    // the next test would otherwise race a socket that is still closing.
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     server = undefined;
 
     enqueueLearnFromSent(approval, { db });

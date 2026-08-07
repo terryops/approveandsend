@@ -240,7 +240,20 @@ interface RowOutcome {
   addressable: boolean;
 }
 
+/**
+ * One archived conversation, all of it or none of it.
+ *
+ * The four writes below — the task, its final state, its thread, its event —
+ * are one fact about one conversation, and the row is keyed on `message_id`,
+ * so a run that dies between the first and the last leaves a task that a
+ * re-import will skip as "already there" and never finish. Wrapping them means
+ * a failed import is a shorter import rather than a corrupted one.
+ */
 function importOne(row: LegacyRow, options: LegacyImportOptions, db: Db): RowOutcome {
+  return db.transaction(() => importRow(row, options, db))();
+}
+
+function importRow(row: LegacyRow, options: LegacyImportOptions, db: Db): RowOutcome {
   const email = parse<{ current?: LegacyMessage; thread?: LegacyMessage[] }>(row.original_email, {});
   const current = email.current ?? {};
   const reply = parse<{ body?: string }>(row.draft_reply, {});

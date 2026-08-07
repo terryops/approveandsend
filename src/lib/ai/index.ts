@@ -33,7 +33,9 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function backoffMs(attempt: number, status?: number): number {
   // Rate limits need a real pause; everything else recovers faster than that.
   if (status === 429) return 30_000;
-  return 10_000 * (attempt + 1);
+  // Configurable only so a test can cover the retry path without spending ten
+  // real seconds asleep in it. Nothing in production sets it.
+  return Number(process.env.AI_RETRY_BASE_MS ?? 10_000) * (attempt + 1);
 }
 
 /**

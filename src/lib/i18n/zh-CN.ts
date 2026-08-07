@@ -58,6 +58,7 @@ export const zhCN: Dictionary = {
   "task.status.pending": "等待中",
   "task.status.drafting": "起草中",
   "task.status.awaiting_review": "待审阅",
+  "task.status.sending": "发送中",
   "task.status.sent": "已发送",
   "task.status.dismissed": "已忽略",
   "task.status.failed": "失败",
@@ -186,6 +187,7 @@ export const zhCN: Dictionary = {
   "queue.released": "任务已放回队列。",
   "queue.deleted": "任务已删除。",
   "queue.notFailed": "该任务已不是失败状态，无需重试。",
+  "queue.retrySuperseded": "同样的任务已在队列中，这一条已被取代。",
   "queue.notStuck": "该任务已不在运行中，无需解除。",
 
   // --- The rulebook ---
@@ -194,6 +196,10 @@ export const zhCN: Dictionary = {
   "rules.writtenSinceTidy": "上次整理之后新写了{n}条",
   "rules.filterActive": "生效中",
   "rules.filterIncludingRetired": "含已停用",
+  "rules.proposedHeading": "待批准规则（{n}）",
+  "rules.proposedExplainer": "模型从对话中总结出来的。批准之前不会生效。",
+  "rules.approveButton": "批准",
+  "rules.proposedTag": "待批准",
   "rules.tidyButton": "整理规则库",
   "rules.tidyAlreadyQueued": "已经有一个整理任务在队列里了。",
   "rules.tidyQueued": "已入队。它会在后台合并意思相近的规则——先运行队列，再刷新页面。",

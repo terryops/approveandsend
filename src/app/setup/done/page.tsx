@@ -73,7 +73,7 @@ export default async function DonePage() {
           <code>.env</code>
           {t('setup.done.cronAfter')}
         </p>
-        <pre className="snippet">
+        <pre className="block">
           {'*/5 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync\n' +
             '*/2 * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker\n' +
             '17  * * * * curl -sX POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sweep\n' +
