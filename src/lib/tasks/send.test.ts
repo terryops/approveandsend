@@ -100,6 +100,63 @@ describe('sendReply', () => {
     expect(after.status).toBe('sent');
   });
 
+  it('answers under the subject the reviewer approved', async () => {
+    const id = task('awaiting_review');
+
+    await sendReply(id, { finalReply: 'Done.', subject: 'Your refund, issued today' }, {
+      provider,
+      db,
+      learn: false,
+    });
+
+    // No "Re:" glued on. It is not a reply to itself, and threading rides on
+    // the headers rather than on the shape of this line.
+    expect(provider.sent[0]?.subject).toBe('Your refund, issued today');
+    expect(getTask(id, db)?.replySubject).toBe('Your refund, issued today');
+  });
+
+  it('falls back to the subject the drafter chose, then to theirs', async () => {
+    const drafted = task('awaiting_review');
+    updateTask(drafted, { replySubject: 'Your refund, issued today' }, db);
+
+    await sendReply(drafted, { finalReply: 'Done.' }, { provider, db, learn: false });
+    expect(provider.sent[0]?.subject).toBe('Your refund, issued today');
+
+    // An empty box is a real answer: the reviewer cleared it and wants the
+    // customer's own line back, not the one the model came up with.
+    const cleared = task('awaiting_review');
+    updateTask(cleared, { replySubject: 'Ignored' }, db);
+
+    await sendReply(cleared, { finalReply: 'Done.', subject: '  ' }, { provider, db, learn: false });
+    expect(provider.sent[1]?.subject).toBe('Re: Refund?');
+  });
+
+  it('starts a composed mail under its own subject', async () => {
+    const { task: composed } = createTask(
+      { subject: 'Scheduled maintenance on Sunday', fromAddress: 'sam@example.com', origin: 'composed' },
+      db,
+    );
+    updateTask(composed.id, { status: 'awaiting_review', draft: 'Heads up.' }, db);
+
+    await sendReply(composed.id, { finalReply: 'Heads up.' }, { provider, db, learn: false });
+
+    expect(provider.sent[0]?.subject).toBe('Scheduled maintenance on Sunday');
+  });
+
+  it('sends the marks as tags in one part and as words in the other', async () => {
+    const id = task('awaiting_review');
+
+    await sendReply(id, { finalReply: '**Issued.** We need:\n\n- the URL\n- the steps' }, {
+      provider,
+      db,
+      learn: false,
+    });
+
+    expect(provider.sent[0]?.text).toBe('Issued. We need:\n\n- the URL\n- the steps');
+    expect(provider.sent[0]?.html).toContain('<strong>Issued.</strong>');
+    expect(provider.sent[0]?.html).toContain('<li>the URL</li>');
+  });
+
   it('leaves nothing claimed when the mail provider cannot be built', async () => {
     // The defect: `mailProvider()` ran after the claim, so a desk with bad
     // credentials pinned every task the operator clicked at `sending` — one

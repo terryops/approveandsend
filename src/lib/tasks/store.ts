@@ -21,6 +21,7 @@ interface TaskRow {
   body: string;
   analysis: string | null;
   draft: string | null;
+  reply_subject: string | null;
   final_reply: string | null;
   reviewer_notes: string | null;
   sent_at: string | null;
@@ -91,6 +92,7 @@ function mapTask(row: TaskRow): Task {
     body: row.body,
     analysis: parseAnalysis(row.analysis),
     draft: row.draft,
+    replySubject: row.reply_subject,
     finalReply: row.final_reply,
     reviewerNotes: row.reviewer_notes,
     sentAt: row.sent_at,
@@ -260,6 +262,7 @@ export interface TaskUpdate {
   subject?: string;
   analysis?: Analysis | null;
   draft?: string | null;
+  replySubject?: string | null;
   finalReply?: string | null;
   reviewerNotes?: string | null;
   sentAt?: string | null;
@@ -279,6 +282,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   subject: 'subject',
   analysis: 'analysis',
   draft: 'draft',
+  replySubject: 'reply_subject',
   finalReply: 'final_reply',
   reviewerNotes: 'reviewer_notes',
   sentAt: 'sent_at',

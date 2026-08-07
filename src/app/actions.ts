@@ -115,7 +115,15 @@ export async function saveDraft(form: FormData): Promise<void> {
   const draft = field(form, 'draft');
   const before = getTask(id);
 
-  updateTask(id, { draft, reviewerNotes: field(form, 'notes') || null });
+  // The subject box travels with the draft box, for the reason the draft box
+  // travels with the Send button: what goes out is what is on screen. Cleared
+  // to empty means "use the customer's own subject", which is a choice, so it
+  // is stored as null rather than ignored.
+  updateTask(id, {
+    draft,
+    replySubject: field(form, 'subject').trim() || null,
+    reviewerNotes: field(form, 'notes') || null,
+  });
 
   // An edited draft's translation is now of text nobody is going to send.
   // `getTranslation` already refuses to show it — which leaves a reviewer who
@@ -156,8 +164,14 @@ export async function saveDraft(form: FormData): Promise<void> {
  */
 async function keepEdits(form: FormData, id: string): Promise<void> {
   const draft = field(form, 'draft');
+  const subject = field(form, 'subject').trim() || null;
   const before = getTask(id);
   if (!before || before.status === 'sent' || before.status === 'sending') return;
+
+  // Kept even when the draft is untouched. A reviewer who fixed only the
+  // subject and then pressed Redraft would otherwise watch their one edit
+  // disappear, and be given no reason for it.
+  if (subject !== before.replySubject) updateTask(id, { replySubject: subject });
   if (draft.trim() === (before.draft ?? '').trim()) return;
 
   updateTask(id, { draft });
@@ -180,6 +194,7 @@ export async function approveAndSend(form: FormData): Promise<void> {
     const attachments = await readUploads(form);
     await sendReply(id, {
       finalReply: field(form, 'draft'),
+      subject: field(form, 'subject'),
       ...(notes ? { reviewerNotes: notes } : {}),
       sentBy: (await currentOperator())?.id ?? null,
       ...(attachments.length ? { attachments } : {}),

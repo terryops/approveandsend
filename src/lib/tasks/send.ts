@@ -2,7 +2,7 @@ import type { Db } from '../db';
 import { getDb } from '../db';
 import { t } from '../i18n';
 import { mailProvider, sendsHtmlReplies } from '../mail/config';
-import { replyHtml } from '../mail/render';
+import { replyHtml, replyText } from '../mail/render';
 import type { MailProvider, OutgoingAttachment } from '../mail/types';
 import { describeUploads } from '../mail/uploads';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
@@ -29,6 +29,14 @@ import type { Task } from './types';
 export interface SendReplyInput {
   /** What the reviewer actually approved, edits included. */
   finalReply: string;
+  /**
+   * The subject line they approved, if the review screen sent one.
+   *
+   * Same reasoning as `finalReply`: what goes out is what was on screen. An
+   * empty string is a real answer — it means the reviewer cleared the box and
+   * wants the customer's own subject back.
+   */
+  subject?: string;
   reviewerNotes?: string;
   /**
    * Who approved it. Omitted means nobody in particular — the shared password,
@@ -55,6 +63,24 @@ export function replySubject(subject: string): string {
   const trimmed = subject.trim();
   if (!trimmed) return 'Re:';
   return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+/**
+ * The line this mail actually goes out under.
+ *
+ * A composed mail starts the conversation, so there is nothing to be "Re:"
+ * about — and a subject nobody has ever seen prefixed like that is how a
+ * recipient decides the sender is a bot. Otherwise a subject somebody chose
+ * for this reply wins over the customer's own, which on a support desk is
+ * usually a typo and a description of the problem rather than the answer.
+ *
+ * No "Re:" is glued to a chosen subject. It is not a reply to itself, and the
+ * threading headers are what actually keep the conversation together.
+ */
+function outgoingSubject(task: Task, chosen: string | undefined): string {
+  if (task.origin === 'composed') return task.subject;
+  const picked = (chosen ?? task.replySubject ?? '').trim();
+  return picked || replySubject(task.subject);
 }
 
 export async function sendReply(
@@ -90,6 +116,7 @@ export async function sendReply(
   // Both parts, from the same string. `text` is what the reviewer read; the
   // HTML is that text with paragraph breaks in it, so the two cannot disagree.
   const html = sendsHtmlReplies() ? replyHtml(reply) : '';
+  const subject = outgoingSubject(task, input.subject);
 
   // Claim it before the mail server hears about it.
   //
@@ -123,11 +150,10 @@ export async function sendReply(
   try {
     await provider.send({
       to: [{ address: task.fromAddress, ...(task.fromName ? { name: task.fromName } : {}) }],
-      // A composed mail starts the conversation, so there is nothing to be
-      // "Re:" about — and a subject nobody has ever seen prefixed like that is
-      // how a recipient decides the sender is a bot.
-      subject: task.origin === 'composed' ? task.subject : replySubject(task.subject),
-      text: reply,
+      subject,
+      // The marks come out of the plain-text half and turn into tags in the
+      // HTML one. Both are this one approved string; neither is a second draft.
+      text: replyText(reply),
       ...(html ? { html } : {}),
       ...(task.messageIdHeader
         ? { inReplyTo: task.messageIdHeader, references: [task.messageIdHeader] }
@@ -159,6 +185,9 @@ export async function sendReply(
       {
         status: 'sent',
         finalReply: reply,
+        // What it actually went out as, including the fallback. The alternative
+        // is a sent task whose subject box shows a line the customer never saw.
+        replySubject: subject,
         reviewerNotes: input.reviewerNotes ?? task.reviewerNotes,
         sentAt: new Date().toISOString(),
         sentBy: input.sentBy ?? null,
@@ -176,7 +205,7 @@ export async function sendReply(
       {
         direction: 'outbound',
         fromAddress: '',
-        subject: task.origin === 'composed' ? task.subject : replySubject(task.subject),
+        subject,
         body: reply,
         receivedAt: new Date().toISOString(),
       },

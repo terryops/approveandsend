@@ -41,6 +41,8 @@ const MAX_BODY_CHARS = 12_000;
 export interface DraftResult {
   analysis: Analysis;
   draft: string;
+  /** The subject the drafter chose, or undefined to keep the customer's. */
+  subject?: string;
   /** Rules that went into the prompt, already counted against their telemetry. */
   appliedRuleIds: string[];
   /** Rules the character budget pushed out, so the caller can log it. */
@@ -193,6 +195,29 @@ not_a_problem rather than picking somebody to blame.
 This is for whoever reads the reply, not for the reply. Do not tell the
 customer whose fault it was; write the answer their message needs.
 
+## How the reply should read
+Open by name where you have one — above it says who wrote in.
+
+You may use two marks and no others. \`**like this**\` for the one or two
+sentences that carry the answer, and lines starting with \`- \` for a list of
+steps or things you need from them. Both survive as bold and bullets in their
+mail client. Anything else — headings, tables, HTML tags, links in brackets —
+comes out as literal punctuation in their inbox, so do not write it.
+
+Use them sparingly. A reply where half the sentences are bold is a reply where
+none of them are.
+${
+  // Nothing else in the prompt says the signature is not the drafter's job,
+  // and the drafter has spent its whole life ending letters properly. Left
+  // unsaid, it writes "Best regards, <company> Support" and then the desk
+  // appends its own — two sign-offs, which reads exactly as machine-written as
+  // it sounds.
+  workspace.signature
+    ? '\nDo not write a sign-off, a closing line or a signature. One is added ' +
+      'below your reply automatically, and a second one is what makes a reply ' +
+      'look machine-written.\n'
+    : ''
+}
 ## What to return
 JSON only, no prose around it:
 {
@@ -210,7 +235,8 @@ JSON only, no prose around it:
   "keyPoints": ["what they actually said, in their terms"],
   "cause": "system_bug | known_limitation | ux_issue | user_error | not_a_problem",
   "suggestedActions": ["what a human may need to do outside this reply, if anything"],
-  "draft": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
+  "subject": "the subject line to answer under, in their language — say what the reply contains, e.g. 'Your refund has been issued'. Leave it empty to keep theirs.",
+  "draft": "the reply itself, ready to send${workspace.signature ? '' : ' — no signature'}"
 }`;
 }
 
@@ -232,7 +258,7 @@ function parseDraft(
   workspace: WorkspaceConfig,
   /** What the rules were routed by. Outranks anything the drafter says. */
   routedTopic: string | undefined,
-): { analysis: Analysis; draft: string } | null {
+): { analysis: Analysis; draft: string; subject?: string } | null {
   const parsed = extractJson<Record<string, unknown>>(raw);
   if (!parsed) return null;
 
@@ -246,8 +272,15 @@ function parseDraft(
   // own answer is only consulted where there was no classification to make.
   const scope = routedTopic ?? (workspace.topics.length === 0 ? freeSlug(parsed.scope) : undefined);
 
+  // Capped rather than validated. A subject is free text in someone's
+  // language and there is nothing here to check it against, but a model that
+  // has decided to summarise the whole reply into it should not be able to
+  // put four hundred characters in a mail header.
+  const subject = typeof parsed.subject === 'string' ? parsed.subject.trim().slice(0, 160) : '';
+
   return {
     draft,
+    ...(subject ? { subject } : {}),
     analysis: {
       intent: typeof parsed.intent === 'string' ? parsed.intent.trim() : '',
       language: typeof parsed.language === 'string' ? parsed.language.trim().toLowerCase() : '',
@@ -373,6 +406,7 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const result: DraftResult = {
     analysis: parsed.analysis,
     draft: signed,
+    ...(parsed.subject ? { subject: parsed.subject } : {}),
     appliedRuleIds: appliedIds,
     droppedRuleIds: droppedIds,
   };

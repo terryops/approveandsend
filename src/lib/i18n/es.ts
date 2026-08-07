@@ -110,6 +110,8 @@ export const es: Dictionary = {
   "task.noTranslation": "No hay traducción actual al {language} — ejecuta la cola para generar este borrador.",
   "task.notesPlaceholder": "Qué cambiar, o por qué lo cambiaste: guía a «Volver a redactar» y alimenta el extractor de reglas",
   "task.sendingBanner": "Esta respuesta se está entregando al proveedor de correo. Si sigue aquí dentro de unos minutos, el envío no terminó y volverá a revisión.",
+  "task.subjectLabel": "El asunto",
+  "task.subjectPlaceholder": "Asunto: déjalo vacío para responder con el suyo",
   "task.draftLabel": "La respuesta",
   "task.notesLabel": "Notas para la reescritura",
   "task.reasonLabel": "Motivo del descarte",

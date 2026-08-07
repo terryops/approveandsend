@@ -109,6 +109,8 @@ export interface Task {
   analysis: Analysis | null;
   /** What the model wrote. Kept after sending — the learning loop diffs it. */
   draft: string | null;
+  /** The subject to answer under. Null falls back to "Re: " + `subject`. */
+  replySubject: string | null;
   finalReply: string | null;
   reviewerNotes: string | null;
   sentAt: string | null;

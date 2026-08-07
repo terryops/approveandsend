@@ -301,6 +301,20 @@ export default async function TaskPage({
         <form className="card stack" action={approveAndSend}>
           <h2>{sent ? t('task.whatWentOut') : t('task.theReply')}</h2>
           <input type="hidden" name="taskId" value={task.id} />
+          {/* A textarea, not a text input, for the reason the reason box below
+              is one: the first submit button in this form is Send, and a
+              single-line input turns Enter into "send this email". Empty means
+              the customer's own subject, prefixed with Re: — which is what
+              every task had before there was a box here at all. */}
+          <textarea
+            className="subject-line"
+            name="subject"
+            rows={1}
+            aria-label={t('task.subjectLabel')}
+            defaultValue={task.replySubject ?? ''}
+            readOnly={sent || sending}
+            placeholder={t('task.subjectPlaceholder')}
+          />
           {/* Named, not just prompted. A placeholder is the only label these
               three had, which leaves a screen reader announcing "edit text" and
               leaves everybody else with no label at all the moment they start

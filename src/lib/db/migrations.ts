@@ -732,6 +732,23 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 25,
+    name: 'reply_subject',
+    up: db => {
+      db.exec(`
+        -- The subject line this reply goes out under, when the drafter wrote
+        -- one and nobody changed it. NULL means "Re: whatever they wrote",
+        -- which is what every task before this migration falls back to.
+        --
+        -- Worth a column rather than deriving it: "Re: Regarding bug boiunty"
+        -- carries the customer's typo into our answer and says nothing about
+        -- what the answer contains, and a subject is the one line of a support
+        -- reply that is read before the reply is opened.
+        ALTER TABLE tasks ADD COLUMN reply_subject TEXT;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

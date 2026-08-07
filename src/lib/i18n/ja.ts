@@ -110,6 +110,8 @@ export const ja: Dictionary = {
   "task.noTranslation": "この下書きの {language} 訳はまだありません。キューを実行すると生成されます。",
   "task.notesPlaceholder": "直してほしい点、または変更した理由 — 「書き直し」に反映され、ルール抽出にも使われます",
   "task.sendingBanner": "この返信をメールプロバイダに渡しています。数分たってもここに残っている場合は送信が完了しなかったため、レビュー待ちに戻されます。",
+  "task.subjectLabel": "件名",
+  "task.subjectPlaceholder": "件名 — 空欄なら相手の件名をそのまま使います",
   "task.draftLabel": "返信本文",
   "task.notesLabel": "書き直しへのメモ",
   "task.reasonLabel": "却下する理由",

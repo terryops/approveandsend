@@ -66,6 +66,7 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     threadId: incoming.threadId ?? null,
     messageIdHeader: incoming.messageIdHeader ?? null,
     subject: incoming.subject,
+    replySubject: null,
     fromAddress: incoming.from.address,
     fromName: incoming.from.name ?? null,
     receivedAt: incoming.receivedAt,

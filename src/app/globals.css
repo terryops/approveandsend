@@ -435,6 +435,12 @@ textarea.draft {
   min-height: 260px;
 }
 
+/* Looks like the subject line it is, rather than like another notes box. */
+textarea.subject-line {
+  font-weight: 600;
+  resize: none;
+}
+
 button {
   font: inherit;
   border: 1px solid var(--line);

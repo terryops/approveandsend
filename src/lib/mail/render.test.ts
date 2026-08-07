@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { htmlToText } from '../thread-context';
-import { replyHtml } from './render';
+import { replyHtml, replyText } from './render';
 
 describe('replyHtml', () => {
   it('makes paragraphs of blank lines and breaks of single ones', () => {
@@ -35,5 +35,51 @@ describe('replyHtml', () => {
 
   it('collapses runs of blank lines rather than emitting empty paragraphs', () => {
     expect(replyHtml('One\n\n\n\nTwo')).toBe('<p>One</p>\n<p>Two</p>');
+  });
+
+  it('makes a list of a block of bullets', () => {
+    expect(replyHtml('We need:\n\n- the URL\n- the steps')).toBe(
+      '<p>We need:</p>\n<ul>\n  <li>the URL</li>\n  <li>the steps</li>\n</ul>',
+    );
+  });
+
+  it('leaves a dash that is not a bullet alone', () => {
+    expect(replyHtml('10:00-19:00 UTC+8 - so it may be tomorrow')).toBe(
+      '<p>10:00-19:00 UTC+8 - so it may be tomorrow</p>',
+    );
+  });
+
+  it('emphasises the sentence the drafter marked', () => {
+    expect(replyHtml('**The refund has been issued.** It takes 5-10 days.')).toBe(
+      '<p><strong>The refund has been issued.</strong> It takes 5-10 days.</p>',
+    );
+  });
+
+  it('leaves a lone or unbalanced asterisk as punctuation', () => {
+    // Prices and footnote markers are full of these, and turning half a mail
+    // bold because somebody wrote `2 * 3` is worse than showing the asterisk.
+    expect(replyHtml('2 * 3 and **not closed')).toBe('<p>2 * 3 and **not closed</p>');
+  });
+
+  it('cannot be talked into a tag by the text it emphasises', () => {
+    const html = replyHtml('**<b>hi</b>**');
+
+    expect(html).toBe('<p><strong>&lt;b&gt;hi&lt;/b&gt;</strong></p>');
+  });
+});
+
+describe('replyText', () => {
+  it('takes the emphasis marks back out and leaves the bullets', () => {
+    expect(replyText('**Issued.**\n\n- one\n- two')).toBe('Issued.\n\n- one\n- two');
+  });
+
+  it('says the same words as the HTML part', () => {
+    // The property that matters more than either rendering: both halves are
+    // the one string the reviewer approved, with nothing added or dropped.
+    const approved = '**Issued.** Details:\n\n- the URL\n- the steps';
+
+    const words = (value: string) => value.replace(/[-\s]+/g, ' ').trim();
+
+    expect(words(htmlToText(replyHtml(approved)))).toBe(words(replyText(approved)));
   });
 });

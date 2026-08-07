@@ -82,6 +82,10 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
         status: 'awaiting_review',
         analysis: result.analysis,
         draft: result.draft,
+        // Only when it wrote one. A redraft that comes back with nothing to
+        // say about the subject must not wipe the line a reviewer has already
+        // edited by hand.
+        ...(result.subject ? { replySubject: result.subject } : {}),
         risk,
         ...(result.analysis.scope ? { scope: result.analysis.scope } : {}),
         error: null,

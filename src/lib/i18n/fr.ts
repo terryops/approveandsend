@@ -110,6 +110,8 @@ export const fr: Dictionary = {
   "task.noTranslation": "Aucune traduction {language} à jour — exécutez la file pour rendre ce brouillon.",
   "task.notesPlaceholder": "Ce qu'il faut changer, ou pourquoi vous l'avez changé — oriente « Réécrire » et alimente l'extracteur de règles",
   "task.sendingBanner": "Cette réponse est en cours de remise au fournisseur de messagerie. Si elle est toujours là dans quelques minutes, l’envoi n’a pas abouti et elle repassera en relecture.",
+  "task.subjectLabel": "La ligne objet",
+  "task.subjectPlaceholder": "Objet — laissez vide pour répondre sous le leur",
   "task.draftLabel": "La réponse",
   "task.notesLabel": "Notes pour la réécriture",
   "task.reasonLabel": "Motif du rejet",

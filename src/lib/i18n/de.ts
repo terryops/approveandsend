@@ -110,6 +110,8 @@ export const de: Dictionary = {
   "task.noTranslation": "Keine aktuelle Übersetzung auf {language} — arbeite die Warteschlange ab, damit dieser Entwurf übersetzt wird.",
   "task.notesPlaceholder": "Was zu ändern ist oder warum Sie es geändert haben — steuert „Neu schreiben\" und speist den Regelextraktor",
   "task.sendingBanner": "Diese Antwort wird gerade an den Mailanbieter übergeben. Steht sie in ein paar Minuten noch hier, ist der Versand nicht durchgelaufen und sie geht zurück in die Prüfung.",
+  "task.subjectLabel": "Die Betreffzeile",
+  "task.subjectPlaceholder": "Betreff — leer lassen, um unter ihrem zu antworten",
   "task.draftLabel": "Die Antwort",
   "task.notesLabel": "Notizen für die Neufassung",
   "task.reasonLabel": "Grund für das Verwerfen",

@@ -110,6 +110,8 @@ export const zhCN: Dictionary = {
   "task.noTranslation": "当前没有{language}译文——运行队列来生成这份草稿的译文。",
   "task.notesPlaceholder": "要改什么，或者你为什么这么改——「重写」会照着做，也会交给规则提取器",
   "task.sendingBanner": "这封回复正在交给邮件服务商。如果几分钟后还停在这里，说明发送没有完成，系统会把它退回待审。",
+  "task.subjectLabel": "主题行",
+  "task.subjectPlaceholder": "主题——留空则沿用对方的主题",
   "task.draftLabel": "回复内容",
   "task.notesLabel": "重写时的备注",
   "task.reasonLabel": "关闭原因",

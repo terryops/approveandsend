@@ -129,6 +129,8 @@ export const en = {
   "task.noTranslation": "No current {language} translation — run the queue to render this draft.",
   "task.notesPlaceholder": "What to change, or why you changed it — steers Redraft, and feeds the rule extractor",
   "task.sendingBanner": "This reply is being handed to the mail provider. If it is still here in a few minutes the send did not finish, and it will be put back for review.",
+  "task.subjectLabel": "The subject line",
+  "task.subjectPlaceholder": "Subject — leave empty to reply under theirs",
   "task.draftLabel": "The reply",
   "task.notesLabel": "Notes for the redraft",
   "task.reasonLabel": "Why this is being dismissed",
