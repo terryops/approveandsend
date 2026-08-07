@@ -77,6 +77,16 @@ a:hover {
   padding: 24px 20px 64px;
 }
 
+/*
+ * On a screen where the task page has both the sidebar and side-by-side
+ * translation, 1040 leaves the main column at ~700px — a comfortable
+ * reading width for one column, and half of a sentence in each of two.
+ * The wider ceiling only kicks in when the viewport can spend it.
+ */
+@media (min-width: 1400px) {
+  .shell { max-width: 1360px; }
+}
+
 header.top {
   display: flex;
   align-items: baseline;
@@ -148,6 +158,30 @@ nav a.active {
     position: sticky;
     top: 16px;
   }
+}
+
+/*
+ * Original and translation side by side, the way the desk this replaces
+ * did it. Reading a reply the customer will read means holding both in
+ * view at once — stacked, the eye leaves one to check the other and
+ * loses the paragraph it was on. Falls back to stacked below a width
+ * where two columns would each be narrower than a sentence.
+ */
+.detail-main { container-type: inline-size; }
+.compare { display: grid; gap: 10px; align-items: stretch; }
+.compare > * { min-width: 0; }
+.compare > .translation { margin: 0; }
+.compare textarea,
+.compare pre.email,
+.compare .translation pre.email {
+  height: 100%;
+  min-height: 240px;
+  box-sizing: border-box;
+}
+/* A container query rather than a viewport one, so the split only happens
+   when this box actually has room for it — with or without the sidebar. */
+@container (min-width: 640px) {
+  .compare { grid-template-columns: 1fr 1fr; column-gap: 12px; }
 }
 
 .card {

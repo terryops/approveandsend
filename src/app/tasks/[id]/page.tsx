@@ -209,19 +209,22 @@ export default async function TaskPage({
             <p className="meta" style={{ marginTop: 12 }}>{t('task.brief')}</p>
           )}
           {task.error && <p className="error">{task.error}</p>}
-          <pre className="email" style={{ marginTop: 12 }}>
-            {task.body || t('task.emptyBody')}
-          </pre>
-          {/* `details`, so it is open by default and collapsible without a line
-              of JavaScript — the same constraint the rest of this UI works to. */}
-          {incoming && (
-            <details className="translation" open>
-              <summary>
-                {t('task.translation')} · {incoming.language}
-              </summary>
-              <pre className="email">{incoming.content}</pre>
-            </details>
-          )}
+          {/* Original on the left, translation on the right — see `.compare`
+              in globals.css for why. The `details` is still `open` by default,
+              so a reviewer who wants their old stacked view can just close it. */}
+          <div className={`compare${incoming ? '' : ' compare-single'}`} style={{ marginTop: 12 }}>
+            <pre className="email">
+              {task.body || t('task.emptyBody')}
+            </pre>
+            {incoming && (
+              <details className="translation" open>
+                <summary>
+                  {t('task.translation')} · {incoming.language}
+                </summary>
+                <pre className="email">{incoming.content}</pre>
+              </details>
+            )}
+          </div>
           {/* Shown, not linked. `loading="lazy"` and a CSS height cap rather
               than a thumbnailer: the bytes come from the mailbox on demand and
               we keep no copy to resize, and a reviewer who needs the detail can
@@ -315,28 +318,34 @@ export default async function TaskPage({
             readOnly={sent || sending}
             placeholder={t('task.subjectPlaceholder')}
           />
-          {/* Named, not just prompted. A placeholder is the only label these
-              three had, which leaves a screen reader announcing "edit text" and
-              leaves everybody else with no label at all the moment they start
-              typing — the point at which knowing which box this is matters. */}
-          <textarea
-            className="draft"
-            name="draft"
-            aria-label={t('task.draftLabel')}
-            defaultValue={body}
-            readOnly={sent || sending}
-            placeholder={t('task.draftPlaceholder')}
-          />
-          {/* The nearest thing here to a confirmation step: what you are about
-              to send, in a language you read. */}
-          {outgoing && (
-            <details className="translation" open>
-              <summary>
-                {sent ? t('task.whatWentOut') : t('task.whatYouAreAboutToSend')} · {outgoing.language}
-              </summary>
-              <pre className="email">{outgoing.content}</pre>
-            </details>
-          )}
+          {/* Draft on the left, translation on the right — same shape as the
+              incoming pair above, so the reviewer's eye can compare the reply
+              they are approving against the reply the customer will read. */}
+          <div className={`compare${outgoing ? '' : ' compare-single'}`}>
+            {/* Named, not just prompted. A placeholder is the only label these
+                three had, which leaves a screen reader announcing "edit text"
+                and leaves everybody else with no label at all the moment they
+                start typing — the point at which knowing which box this is
+                matters. */}
+            <textarea
+              className="draft"
+              name="draft"
+              aria-label={t('task.draftLabel')}
+              defaultValue={body}
+              readOnly={sent || sending}
+              placeholder={t('task.draftPlaceholder')}
+            />
+            {/* The nearest thing here to a confirmation step: what is going out,
+                in a language the reviewer reads. */}
+            {outgoing && (
+              <details className="translation" open>
+                <summary>
+                  {sent ? t('task.whatWentOut') : t('task.whatYouAreAboutToSend')} · {outgoing.language}
+                </summary>
+                <pre className="email">{outgoing.content}</pre>
+              </details>
+            )}
+          </div>
           {language && !outgoing && body.trim() !== '' && (
             <p className="meta">{t('task.noTranslation', { language })}</p>
           )}
