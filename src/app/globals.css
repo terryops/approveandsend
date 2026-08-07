@@ -3,32 +3,51 @@
  * design system would be more code than the thing it styles.
  */
 
+/*
+ * Two palettes, and they are not the same palette lightened. Dark is zinc with
+ * an amber accent; light is the Stripe-ish blue-grey with indigo. Carried over
+ * from the desk this replaced, because the people using it had already learned
+ * where to look — amber means "this is the thing you act on", and relearning
+ * that costs more than any restyle is worth.
+ */
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1e222b;
-  --line: #2a2f3a;
-  --text: #e6e8ee;
-  --muted: #9aa2b1;
-  --accent: #7aa2f7;
-  --good: #7ddc9a;
-  --warn: #f0c674;
-  --bad: #f07178;
-  --radius: 10px;
+  --bg: #09090b;
+  --panel: #18181b;
+  --panel-2: #27272a;
+  --line: #27272a;
+  --line-strong: #3f3f46;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --faint: #71717a;
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --good: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --radius: 8px;
+  /* Flat in the dark: a shadow on a near-black panel reads as a smudge. */
+  --shadow: none;
+  --on-accent: #18181b;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f6f7f9;
+    --bg: #f6f9fc;
     --panel: #ffffff;
-    --panel-2: #f0f2f5;
-    --line: #dcdfe6;
-    --text: #1b1e25;
-    --muted: #646b7a;
-    --accent: #2f5fd0;
-    --good: #1f8a4c;
-    --warn: #9a6b00;
-    --bad: #c0392b;
+    --panel-2: #edf2f7;
+    --line: #e3e8ee;
+    --line-strong: #c1c9d2;
+    --text: #1a1f36;
+    --muted: #697386;
+    --faint: #8792a2;
+    --accent: #635bff;
+    --accent-hover: #5851eb;
+    --good: #0e6245;
+    --warn: #983705;
+    --bad: #a41c4e;
+    /* What separates a card from the page here, since both are near-white. */
+    --shadow: 0 2px 5px 0 rgb(60 66 87 / 0.08), 0 1px 1px 0 rgb(0 0 0 / 0.04);
+    --on-accent: #ffffff;
   }
 }
 
@@ -104,6 +123,7 @@ nav a.active {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 16px 18px;
   margin-bottom: 14px;
 }
@@ -353,6 +373,29 @@ select {
   font: inherit;
 }
 
+textarea::placeholder,
+input::placeholder {
+  color: var(--faint);
+}
+
+/* Named rather than left to the browser, because the default ring is drawn in
+   the system accent and lands on top of a border in ours. */
+textarea:focus,
+input[type='text']:focus,
+input[type='password']:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+textarea:hover,
+input[type='text']:hover,
+input[type='password']:hover,
+select:hover {
+  border-color: var(--line-strong);
+}
+
 textarea {
   resize: vertical;
 }
@@ -378,8 +421,15 @@ button:hover {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  /* Not white: the dark theme's accent is amber, and white on amber is the
+     one combination in either palette that fails to be readable. */
+  color: var(--on-accent);
   font-weight: 600;
+}
+
+button.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* A button that has to sit inside a table row without turning it into a
