@@ -4,6 +4,12 @@ const config: NextConfig = {
   // Without this Turbopack walks up to the nearest lockfile, which in a
   // monorepo or a checkout inside another project is the wrong root.
   turbopack: { root: import.meta.dirname },
+  // A reply can carry files, and a server action's body defaults to 1 MB —
+  // which is under one phone screenshot. The mail-side limit is the real one
+  // (see MAX_UPLOAD_BYTES); this only has to be above it, because a request
+  // rejected here is rejected by the framework with no message the reviewer
+  // can read, and the point of the smaller limit is the sentence it comes with.
+  experimental: { serverActions: { bodySizeLimit: '20mb' } },
   // better-sqlite3 is a native addon; bundling it produces a binary that
   // cannot find its own .node file at runtime.
   serverExternalPackages: ['better-sqlite3', 'imapflow', 'nodemailer', 'mailparser'],

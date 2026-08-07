@@ -135,6 +135,21 @@ export function getAttachment(
 }
 
 /**
+ * The types safe to render in our own origin, and worth rendering.
+ *
+ * An allowlist of raster formats, and short on purpose. SVG is absent and
+ * stays absent: it is a document that can carry script, so displaying one a
+ * customer sent would hand them the reviewer's session on our own domain —
+ * the exact trade the download route refuses to make. Everything here decodes
+ * to pixels and nothing else.
+ */
+const RENDERABLE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+export function isRenderableImage(contentType: string): boolean {
+  return RENDERABLE.has(contentType.split(';')[0]!.trim().toLowerCase());
+}
+
+/**
  * The files worth telling the drafter about, as a prompt line.
  *
  * Inline images are left out: a signature logo is not something the customer

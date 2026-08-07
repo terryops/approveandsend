@@ -14,6 +14,7 @@ import { resetWorkspaceConfig } from '../config/workspace';
 import { LEARN_FROM_SENT, TRANSLATE_TASK } from '../queue/handlers';
 import { listJobs } from '../queue/store';
 import { listAttachments } from '../tasks/attachments';
+import { listEvents } from '../tasks/events';
 import { listMessages } from '../tasks/messages';
 import { createTask, getTask, updateTask } from '../tasks/store';
 import { createOperator } from '../operators/store';
@@ -557,6 +558,28 @@ describe('sendReply', () => {
     expect(provider.sent[0]!.subject).toBe('Yesterday’s export outage is fixed');
     // Nothing to be in reply to, so nothing claiming to be.
     expect(provider.sent[0]!.inReplyTo).toBeUndefined();
+  });
+
+  it('carries the reviewer\u2019s files, and keeps only their names', async () => {
+    const task = seed();
+    const provider = new FakeMailbox();
+
+    await sendReply(
+      task.id,
+      {
+        finalReply: 'The invoice is attached.',
+        attachments: [{ filename: 'invoice.pdf', content: Buffer.from('%PDF') }],
+      },
+      { provider, db, learn: false },
+    );
+
+    expect(provider.sent[0]!.attachments?.[0]).toMatchObject({ filename: 'invoice.pdf' });
+    // Not stored, because the Sent folder is already holding the copy \u2014 but
+    // the audit trail has to be able to answer "why does this customer have
+    // our invoice", and only the event can.
+    const sentEvent = listEvents(task.id, db).find(event => event.action === 'sent');
+    expect(sentEvent?.detail).toBe('attached invoice.pdf');
+    expect(listAttachments(task.id, db)).toEqual([]);
   });
 
   it('sends an HTML part saying exactly what the text part says', async () => {

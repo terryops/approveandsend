@@ -80,8 +80,9 @@ today's mail; budget two or three model calls per archived email.
 
 Being clear about this early saves you an evening:
 
-- **One mailbox, one user.** One password, one signed cookie, no accounts. Two
-  people can share the login; the rulebook cannot tell them apart.
+- **One mailbox.** Named operators can sign in separately and the history says
+  who sent what, but there is one inbox and one rulebook, and the rulebook
+  learns from everybody at once.
 - **No routing, assignment, tagging or SLAs.** It is not a helpdesk and won't
   become one. If you need queues per agent, use a helpdesk.
 - **No inbound classification beyond drafting.** Every unanswered thread becomes
@@ -283,6 +284,30 @@ handing back a blob for the prompt to `JSON.stringify`. A source that breaks
 never stops the mail; drafting is queued even when every lookup failed. Full
 interface and worked example in
 [docs/context-sources.md](docs/context-sources.md).
+
+## Files, screenshots and the person on the other end
+
+Three things a reviewer needs that a drafting model does not.
+
+**Screenshots are shown.** "Here is what I'm seeing" is a whole genre of
+support email, and it arrives as an inline image. Pictures on a task are
+rendered on the page — PNG, JPEG, GIF and WebP, the formats that decode to
+pixels and nothing else. Everything else, SVG very much included, is still a
+download: an SVG is a document that can carry script, and displaying one a
+stranger sent inside your own origin hands them the reviewer's session.
+
+**Replies can carry files.** There is a file picker in the same form as the
+draft and the Send button, so what goes out is what is on screen. Nothing is
+stored on our side — the Sent folder is already keeping the copy — but the
+filenames go on the task's history, because "why does this customer have our
+invoice" is a question about the desk and only the audit trail can answer it.
+The cap is 15 MB per reply, checked before the send rather than after.
+
+**Every address links to its own page.** `/senders/someone@example.com` is one
+correspondent's whole file, chronological, every status. The context card on a
+task already tells the model "we have replied to them 3 times before"; this is
+for the reviewer who has read that and now needs to know *what we said*, which
+is usually the moment before they catch a reply about to contradict one.
 
 ## Deploying
 

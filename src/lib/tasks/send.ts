@@ -2,7 +2,8 @@ import type { Db } from '../db';
 import { getDb } from '../db';
 import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml } from '../mail/render';
-import type { MailProvider } from '../mail/types';
+import type { MailProvider, OutgoingAttachment } from '../mail/types';
+import { describeUploads } from '../mail/uploads';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
 import { clearAlternatives } from './alternatives';
 import { recordEvent } from './events';
@@ -33,6 +34,13 @@ export interface SendReplyInput {
    * or a caller with no session at all, like the demo seed.
    */
   sentBy?: string | null;
+  /**
+   * Files to send with it, already read into memory.
+   *
+   * Not persisted anywhere: the Sent folder keeps the copy. What survives here
+   * is their names, on the `sent` event — see `describeUploads`.
+   */
+  attachments?: OutgoingAttachment[];
 }
 
 export interface SendReplyOptions {
@@ -83,6 +91,7 @@ export async function sendReply(
     // instead; the ones that build their own MIME ignore it.
     ...(task.messageId ? { inReplyToProviderId: task.messageId } : {}),
     ...(task.threadId ? { threadId: task.threadId } : {}),
+    ...(input.attachments?.length ? { attachments: input.attachments } : {}),
   });
 
   const updated = updateTask(
@@ -119,7 +128,13 @@ export async function sendReply(
     console.warn('[tasks] could not record the sent reply against the thread:', error);
   }
 
-  recordEvent(taskId, 'sent', { ...(input.sentBy ? { actor: input.sentBy } : {}), db });
+  // The filenames, because they are the only trace of them that stays with us.
+  const carried = describeUploads(input.attachments ?? []);
+  recordEvent(taskId, 'sent', {
+    ...(input.sentBy ? { actor: input.sentBy } : {}),
+    ...(carried ? { detail: carried } : {}),
+    db,
+  });
 
   // The roads not taken. Nobody reads them once a reply has gone out, and a
   // desk that keeps every option it ever generated is a desk whose database

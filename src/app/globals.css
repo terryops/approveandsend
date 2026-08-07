@@ -265,6 +265,25 @@ pre.email {
   overflow: auto;
 }
 
+/* What the customer sent, at a size you can read without opening it and
+   small enough that three of them do not push the draft off the screen.
+   Capped by height rather than width: a phone screenshot is tall, and
+   constraining the wrong axis turns it into a thumbnail of a corner. */
+.pictures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pictures img {
+  max-height: 320px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: block;
+}
+
 textarea,
 input[type='text'],
 input[type='password'],

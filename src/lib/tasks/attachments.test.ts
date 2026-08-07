@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
-import { addAttachment, attachmentSummary, getAttachment, listAttachments } from './attachments';
+import { addAttachment, attachmentSummary, getAttachment, isRenderableImage, listAttachments } from './attachments';
 import { createTask } from './store';
 
 let db: Db;
@@ -91,3 +91,25 @@ describe('attachmentSummary', () => {
     expect(attachmentSummary(listAttachments(taskId, db))).toBe('export.log');
   });
 });
+
+describe('isRenderableImage', () => {
+  it('says yes to the formats that decode to pixels', () => {
+    expect(isRenderableImage('image/png')).toBe(true);
+    expect(isRenderableImage('image/jpeg')).toBe(true);
+    expect(isRenderableImage('IMAGE/GIF')).toBe(true);
+    expect(isRenderableImage('image/webp; name=shot.webp')).toBe(true);
+  });
+
+  it('says no to SVG, which is a document that can carry script', () => {
+    // Displayed in our own origin it would run as us, with the reviewer's
+    // session sitting right there. It is an image only by file extension.
+    expect(isRenderableImage('image/svg+xml')).toBe(false);
+  });
+
+  it('says no to everything that is not an image at all', () => {
+    expect(isRenderableImage('text/html')).toBe(false);
+    expect(isRenderableImage('application/pdf')).toBe(false);
+    expect(isRenderableImage('')).toBe(false);
+  });
+});
+

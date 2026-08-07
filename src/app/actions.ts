@@ -19,6 +19,7 @@ import {
 } from '@/lib/operators/store';
 import { t } from '@/lib/i18n';
 import { syncInbox } from '@/lib/ingest/sync';
+import { readUploads } from '@/lib/mail/uploads';
 import {
   DEFAULT_HANDLERS,
   createWorker,
@@ -145,10 +146,14 @@ export async function approveAndSend(form: FormData): Promise<void> {
     // The edited text is saved before the send is attempted: if the provider
     // is down, the reviewer's work is still on disk when they come back.
     updateTask(id, { draft: field(form, 'draft'), reviewerNotes: notes || null });
+    // Read before the send, so an oversized attachment fails the request
+    // rather than the mail — and fails it after the draft is already saved.
+    const attachments = await readUploads(form);
     await sendReply(id, {
       finalReply: field(form, 'draft'),
       ...(notes ? { reviewerNotes: notes } : {}),
       sentBy: (await currentOperator())?.id ?? null,
+      ...(attachments.length ? { attachments } : {}),
     });
   } catch (error) {
     failure = message(error);

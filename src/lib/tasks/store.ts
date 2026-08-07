@@ -165,6 +165,15 @@ export function getTask(id: string, db: Db = getDb()): Task | null {
 export interface ListTasksFilter {
   status?: TaskStatus;
   scope?: string;
+  /** Everything to or from one correspondent, case-insensitively. */
+  fromAddress?: string;
+  /**
+   * `queue` is the reviewer's order — urgent first, then newest. `newest` is
+   * chronological, which is the only useful order for one person's history:
+   * priority is a claim about what to do next, and nobody reading back through
+   * a correspondence wants last March's urgent email at the top.
+   */
+  order?: 'queue' | 'newest';
   limit?: number;
   offset?: number;
 }
@@ -181,11 +190,22 @@ export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[
     where.push('scope = ?');
     params.push(filter.scope);
   }
+  if (filter.fromAddress) {
+    // COLLATE NOCASE rather than LOWER() on both sides, for the same reason
+    // the history lookup does it: same answer, and it can use the index.
+    where.push('from_address = ? COLLATE NOCASE');
+    params.push(filter.fromAddress.trim());
+  }
+
+  const order =
+    filter.order === 'newest'
+      ? 'COALESCE(received_at, created_at) DESC'
+      : 'priority ASC, COALESCE(received_at, created_at) DESC';
 
   const rows = db
     .prepare(
       `SELECT * FROM tasks${where.length ? ` WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY priority ASC, COALESCE(received_at, created_at) DESC
+        ORDER BY ${order}
         LIMIT ? OFFSET ?`,
     )
     .all(...params, filter.limit ?? 50, filter.offset ?? 0) as TaskRow[];

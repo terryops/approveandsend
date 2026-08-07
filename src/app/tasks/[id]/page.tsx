@@ -5,7 +5,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
-import { listAttachments } from '@/lib/tasks/attachments';
+import { isRenderableImage, listAttachments } from '@/lib/tasks/attachments';
 import { listAlternatives } from '@/lib/tasks/alternatives';
 import { listEvents } from '@/lib/tasks/events';
 import { listMessages } from '@/lib/tasks/messages';
@@ -61,7 +61,14 @@ export default async function TaskPage({
   const rulesInPlay = listRules({ enabledOnly: true }).length;
   const context = listContext(task.id);
   const thread = listMessages(task.id);
-  const files = listAttachments(task.id).filter(file => !file.inline);
+  const attachments = listAttachments(task.id);
+  const files = attachments.filter(file => !file.inline);
+  // Inline ones included, and that is the point. A screenshot pasted into
+  // Gmail arrives inline, and it is very often the whole content of the email
+  // — "here is what I'm seeing". Filtering those out to keep signature logos
+  // off the page meant the one thing the customer actually sent was the one
+  // thing the reviewer could not see. A stray logo is a cheaper mistake.
+  const pictures = attachments.filter(file => isRenderableImage(file.contentType));
 
   // Only ever the translation of exactly what is rendered below it. A draft
   // regenerated since its translation was written shows none, because a
@@ -163,7 +170,13 @@ export default async function TaskPage({
               "the customer's email" is a lie on the one screen that has to be
               trusted. */}
           {task.origin === 'composed' ? `${t('compose.to')}: ` : ''}
-          {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
+          {/* The address is the link, because it is the thing being asked
+              about. "Have we talked to this person before, and what did we
+              say" is a question the context card answers in one sentence and
+              a reviewer sometimes needs the whole of. */}
+          <a href={`/senders/${encodeURIComponent(task.fromAddress)}`}>
+            {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
+          </a>
           {task.receivedAt ? ` · ${task.receivedAt.slice(0, 16).replace('T', ' ')}` : ''}
         </div>
         {task.origin === 'composed' && (
@@ -183,8 +196,31 @@ export default async function TaskPage({
             <pre className="email">{incoming.content}</pre>
           </details>
         )}
-        {/* Inline images are left out for the same reason the drafter is not
-            told about them: a signature logo is not a file anyone sent. */}
+        {/* Shown, not linked. `loading="lazy"` and a CSS height cap rather
+            than a thumbnailer: the bytes come from the mailbox on demand and
+            we keep no copy to resize, and a reviewer who needs the detail can
+            open the image itself. Plain <img>, not next/image — that wants to
+            fetch and cache customer attachments through its own optimiser,
+            which is a copy of exactly the data we have gone out of our way
+            not to keep. */}
+        {pictures.length > 0 && (
+          <div className="pictures">
+            {pictures.map(picture => (
+              <a key={picture.id} href={`/api/attachments/${task.id}/${picture.id}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/attachments/${task.id}/${picture.id}`}
+                  alt={picture.filename || t('task.unnamedAttachment')}
+                  loading="lazy"
+                />
+              </a>
+            ))}
+          </div>
+        )}
+        {/* Inline images are left out of the file list for the same reason the
+            drafter is not told about them: a signature logo is not a file
+            anyone sent. They are still rendered above, where being wrong about
+            that costs a picture rather than a fact. */}
         {files.length > 0 && (
           <p className="meta" style={{ marginTop: 12 }}>
             {t('task.attachments')}:{' '}
@@ -300,6 +336,17 @@ export default async function TaskPage({
           readOnly={sent}
           placeholder={t('task.notesPlaceholder')}
         />
+        {/* In the same form as the draft and the Send button, for the reason
+            the draft is: what goes out is what is on screen. The other buttons
+            in this form post the files too and ignore them — a wasted upload
+            on a Save, and the price of not splitting the one form that must
+            not be split. */}
+        {!sent && (
+          <label className="meta">
+            {t('task.attach')}
+            <input type="file" name="files" multiple />
+          </label>
+        )}
         {!sent && (
           <div className="actions">
             <button className="primary" type="submit">

@@ -1,6 +1,6 @@
 import { hasSession } from '@/lib/auth/guard';
 import { mailProvider } from '@/lib/mail/config';
-import { getAttachment } from '@/lib/tasks/attachments';
+import { getAttachment, isRenderableImage } from '@/lib/tasks/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,14 +37,28 @@ export async function GET(
       attachment.attachmentId,
     );
 
+    const type = file.contentType || attachment.contentType;
+
+    // Downloaded, unless it is a picture. A support desk runs on screenshots,
+    // and a screenshot behind a download link is one nobody looks at — so the
+    // narrowest possible exception is made for formats that decode to pixels
+    // and cannot carry script. Anything else, HTML and SVG very much included,
+    // is still served as a file: rendering one in our own origin would hand
+    // whoever sent it the reviewer's session.
+    //
+    // `X-Content-Type-Options` is what makes the allowlist mean anything. A
+    // browser left to sniff can decide our "image/png" is really HTML, and
+    // then the check above was on a label rather than on the bytes.
+    const renderable = isRenderableImage(type);
+    const filename = file.filename || attachment.filename || 'attachment';
+
     return new Response(new Uint8Array(file.content), {
       headers: {
-        'Content-Type': file.contentType || attachment.contentType,
-        // Always an attachment, never inline. Rendering a customer's HTML or
-        // SVG in our own origin would hand them the reviewer's session.
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(
-          file.filename || attachment.filename || 'attachment',
+        'Content-Type': type,
+        'Content-Disposition': `${renderable ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(
+          filename,
         )}`,
+        'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'no-store',
       },
     });
