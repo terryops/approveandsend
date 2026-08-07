@@ -139,6 +139,17 @@ describe('deciding whether anything needs translating', () => {
     expect(await translateForReview('您好')).toBeNull();
   });
 
+  it('tells the model a regional variant of the target is the target', async () => {
+    queued.push('SAME');
+
+    // `zh-CN` in the first line reads as "convert this", so a letter from
+    // Taipei came back rewritten into Simplified: a paid call whose whole
+    // output was a script change, on the panel that exists to show the
+    // reviewer the customer's own words.
+    expect(await translateForReview('您好，我需要協助處理統一編號。')).toBeNull();
+    expect(prompts[0]).toContain('Never convert between them');
+  });
+
   it('does not call the model at all for empty text', async () => {
     expect(await translateForReview('   ')).toBeNull();
     expect(prompts).toHaveLength(0);

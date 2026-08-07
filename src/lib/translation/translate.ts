@@ -35,6 +35,17 @@ function prompt(text: string, language: string): string {
     '',
     'Rules:',
     `- If the text is already written in ${language}, reply with exactly: ${ALREADY}`,
+    // A regional variant of the target is the target. Without this the tag
+    // `zh-CN` reads as an instruction to convert, so a letter from Taipei came
+    // back rewritten into Simplified — a paid model call whose entire output
+    // was a script change, and which cost the reviewer the customer's own
+    // wording on the panel that exists to show them exactly that. The rule is
+    // written for any language, not just Chinese: Brazilian and European
+    // Portuguese are the same story.
+    '- A different regional variant or script of the same language counts as',
+    `  already being ${language}: answer ${ALREADY} for it. Traditional and`,
+    '  Simplified Chinese are one language here. Never convert between them,',
+    '  and never transliterate one script into another.',
     '- Otherwise reply with the translation and nothing else: no preamble, no',
     '  notes, no explanation of your choices, no quotation marks around it.',
     '- Keep the line breaks and paragraph structure of the original.',

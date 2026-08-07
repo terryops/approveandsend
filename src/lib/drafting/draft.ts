@@ -10,6 +10,7 @@ import { contextForPrompt } from '../context/gather';
 import { classifyTopic } from './classify';
 import type { Db } from '../db';
 import { getDb } from '../db';
+import { operatorLanguage } from '../i18n';
 import { extractJson } from '../json-repair';
 import { selectRules } from '../rules/prompt';
 import { formatRetrieved, retrieveRules } from '../rules/retrieve';
@@ -218,10 +219,26 @@ ${
       'look machine-written.\n'
     : ''
 }
+## Two languages, and which is which
+The reply goes to the customer, so it is written in the language they wrote in.
+
+Everything else you return is a note to the colleague who reviews it, and they
+read ${operatorLanguage()}. So \`intent\`, \`keyPoints\` and \`suggestedActions\` are
+written in ${operatorLanguage()} whatever language the mail arrived in — a queue
+where every other summary is in a language the reviewer has to guess at is a
+queue they read one row at a time instead of scanning. Quote the customer's own
+words where the exact wording matters, and leave product names, error strings
+and identifiers exactly as they appear.
+
+A quotation is not a translation. Where you quote them, the words stay in the
+script they wrote — a phrase lifted from a Traditional Chinese mail is quoted in
+Traditional Chinese even though the sentence around it is Simplified. The point
+of a quotation is that the reviewer can find it in the letter above.
+
 ## What to return
 JSON only, no prose around it:
 {
-  "intent": "one specific sentence about what this person wants and why — 'wants a refund because the export was silent', not 'refund'",
+  "intent": "one specific sentence, in ${operatorLanguage()}, about what this person wants and why — 'wants a refund because the export was silent', not 'refund'",
   "language": "ISO 639-1 code of the language they wrote in",
   "sentiment": "positive | neutral | negative | angry",${
     // Asked for only where nothing else can answer it. Where the desk has a
@@ -232,9 +249,9 @@ JSON only, no prose around it:
       ? ''
       : '\n  "scope": "a short lowercase slug for the kind of mail this is, e.g. refund, bug-report, sales, how-to",'
   }
-  "keyPoints": ["what they actually said, in their terms"],
+  "keyPoints": ["what they actually said, in ${operatorLanguage()}"],
   "cause": "system_bug | known_limitation | ux_issue | user_error | not_a_problem",
-  "suggestedActions": ["what a human may need to do outside this reply, if anything"],
+  "suggestedActions": ["what a human may need to do outside this reply, if anything, in ${operatorLanguage()}"],
   "subject": "the subject line to answer under, in their language — say what the reply contains, e.g. 'Your refund has been issued'. Leave it empty to keep theirs.",
   "draft": "the reply itself, ready to send${workspace.signature ? '' : ' — no signature'}"
 }`;
@@ -334,7 +351,7 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
   const topic = task.scope || (await classifyTopic(task, workspace));
 
   const rules = listRules({ enabledOnly: true }, db);
-  const block = selectRules(rules, { ...(topic ? { topic } : {}) });
+  const block = selectRules(rules, topic ? { topic } : {});
 
   // Anything the budget pushed out is offered back as an index of summaries,
   // and whatever this email actually needs is read in full. On a rulebook

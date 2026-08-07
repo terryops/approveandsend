@@ -28,6 +28,23 @@ export interface Topic {
    * charge, wants to cancel" beats "billing issues".
    */
   description: string;
+  /**
+   * The name a reviewer sees, in the language they read.
+   *
+   * The slug is a machine name — it has to be one, because a rule tagged
+   * `billing-refund-cancel` and a task tagged `billing-refund-cancel` have to
+   * be the same string forever. But it is a poor label: a queue of
+   * `partnership-and-press` and `billing-invoice-receipt` reads as English
+   * kebab-case to somebody whose interface is in Chinese, and at tag width the
+   * two of them look like the same word.
+   *
+   * Written here rather than in the interface translations on purpose. This
+   * list is one deployment's vocabulary, invented by whoever runs the desk —
+   * shipping translations of it would mean shipping their business in the
+   * product's language files. Optional, and the slug shows through when it is
+   * missing, so an existing config keeps working unchanged.
+   */
+  label?: string;
 }
 
 export interface WorkspaceConfig {
@@ -176,9 +193,42 @@ function asTopicList(value: unknown): Topic[] | undefined {
     const record = entry as Record<string, unknown>;
     const slug = normaliseTopicSlug(record.slug);
     if (!slug) continue;
-    bySlug.set(slug, { slug, description: asString(record.description) ?? '' });
+    const label = asString(record.label);
+    bySlug.set(slug, {
+      slug,
+      description: asString(record.description) ?? '',
+      ...(label ? { label } : {}),
+    });
   }
   return [...bySlug.values()];
+}
+
+/**
+ * What to print where a topic appears.
+ *
+ * Takes the slug rather than the Topic, because the callers have a slug: it is
+ * what the task row and the rule carry. A slug with no topic behind it still
+ * renders — it is either a free-form scope from an install with no vocabulary
+ * configured, or a topic somebody removed from the config while tasks were
+ * still tagged with it, and in both cases the raw slug is the honest answer.
+ */
+export function topicLabel(slug: string, config: WorkspaceConfig = getWorkspaceConfig()): string {
+  return config.topics.find(topic => topic.slug === slug)?.label || slug;
+}
+
+/**
+ * Slug to label, for the search box.
+ *
+ * Only the topics that actually have a label: a slug mapped to itself would
+ * make the search do the same work twice, since the slug is already one of the
+ * columns free text is matched against.
+ */
+export function topicLabelMap(
+  config: WorkspaceConfig = getWorkspaceConfig(),
+): Record<string, string> {
+  return Object.fromEntries(
+    config.topics.filter(topic => topic.label).map(topic => [topic.slug, topic.label as string]),
+  );
 }
 
 function asString(value: unknown): string | undefined {
@@ -290,7 +340,12 @@ export function describeWorkspace(config: WorkspaceConfig): string {
 
   lines.push(
     config.replyLanguage === 'match'
-      ? '\nReply in the same language the customer wrote in.'
+      ? '\nReply in the same language the customer wrote in, in the same script and' +
+        ' regional variant they used. Somebody who writes in Traditional Chinese' +
+        ' gets Traditional Chinese back; answering them in Simplified is the same' +
+        ' discourtesy as answering a British customer in American spelling and' +
+        ' currency, and it is the kind a Taiwanese or Hong Kong customer notices' +
+        ' in the first line.'
       : `\nReply in ${config.replyLanguage} regardless of the language the customer wrote in.`,
   );
 
