@@ -166,6 +166,15 @@ export function getTask(id: string, db: Db = getDb()): Task | null {
 
 export interface ListTasksFilter {
   status?: TaskStatus;
+  /**
+   * Statuses to leave out, which is how "everything" is asked for without
+   * asking for the bin. A support address gets more spam than support, so an
+   * unfiltered list is mostly auto-dismissed pitches — and a list that is
+   * mostly noise is one nobody reads to the bottom of. Ignored when `status`
+   * is set, since asking for one status and excluding it is a contradiction
+   * the caller should not be able to express by accident.
+   */
+  excludeStatuses?: readonly TaskStatus[];
   scope?: string;
   /** Everything to or from one correspondent, case-insensitively. */
   fromAddress?: string;
@@ -176,17 +185,79 @@ export interface ListTasksFilter {
    * a correspondence wants last March's urgent email at the top.
    */
   order?: 'queue' | 'newest';
+  /**
+   * Free text, matched against everything a person might remember about a
+   * task: the subject, who sent it, what they wrote, what the model made of it,
+   * and the reply — because "which one did I promise a refund in" is a real
+   * question and the promise is in the draft, not the mail.
+   *
+   * Words are ANDed and each one may land in a different column, which is what
+   * makes a query work on a bilingual desk: `harry 退款` matches an English
+   * mail whose Chinese summary mentions the refund. Substring, not
+   * whole-word — there is no tokeniser here that would segment Chinese, and a
+   * search that cannot find 退款 inside 退款与取消 is a search nobody trusts.
+   */
+  search?: string;
+  /**
+   * Topic slug to reviewer-facing label, so the name on screen is the name you
+   * can search for.
+   *
+   * The tag on a row reads 退款与取消 and the column behind it holds
+   * `billing-refund-cancel`. Without this, typing what you are looking at
+   * matches nothing — a label you can see and cannot search is worse than the
+   * raw slug, because it looks like the search is broken rather than foreign.
+   *
+   * Passed in rather than read here: this table knows nothing about the
+   * workspace vocabulary, and it should stay that way.
+   */
+  topicLabels?: Readonly<Record<string, string>>;
   limit?: number;
   offset?: number;
 }
 
-export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[] {
+/** The columns free text is matched against, in the order a person scans them. */
+const SEARCH_COLUMNS = [
+  'subject',
+  'from_name',
+  'from_address',
+  'body',
+  'analysis',
+  'draft',
+  'final_reply',
+  // The slug as stored, so somebody who knows the vocabulary can search it
+  // directly. The label they see is handled separately — see `topicLabels`.
+  'scope',
+] as const;
+
+/**
+ * The wildcards a searcher did not mean.
+ *
+ * `%` and `_` are LIKE metacharacters, so a query for `100%` would otherwise
+ * match every row. Escaped with a backslash, declared by the ESCAPE clause
+ * below — and the backslash itself has to go first or it would escape the
+ * escapes we are about to add.
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * The WHERE that both the list and the counts are built from.
+ *
+ * One function on purpose. These were two copies of the same conditions for
+ * about ten minutes, which is how a tab comes to say 6 above a list of 1: the
+ * count and the query it labels have to be the same question asked twice.
+ */
+function buildWhere(filter: ListTasksFilter): { sql: string; params: unknown[] } {
   const where: string[] = [];
   const params: unknown[] = [];
 
   if (filter.status) {
     where.push('status = ?');
     params.push(filter.status);
+  } else if (filter.excludeStatuses?.length) {
+    where.push(`status NOT IN (${filter.excludeStatuses.map(() => '?').join(', ')})`);
+    params.push(...filter.excludeStatuses);
   }
   if (filter.scope) {
     where.push('scope = ?');
@@ -199,6 +270,33 @@ export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[
     params.push(filter.fromAddress.trim());
   }
 
+  const labels = Object.entries(filter.topicLabels ?? {});
+
+  // Split on whitespace, so a phrase typed with a space between the words is
+  // two requirements rather than one literal that matches nothing.
+  for (const term of filter.search?.trim().split(/\s+/).filter(Boolean) ?? []) {
+    const pattern = `%${escapeLike(term)}%`;
+    const clauses = SEARCH_COLUMNS.map(c => `${c} LIKE ? ESCAPE '\\'`);
+    params.push(...SEARCH_COLUMNS.map(() => pattern));
+
+    // ORed alongside the text match, never instead of it: 退款 has to keep
+    // finding a summary that says 退款 as well as a task tagged 退款与取消.
+    const needle = term.toLowerCase();
+    const slugs = labels.filter(([, label]) => label.toLowerCase().includes(needle)).map(([slug]) => slug);
+    if (slugs.length) {
+      clauses.push(`scope IN (${slugs.map(() => '?').join(', ')})`);
+      params.push(...slugs);
+    }
+
+    where.push(`(${clauses.join(' OR ')})`);
+  }
+
+  return { sql: where.length ? ` WHERE ${where.join(' AND ')}` : '', params };
+}
+
+export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[] {
+  const { sql, params } = buildWhere(filter);
+
   const order =
     filter.order === 'newest'
       ? 'COALESCE(received_at, created_at) DESC'
@@ -206,7 +304,7 @@ export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[
 
   const rows = db
     .prepare(
-      `SELECT * FROM tasks${where.length ? ` WHERE ${where.join(' AND ')}` : ''}
+      `SELECT * FROM tasks${sql}
         ORDER BY ${order}
         LIMIT ? OFFSET ?`,
     )
@@ -215,11 +313,25 @@ export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[
   return rows.map(mapTask);
 }
 
-export function countTasksByStatus(db: Db = getDb()): Record<string, number> {
-  const rows = db.prepare('SELECT status, COUNT(*) AS count FROM tasks GROUP BY status').all() as {
-    status: string;
-    count: number;
-  }[];
+/**
+ * How many in each status, optionally within a search.
+ *
+ * The filter exists so the tabs can count the query rather than the database.
+ * A tab reading "awaiting review 6" over a single result is not a rounding
+ * error, it is the interface disagreeing with itself about what you asked for.
+ *
+ * `status` and `excludeStatuses` are dropped before counting: this returns one
+ * number per status, so filtering to a status would leave the other tabs
+ * showing zero and make every one of them look empty.
+ */
+export function countTasksByStatus(
+  filter: Omit<ListTasksFilter, 'status' | 'excludeStatuses'> = {},
+  db: Db = getDb(),
+): Record<string, number> {
+  const { sql, params } = buildWhere(filter);
+  const rows = db
+    .prepare(`SELECT status, COUNT(*) AS count FROM tasks${sql} GROUP BY status`)
+    .all(...params) as { status: string; count: number }[];
   return Object.fromEntries(rows.map(row => [row.status, row.count]));
 }
 

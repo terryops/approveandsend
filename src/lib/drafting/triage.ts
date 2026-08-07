@@ -47,12 +47,32 @@ Answer IGNORE only for mail sent to us rather than written to us:
 - Marketing newsletters and promotional blasts
 - Automated notifications, autoresponders and delivery receipts that ask
   nothing and expect no answer
+- Unsolicited vulnerability reports and bug-bounty approaches from someone who
+  is not a customer: a scan result, a missing-header or missing-SPF finding, a
+  subdomain-takeover claim, an offer to "report a security issue" in exchange
+  for a reward or a hall-of-fame listing. These arrive in volume, they are
+  form letters, and there is no bounty programme to answer them with.
+
+A pitch does not stop being a pitch because it is polite, because it is signed
+with a real name, or because it calls itself a partnership. Sort on what the
+sender wants: somebody selling us something, or asking us to buy placement,
+links, coverage, agency services or sourcing, is IGNORE however warmly it is
+written and however specifically it names our product — naming the product is
+what a mail-merge does. The same goes for an approach that opens by admiring
+the site and never says what it is for.
 
 Answer REPLY for everything else, and in particular for:
 - Anyone who uses the product, pays for it, or is trying to
 - A question, a complaint, a bug report or a refund request, however rude
-- A named person proposing something specific to this company, even if what
-  they want is a partnership rather than support — a real approach is not spam
+- Somebody offering us something we would plausibly want and naming terms for
+  it: a named company proposing an integration with a product of theirs we
+  could check exists, a reseller with a market and a volume, a journalist at a
+  named outlet with a deadline. Not "we do SEO / guest posts / sourcing / app
+  promotion and would love to work with you", which is the form letter.
+- A security report that is about this customer's own account, that says a
+  breach or a leak already happened, or that comes from law enforcement or a
+  lawyer. Volume of cold reports is a reason to skip the cold ones, never a
+  reason to skip a real incident.
 - Anything you are not sure about
 
 That last line is the important one. A pitch that gets answered costs a few

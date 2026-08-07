@@ -1,5 +1,5 @@
 import { requirePage } from '@/lib/auth/guard';
-import { getWorkspaceConfig } from '@/lib/config/workspace';
+import { getWorkspaceConfig, type Topic } from '@/lib/config/workspace';
 import { t } from '@/lib/i18n';
 import { consolidationGate } from '@/lib/rules/consolidate';
 import { STARTER_RULES } from '@/lib/rules/starter';
@@ -79,20 +79,27 @@ function TopicPicker({
   topics,
   selected,
 }: {
-  topics: { slug: string; description: string }[];
+  topics: Topic[];
   selected: string[];
 }) {
   return (
     <div className="row" style={{ flexWrap: 'wrap', gap: '4px 12px' }}>
       {topics.map((topic) => (
-        <label key={topic.slug} className="meta" title={topic.description}>
+        // Both the slug and the description on the tooltip: the label says
+        // which topic this is, and the slug is what the rule will be stored
+        // under, which is the thing you need when a rule is not matching.
+        <label
+          key={topic.slug}
+          className="meta"
+          title={topic.description ? `${topic.slug} — ${topic.description}` : topic.slug}
+        >
           <input
             type="checkbox"
             name="topics"
             value={topic.slug}
             defaultChecked={selected.includes(topic.slug)}
           />{' '}
-          {topic.slug}
+          {topic.label || topic.slug}
         </label>
       ))}
     </div>

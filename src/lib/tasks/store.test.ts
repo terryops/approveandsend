@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
-import { createTask, listTasks, updateTask } from './store';
+import { countTasksByStatus, createTask, listTasks, updateTask } from './store';
 
 let db: Db;
 
@@ -69,5 +69,165 @@ describe('listTasks by sender', () => {
       'old-and-urgent',
       'recent',
     ]);
+  });
+});
+
+describe('listTasks by free text', () => {
+  function mail(input: {
+    id: string;
+    subject: string;
+    from?: string;
+    fromName?: string;
+    body?: string;
+    intent?: string;
+    draft?: string;
+    status?: 'sent' | 'dismissed';
+  }): void {
+    const { task } = createTask(
+      {
+        messageId: input.id,
+        subject: input.subject,
+        fromAddress: input.from ?? 'lin@example.com',
+        ...(input.fromName ? { fromName: input.fromName } : {}),
+        ...(input.body ? { body: input.body } : {}),
+        receivedAt: '2026-02-01T00:00:00.000Z',
+      },
+      db,
+    );
+    updateTask(
+      task.id,
+      {
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.draft ? { draft: input.draft } : {}),
+        ...(input.intent
+          ? {
+              analysis: {
+                intent: input.intent,
+                language: 'en',
+                sentiment: 'neutral',
+                keyPoints: [],
+                suggestedActions: [],
+              },
+            }
+          : {}),
+      },
+      db,
+    );
+  }
+
+  it('looks in the subject, the sender, the body and the reply', () => {
+    mail({ id: 'a', subject: 'Where is my export' });
+    mail({ id: 'b', subject: 'Hello', fromName: 'Priya Raman' });
+    mail({ id: 'c', subject: 'Hello', body: 'the invoice needs our VAT number' });
+    mail({ id: 'd', subject: 'Hello', draft: 'We have issued the refund today.' });
+
+    expect(listTasks({ search: 'export' }, db).map(t => t.messageId)).toEqual(['a']);
+    expect(listTasks({ search: 'priya' }, db).map(t => t.messageId)).toEqual(['b']);
+    expect(listTasks({ search: 'VAT' }, db).map(t => t.messageId)).toEqual(['c']);
+    // The promise lives in the draft, and "which one did I promise that in" is
+    // the reason the draft is searched at all.
+    expect(listTasks({ search: 'refund' }, db).map(t => t.messageId)).toEqual(['d']);
+  });
+
+  it('searches the analysis, so a Chinese summary finds an English mail', () => {
+    // The whole point on a bilingual desk: the mail arrived in English and the
+    // summary written for the reviewer is in their language. Searching in
+    // either has to find it.
+    mail({ id: 'a', subject: 'Refund for the annual plan', intent: '用户误订年缴，希望退回差额' });
+
+    expect(listTasks({ search: '退款' }, db)).toHaveLength(0);
+    expect(listTasks({ search: '退回' }, db).map(t => t.messageId)).toEqual(['a']);
+    expect(listTasks({ search: 'annual' }, db).map(t => t.messageId)).toEqual(['a']);
+  });
+
+  it('matches a substring, because nothing here segments Chinese', () => {
+    mail({ id: 'a', subject: '为什么删除不了账户' });
+
+    // No tokeniser would split this into words, so whole-word matching would
+    // mean Chinese is unsearchable.
+    expect(listTasks({ search: '删除' }, db).map(t => t.messageId)).toEqual(['a']);
+  });
+
+  it('ignores case, and does not care which column each word landed in', () => {
+    mail({ id: 'a', subject: 'API 401 error', fromName: 'Harry WY', intent: '客户希望追加测试积分' });
+    mail({ id: 'b', subject: 'API question', fromName: 'Someone Else' });
+
+    // Three words, three different columns, one row.
+    expect(listTasks({ search: 'harry api 积分' }, db).map(t => t.messageId)).toEqual(['a']);
+    // Every word has to land somewhere, or it is not a match.
+    expect(listTasks({ search: 'harry nonexistent' }, db)).toHaveLength(0);
+  });
+
+  it('treats % and _ as characters somebody typed, not as wildcards', () => {
+    mail({ id: 'a', subject: 'The 50% education discount' });
+    mail({ id: 'b', subject: 'Nothing to do with discounts' });
+
+    // Unescaped, `%` in a LIKE pattern matches anything, so this would return
+    // both rows and the search would look broken in the least obvious way.
+    expect(listTasks({ search: '50%' }, db).map(t => t.messageId)).toEqual(['a']);
+    // A bare `%` is a character to look for, so it finds the row that has one
+    // and not the row that does not. Unescaped it would return both.
+    expect(listTasks({ search: '%' }, db).map(t => t.messageId)).toEqual(['a']);
+    expect(listTasks({ search: '_' }, db)).toHaveLength(0);
+  });
+
+  it('reaches the archive, and still narrows to a status when asked', () => {
+    mail({ id: 'a', subject: 'guest post offer', status: 'dismissed' });
+    mail({ id: 'b', subject: 'guest post enquiry' });
+
+    // A dismissed pitch is exactly what somebody searches for, so a search
+    // that stopped at the queue would miss the common case.
+    expect(listTasks({ search: 'guest post' }, db)).toHaveLength(2);
+    expect(listTasks({ search: 'guest post', status: 'dismissed' }, db).map(t => t.messageId)).toEqual(['a']);
+  });
+
+  it('finds a row by the topic label shown on it, not just the slug behind it', () => {
+    const LABELS = { 'billing-refund-cancel': '退款与取消', 'api-and-integration': 'API 与集成' };
+    const { task } = createTask(
+      { messageId: 'a', subject: 'Change annual to monthly', fromAddress: 'lin@example.com' },
+      db,
+    );
+    updateTask(task.id, { scope: 'billing-refund-cancel' }, db);
+    mail({ id: 'b', subject: 'unrelated' });
+
+    // The tag reads 退款与取消 and the column holds billing-refund-cancel, so
+    // without the bridge the thing on screen is the one thing you cannot type.
+    expect(listTasks({ search: '退款与取消', topicLabels: LABELS }, db).map(t => t.messageId)).toEqual(['a']);
+    expect(listTasks({ search: '退款', topicLabels: LABELS }, db).map(t => t.messageId)).toEqual(['a']);
+    // The slug still works for anyone who knows it.
+    expect(listTasks({ search: 'billing-refund', topicLabels: LABELS }, db).map(t => t.messageId)).toEqual(['a']);
+    // And a label that matches nothing on this row does not drag it in.
+    expect(listTasks({ search: 'API 与集成', topicLabels: LABELS }, db)).toHaveLength(0);
+  });
+
+  it('adds the label match, it does not replace the text match', () => {
+    const LABELS = { 'billing-refund-cancel': '退款与取消' };
+    // Tagged something else entirely, but its summary says the word.
+    mail({ id: 'a', subject: 'Hello', intent: '用户要求退款' });
+
+    // Were the term swapped for the slug instead of ORed with it, this row —
+    // the one that literally says 退款 — would stop being found.
+    expect(listTasks({ search: '退款', topicLabels: LABELS }, db).map(t => t.messageId)).toEqual(['a']);
+  });
+
+  it('is not a filter at all when it is blank', () => {
+    mail({ id: 'a', subject: 'one' });
+    mail({ id: 'b', subject: 'two' });
+
+    expect(listTasks({ search: '   ' }, db)).toHaveLength(2);
+    expect(listTasks({ search: '' }, db)).toHaveLength(2);
+  });
+});
+
+describe('countTasksByStatus', () => {
+  it('counts the search, so a tab cannot advertise rows the list will not show', () => {
+    const { task: a } = createTask({ messageId: 'a', subject: 'refund please', fromAddress: 'a@x.com' }, db);
+    createTask({ messageId: 'b', subject: 'refund please too', fromAddress: 'b@x.com' }, db);
+    createTask({ messageId: 'c', subject: 'unrelated', fromAddress: 'c@x.com' }, db);
+    updateTask(a.id, { status: 'dismissed' }, db);
+
+    expect(countTasksByStatus({}, db)).toEqual({ pending: 2, dismissed: 1 });
+    expect(countTasksByStatus({ search: 'refund' }, db)).toEqual({ pending: 1, dismissed: 1 });
+    expect(countTasksByStatus({ search: 'unrelated' }, db)).toEqual({ pending: 1 });
   });
 });

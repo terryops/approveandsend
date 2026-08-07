@@ -45,6 +45,38 @@ export const LOCALES = {
 export type Locale = keyof typeof LOCALES;
 
 /**
+ * The same languages, named the way a prompt should name them.
+ *
+ * `LOCALES` is for a dropdown, where a language calls itself what its own
+ * speakers call it. A model is told which language to write in in English,
+ * because "write in 简体中文" is an instruction half in the answer — and
+ * "Simplified Chinese" is unambiguous in a way that the bare tag `zh-CN` is
+ * not.
+ */
+const LOCALE_NAMES: Record<Locale, string> = {
+  en: 'English',
+  'zh-CN': 'Simplified Chinese',
+  ja: 'Japanese',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+};
+
+/**
+ * What language the people running this desk read.
+ *
+ * Used for the parts of a task that are written *about* an email rather than
+ * *to* its sender: the one-line intent, the key points, the suggested actions.
+ * Those are notes to a colleague, and a colleague who reads Chinese should not
+ * have to read a Portuguese summary of a Portuguese complaint to find out
+ * whether it is theirs. The reply itself still goes out in the customer's
+ * language — that is a different question with a different answer.
+ */
+export function operatorLanguage(): string {
+  return LOCALE_NAMES[locale()];
+}
+
+/**
  * English is the source; every other locale must answer every key it does.
  *
  * Keys from `en`, values widened to `string` — `typeof en` alone would carry
