@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requirePage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listTasks } from '@/lib/tasks/store';
+import { deskedAt } from '@/lib/tasks/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,35 +51,56 @@ export default async function SenderPage({
 
       <h1>{email}</h1>
       <p className="meta">
-        {tasks.length === 0
-          ? t('sender.none')
-          : t('sender.summary', { total: tasks.length, replied: replied.length })}
+        {tasks.length === 0 ? (
+          t('sender.none')
+        ) : (
+          <>
+            {t('sender.summary', { total: tasks.length, replied: replied.length })}
+            {' · '}
+            {/* The question that follows "what did we tell them" is almost
+                always "and what are they worth to us", so it has an answer on
+                the page that raises it. */}
+            <Link href={`/billing/${encodeURIComponent(email)}`}>{t('sender.billing')}</Link>
+          </>
+        )}
       </p>
 
       {tasks.length > 0 && (
-        <div className="card">
-          <ul className="list">
-            {tasks.map(task => (
-              <li key={task.id}>
-                <div className="row">
-                  <a className="subject grow" href={`/tasks/${task.id}`}>
-                    {task.subject || t('task.noSubject')}
-                  </a>
-                  <span className={`tag ${task.status}`}>{t(`task.status.${task.status}`)}</span>
-                </div>
-                <div className="meta">
-                  {when(task.sentAt ?? task.receivedAt)}
-                  {task.scope ? ` · ${task.scope}` : ''}
-                </div>
-                {/* What was actually said, not what was understood. On this
-                    page the reply is the record; the analysis of the incoming
-                    message is a note-to-self that has already served its
-                    purpose. */}
-                {task.finalReply && <div className="snippet">{task.finalReply.slice(0, 220)}</div>}
-              </li>
-            ))}
-          </ul>
-        </div>
+        // A line rather than a list of cards. This page is opened to read a
+        // correspondence back, and a correspondence has a direction — the rule
+        // down the left and a mark per entry are what make forty rows read as
+        // one thread instead of forty unrelated records.
+        <ol className="thread-line">
+          {tasks.map(task => (
+            <li key={task.id} className={task.status}>
+              <span className={`mark ${task.status}`} aria-hidden="true" />
+              <p className="when">
+                {when(task.sentAt ?? deskedAt(task))} · {t(`task.status.${task.status}`)}
+                {task.scope ? ` · ${task.scope}` : ''}
+              </p>
+              <p className="what">
+                <Link href={`/tasks/${task.id}`}>{task.subject || t('task.noSubject')}</Link>
+              </p>
+
+              {/* What was actually said, in full and at body size. It is the
+                  only quoted text on this page — everything else is a note
+                  about it — and it used to be 220 grey characters with the
+                  rest cut off, which is where the promises live: "five to ten
+                  working days", "we'll refund this one". Those are precisely
+                  the sentences the next reply must not contradict, and a
+                  support reply is a few paragraphs, so there is nothing to
+                  save by truncating it. */}
+              {task.finalReply && <p className="said">{task.finalReply}</p>}
+
+              {/* Deciding not to answer is a decision too, so it stays on the
+                  line, and the reason is written at reading weight rather than
+                  filed under the row. */}
+              {task.status === 'dismissed' && task.rejectionReason && (
+                <p className="meta">{t('task.rejectedBecause', { reason: task.rejectionReason })}</p>
+              )}
+            </li>
+          ))}
+        </ol>
       )}
     </>
   );

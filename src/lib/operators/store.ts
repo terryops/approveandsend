@@ -5,21 +5,28 @@ import { getDb, type Db } from '../db';
 /**
  * Who is approving the mail.
  *
- * There are no roles here. Everyone who can log in can do everything, and the
- * whole value of the table is the signature on the outcome: a reply that went
- * out under someone's name, a rule that someone changed. Adding permissions
- * would mean the system could tell a colleague no, and on a desk of four
- * people that is a cost with nothing on the other side of it.
+ * There is one bit of role here and no more: `admin`. Everyone who can log in
+ * can do all of the *work* — read any task, edit any draft, send under their
+ * own name, write rules — and the whole value of the table is still the
+ * signature on the outcome. What the flag governs is the four screens that are
+ * not work: the queue, the archive scan, this list, and the settings that hold
+ * the mailbox password and the model key. A reviewer pressing the wrong thing
+ * there does not send a bad reply, which is recoverable; it spends money, or
+ * retires a colleague, or points the desk at a different mailbox.
  *
- * `ADMIN_PASSWORD` keeps working alongside this. It logs in as nobody in
- * particular — attribution reads "unattributed" — which is right for a
- * one-person install and is also the bootstrap path for creating the first
- * operator.
+ * `ADMIN_PASSWORD` keeps working alongside this and is always an admin: it is
+ * the shared key to the whole install, so treating it as anything less would
+ * be a lock that opens for everyone and refuses the person holding the key. It
+ * still logs in as nobody in particular — attribution reads "unattributed" —
+ * which is right for a one-person install and is also the bootstrap path for
+ * creating the first operator.
  */
 
 export interface Operator {
   id: string;
   name: string;
+  /** May reach the queue, the archive, this list and the settings. */
+  admin: boolean;
   createdAt: string;
   lastSeenAt: string | null;
   disabledAt: string | null;
@@ -29,6 +36,7 @@ interface Row {
   id: string;
   name: string;
   password_hash: string;
+  is_admin: number;
   created_at: string;
   last_seen_at: string | null;
   disabled_at: string | null;
@@ -38,6 +46,7 @@ function toOperator(row: Row): Operator {
   return {
     id: row.id,
     name: row.name,
+    admin: row.is_admin === 1,
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     disabledAt: row.disabled_at,
@@ -95,23 +104,41 @@ export function verifyPassword(password: string, stored: string): boolean {
   return actual.length === target.length && timingSafeEqual(actual, target);
 }
 
+/**
+ * The first person added is an admin; everybody after them is not.
+ *
+ * Not a parameter with a default, because the rule is about the install rather
+ * than about the caller. The first row is written by the wizard, by whoever is
+ * setting the desk up, and if it were not an admin the very next screen would
+ * refuse them — there would be nobody who could promote anyone, on an install
+ * that may well have no shared password to fall back on. Every row after that
+ * is written by an admin who is already looking at the people page, which is
+ * where the promoting happens.
+ *
+ * Counted over every row, retired ones included. Somebody who retires the only
+ * admin and then adds a colleague has made a mistake worth refusing, not one
+ * worth silently repairing by handing the newcomer the settings.
+ */
 export function createOperator(name: string, password: string, db: Db = getDb()): Operator {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('An operator needs a name');
   if (!password) throw new Error('An operator needs a password');
 
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM operators').get() as { n: number };
+
   const row: Row = {
     id: randomUUID(),
     name: trimmed,
     password_hash: hashPassword(password),
+    is_admin: n === 0 ? 1 : 0,
     created_at: new Date().toISOString(),
     last_seen_at: null,
     disabled_at: null,
   };
 
   db.prepare(
-    `INSERT INTO operators (id, name, password_hash, created_at, last_seen_at, disabled_at)
-     VALUES (@id, @name, @password_hash, @created_at, @last_seen_at, @disabled_at)`,
+    `INSERT INTO operators (id, name, password_hash, is_admin, created_at, last_seen_at, disabled_at)
+     VALUES (@id, @name, @password_hash, @is_admin, @created_at, @last_seen_at, @disabled_at)`,
   ).run(row);
 
   return toOperator(row);
@@ -135,6 +162,29 @@ export function countActiveOperators(db: Db = getDb()): number {
     n: number;
   };
   return row.n;
+}
+
+/**
+ * How many people can currently change the settings.
+ *
+ * The number the two dangerous presses on the people page are checked against
+ * — retiring an admin and demoting one. Zero here on an install with no shared
+ * password is a desk nobody can configure again: no queue, no archive, no
+ * mailbox settings, and no people page on which to undo it. The only way back
+ * is a SQLite client, which is not a step to leave a colleague one click from.
+ */
+export function countActiveAdmins(db: Db = getDb()): number {
+  const row = db
+    .prepare('SELECT COUNT(*) AS n FROM operators WHERE disabled_at IS NULL AND is_admin = 1')
+    .get() as { n: number };
+  return row.n;
+}
+
+export function setOperatorAdmin(id: string, admin: boolean, db: Db = getDb()): boolean {
+  const result = db
+    .prepare('UPDATE operators SET is_admin = ? WHERE id = ?')
+    .run(admin ? 1 : 0, id);
+  return result.changes > 0;
 }
 
 export function setOperatorPassword(id: string, password: string, db: Db = getDb()): boolean {

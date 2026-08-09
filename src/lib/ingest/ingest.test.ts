@@ -595,7 +595,7 @@ describe('sendReply', () => {
 
     const mail = provider.sent[0]!;
     expect(mail.text).toBe('Hi,\n\nThe refund is on its way.');
-    expect(mail.html).toBe('<p>Hi,</p>\n<p>The refund is on its way.</p>');
+    expect(mail.html).toBe('<p style="margin:0 0 12px">Hi,</p>\n<p style="margin:0 0 12px">The refund is on its way.</p>');
   });
 
   it('sends text only when the desk has asked for text only', async () => {

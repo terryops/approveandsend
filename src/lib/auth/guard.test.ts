@@ -16,10 +16,12 @@ vi.mock('next/headers', () => ({
 }));
 
 const { openDb, setDb } = await import('../db');
-const { createOperator } = await import('../operators/store');
+const { createOperator, setOperatorAdmin, setOperatorEnabled } = await import(
+  '../operators/store'
+);
 const { resetSessionSecret } = await import('./secret');
 const { issueToken } = await import('./session');
-const { requireMachine } = await import('./guard');
+const { isAdmin, requireMachine } = await import('./guard');
 
 const KEYS = ['CRON_TOKEN', 'AAS_MACHINE_SESSION', 'ADMIN_PASSWORD', 'SESSION_SECRET'] as const;
 const saved = new Map<string, string | undefined>();
@@ -128,5 +130,70 @@ describe('requireMachine', () => {
     expect(
       await requireMachine(machineRequest({ host: 'desk.example', origin: 'null' })),
     ).toBe(false);
+  });
+});
+
+/**
+ * The other door: the queue, the archive, the people list and the settings.
+ *
+ * What is behind it is not mail — it is the mailbox password, the model key and
+ * the button that retires a colleague — so "is somebody logged in" stopped
+ * being the whole question.
+ */
+describe('isAdmin', () => {
+  it('is everyone on an install with nothing guarding it', async () => {
+    // No password, no operators, and the wizard that fixes that is one of the
+    // four screens. A flag that locked it would lock the only way to set it.
+    setEnv({ ADMIN_PASSWORD: undefined });
+    expect(await isAdmin()).toBe(true);
+  });
+
+  it('is the shared password, which is the key to the whole install', async () => {
+    setEnv({ ADMIN_PASSWORD: 'hunter2' });
+    jar.value = issueToken(null);
+    expect(await isAdmin()).toBe(true);
+  });
+
+  it('is nobody without a session', async () => {
+    setEnv({ ADMIN_PASSWORD: 'hunter2' });
+    jar.value = undefined;
+    expect(await isAdmin()).toBe(false);
+  });
+
+  it('is the first operator and not the colleague they added', async () => {
+    setEnv({ ADMIN_PASSWORD: undefined });
+    const sam = createOperator('Sam', 'hunter2');
+    const zoe = createOperator('Zoe', 'hunter2');
+
+    jar.value = issueToken(sam.id);
+    expect(await isAdmin()).toBe(true);
+
+    jar.value = issueToken(zoe.id);
+    expect(await isAdmin()).toBe(false);
+  });
+
+  it('reads the row rather than the cookie, so a promotion takes effect now', async () => {
+    // The cookie is good for a week and says nothing but who you are. Baking
+    // the flag into it would mean a demotion took a week to land — which is the
+    // same argument that makes `currentIdentity` read the row on every request.
+    setEnv({ ADMIN_PASSWORD: undefined });
+    createOperator('Sam', 'hunter2');
+    const zoe = createOperator('Zoe', 'hunter2');
+    jar.value = issueToken(zoe.id);
+
+    setOperatorAdmin(zoe.id, true);
+    expect(await isAdmin()).toBe(true);
+
+    setOperatorAdmin(zoe.id, false);
+    expect(await isAdmin()).toBe(false);
+  });
+
+  it('is not a retired admin', async () => {
+    setEnv({ ADMIN_PASSWORD: 'hunter2' });
+    const sam = createOperator('Sam', 'hunter2');
+    jar.value = issueToken(sam.id);
+
+    setOperatorEnabled(sam.id, false);
+    expect(await isAdmin()).toBe(false);
   });
 });

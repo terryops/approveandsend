@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
 import { countTasksByStatus, createTask, listTasks, updateTask } from './store';
+import { deskedAt } from './types';
 
 let db: Db;
 
@@ -229,5 +230,29 @@ describe('countTasksByStatus', () => {
     expect(countTasksByStatus({}, db)).toEqual({ pending: 2, dismissed: 1 });
     expect(countTasksByStatus({ search: 'refund' }, db)).toEqual({ pending: 1, dismissed: 1 });
     expect(countTasksByStatus({ search: 'unrelated' }, db)).toEqual({ pending: 1 });
+  });
+});
+
+/*
+ * Three screens print a task's time, and one kind of task had none to print.
+ * A composed mail was never received, so `received_at` is null on it and the
+ * heading ended at the address — which reads as a rendering fault rather than
+ * as "nobody sent this to us".
+ */
+describe('deskedAt', () => {
+  it('is when the mail arrived, when it arrived', () => {
+    const { task } = createTask(
+      { messageId: 'm', fromAddress: 'a@x.com', receivedAt: '2026-08-01T09:30:00.000Z' },
+      db,
+    );
+
+    expect(deskedAt(task)).toBe('2026-08-01T09:30:00.000Z');
+  });
+
+  it('falls back to when it was written on a mail nobody sent us', () => {
+    const { task } = createTask({ origin: 'composed', fromAddress: 'them@x.com' }, db);
+
+    expect(task.receivedAt).toBeNull();
+    expect(deskedAt(task)).toBe(task.createdAt);
   });
 });

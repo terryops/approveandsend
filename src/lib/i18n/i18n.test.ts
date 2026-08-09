@@ -135,4 +135,55 @@ describe('the translations themselves', () => {
       expect(same.length / keys.length, `${tag} is ${same.length}/${keys.length} English`).toBeLessThan(0.3);
     }
   });
+
+  /*
+   * The cost of having no plurals engine, and the one thing that has to be paid
+   * for it.
+   *
+   * English writes "3 new email(s)" because it cannot do better without a CLDR
+   * rule table, and the argument for skipping that table is that every other
+   * language phrases around the count the way it actually does. French had
+   * instead copied the parenthesis and then agreed it three times in a row —
+   * "{count} tâche(s) bloquée(s) récupérée(s)" — which is not a translation of
+   * the English so much as a translation of its shrug.
+   *
+   * English is exempt, because it is where the shrug belongs.
+   */
+  it('phrases around counts instead of copying the English hedge', () => {
+    for (const [tag, dictionary] of Object.entries(TRANSLATIONS)) {
+      for (const key of keys) {
+        expect(dictionary[key], `${tag} · ${key}`).not.toMatch(/\w\((?:s|es|n|e|en|a|as|os)\)/i);
+      }
+    }
+  });
+
+  /*
+   * Punctuation set the way each language sets it.
+   *
+   * Every one of these was mixed in the same file before it was a test: the
+   * typewriter apostrophe on one French line and the typographic one on the
+   * next, a half-width colon after Japanese, a space wedged against a Chinese
+   * full-width comma — which already carries its own. None of it is visible in
+   * a diff and all of it is visible on the screen.
+   */
+  it('sets its punctuation the way its own language does', () => {
+    const CJK = '一-鿿';
+
+    for (const key of keys) {
+      // French has one apostrophe and it is not the typewriter's.
+      expect(TRANSLATIONS.fr[key], `fr · ${key}`).not.toMatch(/'/);
+
+      // A colon after Japanese is a full-width colon.
+      expect(TRANSLATIONS.ja[key], `ja · ${key}`).not.toMatch(/[぀-ヿ一-鿿] *:/);
+
+      // Chinese full-width punctuation is its own whitespace; a space beside it
+      // sets the line twice as loose as the ones around it.
+      expect(TRANSLATIONS['zh-CN'][key], `zh-CN · ${key}`).not.toMatch(/[，。、；：？！“”（）] | [，。、；：？！“”（）]/);
+
+      // …and a Latin word or a number inside a Chinese sentence takes one.
+      expect(TRANSLATIONS['zh-CN'][key], `zh-CN · ${key}`).not.toMatch(
+        new RegExp(`[${CJK}][A-Za-z0-9{]|[A-Za-z0-9}][${CJK}]`),
+      );
+    }
+  });
 });

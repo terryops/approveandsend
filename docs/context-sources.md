@@ -24,13 +24,33 @@ sentence.
 
 ## Stripe, which is built in
 
-Set `STRIPE_API_KEY` and it turns on. Leave it unset and it stays out of the
-way entirely — it is not registered, not called, and not shown.
+Paste a key into **Settings → Billing** and it turns on. That writes
+`STRIPE_API_KEY` to your `.env` and takes effect at once — there is nothing the
+screen can do that editing the file by hand cannot, which is the property the
+whole setup screen is built to keep. Leave it unset and Stripe stays out of the
+way entirely: not registered, not called, not shown.
 
 Make it a **restricted** key with read on customers, subscriptions and charges.
 Nothing here writes, so nothing here needs write. It uses `/v1/customers?email=`
 rather than `/v1/customers/search`, so the narrowest key Stripe will issue is
 enough.
+
+**Test the key** rather than trusting that it saved. A restricted key is granted
+permission by permission, and the ordinary mistake is granting two of the three:
+that key authenticates, passes any check that stops at "the key works", finds the
+customer, and then produces a payments list with nothing in it — which reads as
+"they never paid us". The button reads one customer, one subscription and one
+charge, and names whichever one was refused.
+
+`STRIPE_ENABLED=0` — the checkbox on the same screen — stops every lookup while
+leaving the key where it is. It is there because the alternative way to stop
+sending customer money facts to a model for an afternoon is deleting the
+credential, and a credential deleted at 4pm is one nobody puts back.
+
+Two screens read the same key. `/billing/<address>` is the charge-by-charge
+answer for a reviewer about to promise a refund, linked from the context card
+and from the sender page. `/billing` is the way in when there is no task in
+front of you: type an address, or read what Stripe currently says you sell.
 
 What the model gets is a paragraph, not a record:
 

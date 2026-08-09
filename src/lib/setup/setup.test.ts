@@ -1,12 +1,23 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openDb, type Db } from '../db';
 import { createRule } from '../rules/store';
+import { checkStripe } from './checks';
 import { mergeEnvText, parseEnvText, saveEnv } from './env-file';
-import { markSetupDone, setupState, shouldOnboard } from './state';
+import {
+  SETTINGS_PANES,
+  isSettingsPane,
+  markSetupDone,
+  paneHref,
+  sectionHref,
+  settingsMode,
+  setupState,
+  shouldOnboard,
+  stepHref,
+} from './state';
 import { saveWorkspaceConfig } from './workspace-file';
 
 let dir: string;
@@ -24,6 +35,8 @@ const KEYS = [
   'ZOHO_CLIENT_ID',
   'ZOHO_REFRESH_TOKEN',
   'AAS_ORGANIZATION',
+  'STRIPE_API_KEY',
+  'STRIPE_ENABLED',
 ];
 const saved = new Map<string, string | undefined>();
 
@@ -202,6 +215,14 @@ describe('setupState', () => {
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(true);
   });
 
+  // The mailbox was marked skippable, so the last screen listed it as "optional"
+  // and — since nothing was blocking — offered a Fetch mail now button to a desk
+  // with no mailbox to fetch from. Nothing arrives and nothing can be sent
+  // without one; the sample data is a way to look at the desk, not to run it.
+  it('lets the password and the voice be skipped, and nothing else', () => {
+    expect(setupState(db).steps.filter(s => s.optional).map(s => s.step)).toEqual(['access', 'voice']);
+  });
+
   it('counts a hand-configured Zoho mailbox, which the wizard cannot set up', () => {
     saveEnv({ MAIL_PROVIDER: 'zoho', MAIL_USER: 'support@example.com' });
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(false);
@@ -246,5 +267,160 @@ describe('shouldOnboard', () => {
   it('does not hijack someone who has emptied their own inbox', () => {
     createRule({ content: 'A rule they wrote.' }, db);
     expect(shouldOnboard(db)).toBe(false);
+  });
+});
+
+/*
+ * Which of its two shapes `/setup` is wearing. The wizard has to survive its own
+ * first step — setting the password is what makes an install stop looking
+ * fresh — and a desk that was configured by hand has to be spared the tour.
+ */
+describe('settingsMode', () => {
+  let db: Db;
+
+  beforeEach(() => {
+    db = openDb(':memory:');
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('is the wizard on an install nobody has configured yet', () => {
+    expect(settingsMode(db)).toBe(false);
+  });
+
+  it('stays the wizard through the step that locks the door', () => {
+    saveEnv({ ADMIN_PASSWORD: 'a-password', AI_MODEL: 'a-model' });
+
+    expect(settingsMode(db)).toBe(false);
+  });
+
+  it('becomes settings once the wizard has been finished', () => {
+    markSetupDone(db);
+
+    expect(settingsMode(db)).toBe(true);
+  });
+
+  // The case the whole distinction exists for: `shouldOnboard` never redirects
+  // a desk like this, so it reaches /setup with the wizard unfinished for ever.
+  it('becomes settings for a desk that has been running without it', () => {
+    createRule({ content: 'A rule they wrote.' }, db);
+
+    expect(settingsMode(db)).toBe(true);
+  });
+});
+
+describe('stepHref', () => {
+  let db: Db;
+
+  beforeEach(() => {
+    db = openDb(':memory:');
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('is a page of the wizard, with the result in the query', () => {
+    expect(stepHref('access', '', db)).toBe('/setup');
+    expect(stepHref('model', 'saved=1', db)).toBe('/setup/model?saved=1');
+  });
+
+  it('is a pane of the settings screen once the wizard is over', () => {
+    markSetupDone(db);
+
+    // `where` and not `#`: the settings screen renders one subject at a time,
+    // so which one it is has to reach the server — and a fragment never does.
+    expect(stepHref('access', '', db)).toBe('/setup?where=access');
+    expect(stepHref('model', 'saved=1', db)).toBe('/setup?saved=1&where=model');
+  });
+});
+
+describe('sectionHref', () => {
+  it('is always the settings screen, in both of its shapes', () => {
+    // Billing has no wizard page to go back to — it is settings-only — so
+    // unlike `stepHref` this does not depend on where the install has got to.
+    expect(sectionHref('billing')).toBe('/setup?where=billing');
+    expect(sectionHref('billing', 'saved=1')).toBe('/setup?saved=1&where=billing');
+  });
+});
+
+describe('paneHref', () => {
+  it('keeps the fragment for what a fragment is for: a place inside the pane', () => {
+    expect(paneHref('model', '', 'model-check')).toBe('/setup?where=model#model-check');
+  });
+
+  it('names every subject the screen can show, and nothing else', () => {
+    expect([...SETTINGS_PANES]).toEqual(['access', 'model', 'mailbox', 'voice', 'billing', 'running']);
+    expect(isSettingsPane('running')).toBe(true);
+    // A hand-edited `?where=` falls back to the first pane rather than to a
+    // blank screen; this is the half of that the page asks about.
+    expect(isSettingsPane('nonsense')).toBe(false);
+    expect(isSettingsPane(null)).toBe(false);
+  });
+});
+
+/**
+ * The check behind the Test button, with Stripe answering from a stub.
+ *
+ * The case worth pinning is the middle one. A key that fails everything is
+ * obvious and a key that passes everything needs no help; a key granted two of
+ * the three permissions authenticates, finds the customer, and then shows an
+ * empty payment list — and unless this names the resource that was refused,
+ * the desk reads that as "they never paid us".
+ */
+describe('checkStripe', () => {
+  const answer = (refuse: string[]) =>
+    vi.fn((url: string) => {
+      const denied = refuse.some(resource => url.includes(`/${resource}?`));
+      return Promise.resolve({
+        ok: !denied,
+        status: denied ? 403 : 200,
+        json: () =>
+          Promise.resolve(
+            denied
+              ? { error: { message: `The provided key does not have the required permissions.` } }
+              : { data: [] },
+          ),
+      } as unknown as Response);
+    });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses to test a key that is not there', async () => {
+    expect(await checkStripe()).toEqual({ ok: false, detail: 'No key is set.' });
+  });
+
+  it('passes a key that can read all three, and says which mode it is in', async () => {
+    process.env.STRIPE_API_KEY = 'rk_test_abc';
+    vi.stubGlobal('fetch', answer([]));
+
+    const result = await checkStripe();
+
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain('test mode');
+  });
+
+  it('names the one permission that was refused rather than passing', async () => {
+    process.env.STRIPE_API_KEY = 'rk_live_abc';
+    vi.stubGlobal('fetch', answer(['charges']));
+
+    const result = await checkStripe();
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain('cannot read charges');
+    // Still says it connected: "the key is wrong" and "the key is missing one
+    // scope" send an operator to two different screens.
+    expect(result.detail).toContain('live mode');
+  });
+
+  it('says a full secret key would do less harm restricted', async () => {
+    process.env.STRIPE_API_KEY = 'sk_live_abc';
+    vi.stubGlobal('fetch', answer([]));
+
+    expect((await checkStripe()).detail).toContain('restricted key');
   });
 });

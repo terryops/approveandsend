@@ -35,8 +35,8 @@ export default async function ComposePage() {
             model does not get to overrule, and most briefs do not come with
             one. */}
         <label>
-          {t('compose.subject')}
-          <input type="text" name="subject" placeholder={t('compose.subjectPlaceholder')} />
+          {t('compose.subject')} <span className="hint">{t('compose.subjectHint')}</span>
+          <input type="text" name="subject" />
         </label>
         <label>
           {t('compose.brief')}

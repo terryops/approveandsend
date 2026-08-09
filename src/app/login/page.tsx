@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 
 import { hasSession } from '@/lib/auth/guard';
-import { APP_NAME } from '@/lib/brand';
-import { t } from '@/lib/i18n';
+import { appName } from '@/lib/brand';
+import { resolveRequestLocale, t } from '@/lib/i18n';
 import { countActiveOperators } from '@/lib/operators/store';
 
 import { login } from '../actions';
@@ -14,6 +14,9 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // The one page that cannot call `requirePage` — it is what `requirePage`
+  // sends people to — so it settles its own language.
+  await resolveRequestLocale();
   if (await hasSession()) redirect('/');
   const query = await searchParams;
   // The name field appears only once there is someone to name. An install
@@ -22,7 +25,10 @@ export default async function LoginPage({
 
   return (
     <form className="card stack" action={login} style={{ maxWidth: 380, margin: '10vh auto' }}>
-      <h2>{t('login.title', { app: APP_NAME })}</h2>
+      {/* An `h1` rather than the `h2` it was: this card is the whole page, so
+          the heading on it is the page's name. Styled identically — see
+          `.card h1` in globals.css. */}
+      <h1>{t('login.title', { app: appName() })}</h1>
       {named && (
         <input type="text" name="name" placeholder={t('login.namePlaceholder')} autoFocus />
       )}

@@ -1,4 +1,6 @@
-import { requirePage } from '@/lib/auth/guard';
+import Link from 'next/link';
+
+import { isAdmin, requirePage } from '@/lib/auth/guard';
 import {
   DASHBOARD,
   chargeState,
@@ -10,6 +12,7 @@ import {
   netPaid,
   planOf,
   stripeConfigured,
+  stripeKey,
 } from '@/lib/billing/stripe';
 import { t } from '@/lib/i18n';
 
@@ -42,16 +45,27 @@ export default async function BillingPage({ params }: { params: Promise<{ email:
 
   const back = (
     <p className="meta">
-      <a href={`/senders/${encodeURIComponent(email)}`}>{t('billing.backToSender')}</a>
+      <Link href={`/senders/${encodeURIComponent(email)}`}>{t('billing.backToSender')}</Link>
     </p>
   );
 
+  // Two different answers. "No key is set" sends somebody to go and find one;
+  // "somebody switched this off" sends them to the checkbox that did it, which
+  // is a thirty-second fix they would otherwise spend the afternoon not finding.
   if (!stripeConfigured()) {
     return (
       <>
         {back}
         <h1>{email}</h1>
-        <p className="meta">{t('billing.notConfigured')}</p>
+        <p className="meta">{stripeKey() ? t('billing.switchedOff') : t('billing.notConfigured')}</p>
+        {/* Said to everyone, fixed by an admin. The sentence above is why this
+            screen is empty and is worth reading either way; the link under it
+            is a screen a reviewer cannot open. */}
+        {(await isAdmin()) && (
+          <p className="meta">
+            <Link href="/setup?where=billing">{t('billing.index.settings')}</Link>
+          </p>
+        )}
       </>
     );
   }

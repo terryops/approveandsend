@@ -1,6 +1,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 
+import { resolveRequestLocale } from '../i18n';
 import { getOperator, type Operator } from '../operators/store';
 import { COOKIE_NAME, isProtected, verifyToken, type Identity } from './session';
 
@@ -18,8 +20,11 @@ import { COOKIE_NAME, isProtected, verifyToken, type Identity } from './session'
  * An unprotected install answers `{ operatorId: null }` — logged in as nobody,
  * which is true, rather than not logged in, which would send someone to a
  * login page that has no password to accept.
+ *
+ * Memoised per request, so that a page checking on top of its layout costs one
+ * signature check and one row read rather than two.
  */
-export async function currentIdentity(): Promise<Identity | null> {
+export const currentIdentity = cache(async function currentIdentity(): Promise<Identity | null> {
   if (!isProtected()) return { operatorId: null };
 
   const jar = await cookies();
@@ -31,7 +36,7 @@ export async function currentIdentity(): Promise<Identity | null> {
   // request is what makes the button on the operators page mean anything.
   const operator = getOperator(identity.operatorId);
   return operator && !operator.disabledAt ? identity : null;
-}
+});
 
 export async function hasSession(): Promise<boolean> {
   return (await currentIdentity()) !== null;
@@ -49,13 +54,85 @@ export async function currentOperator(): Promise<Operator | null> {
   return identity?.operatorId ? getOperator(identity.operatorId) : null;
 }
 
-/** For server components. Sends the browser to the login page. */
+/**
+ * Whether this request may reach the four screens that are not work.
+ *
+ * Three cases, and the middle one is the one worth spelling out:
+ *
+ * - No session at all: no. The page guards redirect before this matters, but
+ *   an answer of "yes, because nobody is nobody in particular" is exactly the
+ *   bug `requireMachine` had.
+ * - A session with no operator id: yes. That is `ADMIN_PASSWORD`, the shared
+ *   key to the whole install — and on an install with no password at all it is
+ *   everyone, which is correct, because a desk with no door has no roles to
+ *   enforce and the wizard behind `/setup` is the thing that gives it one.
+ * - A named operator: whatever their row says.
+ */
+export async function isAdmin(): Promise<boolean> {
+  const identity = await currentIdentity();
+  if (!identity) return false;
+  if (!identity.operatorId) return true;
+  return getOperator(identity.operatorId)?.admin === true;
+}
+
+/**
+ * For the pages behind the flag: the queue, the archive, the people list and
+ * setup.
+ *
+ * A reviewer who types one of those addresses lands on the inbox rather than
+ * on a refusal. There is nothing for them to do about being told no — the fix
+ * is a colleague pressing a button on a screen they cannot see — so a wall
+ * would only be a worse way of saying "not here". The nav does not offer these
+ * links to them either; this is the half that a typed URL cannot get past.
+ */
+export async function requireAdminPage(): Promise<void> {
+  await requirePage();
+  if (!(await isAdmin())) redirect('/');
+}
+
+/**
+ * The same line for the actions those pages post to.
+ *
+ * Every one of them keeps its `requireApi()` — this calls it — because hiding a
+ * link is not a permission check and a form post does not come from a link. A
+ * retired reviewer's browser still has the queue page in its history, and the
+ * buttons on it still post.
+ */
+export async function requireAdminApi(): Promise<void> {
+  await requireApi();
+  if (!(await isAdmin())) throw new Error('Not permitted');
+}
+
+/**
+ * For server components. Sends the browser to the login page.
+ *
+ * Also settles what language the page is in, which is not this function's
+ * business but is the only place guaranteed to run before one. The App Router
+ * renders a layout and the page inside it as separate tasks, so resolving the
+ * language in the root layout leaves a race the page sometimes wins: the nav
+ * came back in Chinese and the form under it in English. Every page starts with
+ * this await, so hanging it here is the one hook that cannot be forgotten on a
+ * page added later — the same argument that keeps the session check out of
+ * middleware.
+ */
 export async function requirePage(): Promise<void> {
+  await resolveRequestLocale();
   if (!(await hasSession())) redirect('/login');
 }
 
-/** For route handlers and server actions. Throws rather than redirecting. */
+/**
+ * For route handlers and server actions. Throws rather than redirecting.
+ *
+ * The same await as `requirePage`, and it is not decoration here either. A
+ * server action is its own request: nothing has read `Accept-Language` for it,
+ * and on an install that has not picked an interface language the workspace
+ * answer is `''` — so every `t()` thrown out of an action fell through to
+ * English while the page the operator was looking at was in their own language.
+ * A French wizard rejecting a short password in English is the shape of it, and
+ * the same went for every failure `sendReply` renders into `?error=`.
+ */
 export async function requireApi(): Promise<void> {
+  await resolveRequestLocale();
   if (!(await hasSession())) throw new Error('Not authenticated');
 }
 

@@ -22,15 +22,18 @@ export const en = {
   // --- Chrome — the header, the nav, the banner that says nobody is guarding this ---
   "nav.inbox": "Inbox",
   "nav.rules": "Rules",
+  "nav.catalog": "Catalogue",
   "nav.archive": "Archive",
   "nav.queue": "Queue",
   "nav.operators": "People",
   "nav.setup": "Setup",
+  "nav.settings": "Settings",
   "brand.tagline": "AI drafts it. You approve it. Every edit teaches it.",
   "brand.unprotectedLabel": "Unprotected.",
   "brand.unprotectedLead": "No",
   "brand.unprotectedRest": "is set, so anyone who can reach this port can read and send your mail.",
   "brand.unprotectedSetOne": "Set one",
+  "brand.unprotectedEnd": ".",
 
   // --- The inbox ---
   "inbox.statusAwaitingReview": "To review",
@@ -49,10 +52,12 @@ export const en = {
   "inbox.searchResults": "{count} match(es) for “{query}”.",
   "inbox.searchNoResults": "Nothing matches “{query}” — in the archive either.",
   "inbox.searchClear": "Clear search",
+  "inbox.compose": "Compose",
   "inbox.fetchMail": "Fetch mail",
-  "inbox.runQueue": "Run queue",
   "inbox.signOut": "Sign out",
   "inbox.emptyTitle": "Nothing here. Fetch mail to pull the inbox in.",
+  "inbox.emptyFilter": "Nothing under {tab}.",
+  "inbox.emptyFilterAll": "Everything on the desk →",
   "inbox.loadSampleData": "Load sample data",
   "inbox.noSubject": "(no subject)",
   "inbox.unread": "({count} new)",
@@ -60,7 +65,7 @@ export const en = {
   "inbox.timeYesterday": "Yesterday",
   "inbox.timeDaysAgo": "{count}d ago",
   "inbox.alsoFrom": "Also from {name}",
-  "inbox.bulkHint": "Tick to act on several at once",
+  "inbox.machineSide": "AI Processing",
   "inbox.bulkDismiss": "Dismiss",
   "inbox.bulkReopen": "Reopen",
   "inbox.bulkDelete": "Delete",
@@ -78,9 +83,26 @@ export const en = {
   "login.hintOperators": "Sign in as yourself, so the replies you send carry your name.",
 
   // --- The review screen — the one that matters ---
+    "task.format.label": "Format",
+    "task.replySettings": "How this reply goes out",
+  "task.format.markdown": "Markdown",
+  "task.format.text": "Plain text",
+  "task.format.html": "HTML",
+  "task.dismissAsk.title": "Why not send this?",
+  "task.dismissAsk.intro": "Optional — a pitch that needed no answer has nothing to explain. But a reason is what the learning job reads, and it is shown to whoever opens this next.",
+  "task.dismissAsk.go": "Dismiss it",
+  "task.working.stuckTitle": "This is not finishing on its own",
+  "task.working.stuckBody": "The last attempt failed. It will keep retrying, but this usually needs fixing before it can succeed.",
+  "task.working.title": "Writing a new reply…",
+  "task.working.body": "The model is redrafting this. It usually takes a few seconds; the reply appears here on its own.",
+  "task.working.leave": "Leave this open or carry on — it will be here either way",
+  "task.format.hint.markdown": "Reads # headings, **bold**, *italic*, `code`, bullets, 1. lists, links and ``` blocks.",
+  "task.format.hint.text": "Sends the characters exactly as typed.",
+  "task.format.hint.html": "Sends your markup as written.",
   "task.backToInbox": "← Inbox",
   "task.saved": "Saved.",
   "task.redraftQueued": "Redraft queued. Run the queue to pick it up.",
+  "task.composeQueued": "Drafting. It appears here on its own.",
   "task.noSubject": "(no subject)",
   "task.status.pending": "pending",
   "task.status.drafting": "drafting",
@@ -95,8 +117,14 @@ export const en = {
   "task.supersededOpen": "Open the newer one →",
   "task.unnamedAttachment": "(unnamed)",
   "task.attach": "Attach files",
+  "task.attachAdd": "Attach",
+  "task.attachRemove": "Take {name} off this reply",
+  "task.attachGoing": "Going with the reply",
   "sender.none": "Nothing from this address.",
   "sender.summary": "{total} messages here, {replied} answered.",
+  // Reading back what was said leads straight into what they paid, so the
+  // question has an answer on the page that raises it.
+  "sender.billing": "What they paid →",
 
   // --- What they paid ---
   "billing.backToSender": "← Everything from this address",
@@ -118,6 +146,17 @@ export const en = {
   "billing.state.failed": "failed",
   "billing.returned": "{amount} returned",
   "billing.receipt": "Receipt ↗",
+  "billing.switchedOff": "Billing is switched off, so nothing is looked up.",
+  "billing.index.intro": "Look up what an address has paid, or read the catalogue this desk sells from.",
+  "billing.index.lookupPlaceholder": "customer@example.com",
+  "billing.index.lookupButton": "Look them up",
+  "billing.index.settings": "Billing settings",
+  "billing.catalogue": "What you sell",
+  "billing.catalogueNote": "Read from Stripe just now rather than from the fact list, so a price changed this morning is the one shown here.",
+  "billing.catalogueNone": "Nothing in the catalogue.",
+  "billing.catalogueUnreadable": "The catalogue could not be read: {error}",
+  "billing.noPrices": "No active price — nobody can buy this today.",
+  "billing.discontinued": "discontinued",
   "task.conversation": "Earlier in this conversation ({n})",
   "task.threadCustomer": "Customer",
   "task.threadUs": "Us",
@@ -127,7 +166,6 @@ export const en = {
   "task.sentiment.neutral": "neutral",
   "task.sentiment.negative": "negative",
   "task.sentiment.angry": "angry",
-  "task.rulesActive": "{n} rules active",
   "task.youMayAlsoNeedTo": "You may also need to:",
   "task.openContext": "Open ↗",
   "task.whatWentOut": "What went out",
@@ -135,7 +173,6 @@ export const en = {
   "task.draftPlaceholder": "No draft yet. Run the queue, or write one here.",
   "task.whatYouAreAboutToSend": "What you are about to send",
   "task.noTranslation": "No current {language} translation — run the queue to render this draft.",
-  "task.notesPlaceholder": "What to change, or why you changed it — steers Redraft, and feeds the rule extractor",
   "task.sendingBanner": "This reply is being handed to the mail provider. If it is still here in a few minutes the send did not finish, and it will be put back for review.",
   "task.subjectLabel": "The subject line",
   "task.subjectPlaceholder": "Subject — leave empty to reply under theirs",
@@ -147,6 +184,16 @@ export const en = {
   "task.errorSending": "A send is already in progress for this task.",
   "task.errorNoSuchTask": "That task no longer exists.",
   "task.approveAndSend": "Approve & send",
+  "task.confirm.title": "Send this reply?",
+  "task.confirm.to": "To {who}",
+  "task.confirm.subjectDefault": "Re: the customer's own subject",
+  "task.confirm.theyWrote": "What they wrote",
+  "task.confirm.send": "Yes, send it",
+  "task.confirm.back": "Back to editing",
+  "task.redraftAsk.title": "What should change?",
+  "task.redraftAsk.intro": "Redraft with nothing said asks the same model the same question, and is entitled to the same answer. Say what was wrong and it will follow it — and the rule extractor reads it afterwards.",
+  "task.redraftAsk.placeholder": "Too formal. Lead with the refund, and do not apologise twice.",
+  "task.redraftAsk.go": "Redraft it",
   "task.save": "Save",
   "task.redraft": "Redraft",
   "task.dismiss": "Dismiss",
@@ -170,12 +217,14 @@ export const en = {
   "task.optionsLabel": "Other ways to answer",
   "task.optionUnlabelled": "another approach",
   "task.optionsEdited": "The box is your own text now. Pick a tab to go back to one of the options — what you have written is kept in earlier drafts.",
-  "nav.compose": "Compose",
   "compose.title": "Compose",
   "compose.lead": "Start a conversation instead of continuing one. It is drafted against the same rules and goes to the same review queue.",
   "compose.to": "To",
   "compose.subject": "Subject",
-  "compose.subjectPlaceholder": "Optional — left blank, the draft suggests one",
+  // On the label rather than in the box. A placeholder disappears on the first
+  // keystroke, and "left blank, the draft suggests one" is the thing somebody
+  // needs to know while they are deciding whether to type at all.
+  "compose.subjectHint": "optional — left blank, the draft suggests one",
   "compose.brief": "What should it say?",
   "compose.briefPlaceholder": "Tell them yesterday’s export outage is fixed and their failed jobs have been re-run.",
   "compose.draft": "Draft it",
@@ -195,11 +244,80 @@ export const en = {
   "task.event.sent": "Reply sent",
   "task.event.failed": "Failed",
   "task.event.superseded": "Superseded by a later message",
-  "task.editsBecomeRules": "Edits here become rules once it is sent.",
   "task.sentAt": "Sent {time}.",
   "task.sentBy": "by {who}",
   "task.sentByUnattributed": "unattributed",
   "task.draftYouChanged": "The draft you changed",
+
+  // --- The two ways of reading the review screen ---
+  "task.layout.label": "Layout",
+  "task.layout.columns": "Columns",
+  "task.layout.compare": "Side by side",
+  "task.layout.hint.columns": "The queue stays on the left and the model's reading on the right.",
+  "task.layout.hint.compare": "Their letter and your reply at equal width, for the ones that are hard to call.",
+
+  // --- The queue, kept down the left of the review screen ---
+  "task.rail.label": "Still waiting on you",
+  "task.rail.waiting": "{n} to review",
+  // The rest are not paged through here — paging is the inbox's job, and it has
+  // the search and the filters and the checkboxes to do it with.
+  "task.rail.more": "{n} more in the inbox",
+
+  // --- What this edit would teach ---
+  "task.learns.heading": "What this edit would teach",
+  // The size of the change, said as the thing the reviewer just did rather than
+  // as the thing we just computed. Nobody edited "three diff hunks".
+  "task.learns.scale": "You wrote {added} sentence(s) and cut {removed}.",
+  // Deliberately about the mechanism rather than about the rule. The extraction
+  // runs after the send, in its own job, and a panel that guessed at the wording
+  // would be believed exactly once.
+  "task.learns.willLearn": "Once this is sent, the learning job reads the change and proposes a rule in its own words. This panel is not guessing at that wording.",
+  "task.learns.notYet": "Nothing is written until this is sent, and no proposal steers a draft until you approve it.",
+  "task.learns.openRulebook": "Open the rulebook",
+
+  // --- The rules behind the draft, listed rather than counted ---
+  "task.rulesHeading": "The {n} rules behind this draft",
+  "task.rulesMore": "{n} more in the rulebook",
+  "task.rulesGlanceMore": "+{n}",
+
+  // --- The header's own controls ---
+  "chrome.more": "Theme, language, sign out",
+  "chrome.language": "Interface language",
+  "chrome.languagePinned": "Set by AAS_LANGUAGE in the environment.",
+  "chrome.todaySent": "Sent {n} today",
+  "chrome.todayLearned": "learned {n} rules",
+  "chrome.queueRunning": "Queue running",
+  "chrome.queueIdle": "Queue idle",
+  "chrome.queueStalled": "Queue stalled",
+  "chrome.theme": "Theme",
+  "chrome.theme.system": "System",
+  "chrome.theme.light": "Light",
+  "chrome.theme.dark": "Dark",
+  "chrome.theme.hint.system": "Follow whatever this machine is set to, including when it changes at sunset.",
+  "chrome.theme.hint.light": "Warm paper. The one to reach for under a window.",
+  "chrome.theme.hint.dark": "Warm near-black, for a long afternoon in a dim room.",
+  "task.allWithThisAddress": "Everything with this address →",
+  "task.theirLetter": "Their letter",
+  "task.replyMeta.subjectTheirs": "subject: Re: their own",
+  "task.replyMeta.subject": "subject: {subject}",
+  "task.nextAfterThis": "Straight on to the next",
+  // Quoted from the reviewer's own edit rather than described in the abstract.
+  "task.learns.changed": "You changed “{from}” into “{to}”.",
+  "task.rail.keysHint": "to move",
+  "task.rail.unopened": "Unopened",
+
+  // --- The send confirmation ---
+  "task.confirm.escapeHint": "Escape goes back to editing",
+  // "What they will receive", not "preview". A preview is a picture of the
+  // thing; this column is rendered by the function that posts the mail.
+  "task.confirm.theyWillGet": "What they will receive",
+  "task.confirm.willLearn": "This edit goes to the learning job",
+  "task.confirm.skipLearning": "Don't learn from this one",
+  // The one door in the product that does not open again, so this sits beside
+  // the button rather than in the documentation.
+  "task.attachNote": "15 MB a reply. They wait here until it goes and are dropped with the send — the Sent folder keeps the copy — and the filenames go on this task's history.",
+  "task.attachTooBig": "Those files come to {size} MB, over the {limit} MB a reply can carry. Send a link instead.",
+  "task.event.sentNoLearning": "Sent without learning from the edit",
 
   // --- The queue ---
   "queue.status.pending": "pending",
@@ -228,6 +346,24 @@ export const en = {
   "queue.retrySuperseded": "The same work is already queued — this one has been superseded.",
   "queue.notStuck": "That job is no longer running — nothing to release.",
 
+  // --- The queue, read out loud ---
+  // This screen is opened because something did not happen, so the first line
+  // answers that rather than opening with five counts. Half the value is the
+  // way out: the answer to "AI_MODEL is required" is to go and pick a model,
+  // and the only button on the screen was Retry.
+  "queue.verdict.clear": "Nothing is stuck.",
+  "queue.verdict.unknown": "A job failed, and this is what it said",
+  "queue.verdict.noModel": "No model is configured, so nothing can be drafted",
+  "queue.verdict.badKey": "The model rejected the API key",
+  "queue.verdict.mailbox": "The mailbox could not be reached",
+  "queue.verdict.resync": "The mailbox renumbered itself — the next sync will sort it out",
+  // The one class of failure where trying again genuinely might work, so it is
+  // also the one that offers no way out: the Retry button in the row below is
+  // the right answer already.
+  "queue.verdict.timeout": "A generation timed out. Retrying it is worth a try.",
+  "queue.verdict.goConfigureModel": "Go and pick a model →",
+  "queue.verdict.goConfigureMailbox": "Go and connect the mailbox →",
+
   // --- The rulebook ---
   "rules.activeCount": "{n} active",
   "rules.ofTotal": "of {n}",
@@ -246,9 +382,25 @@ export const en = {
   "rules.quarantineNotice": "This upgrade moved {n} learned rules here. They were written by the model from customer mail and were going into every draft without anyone having read them. Nothing was deleted — approve the ones you want back.",
   "rules.proposedTag": "proposed",
   "rules.tidyButton": "Tidy the rulebook",
+  "rules.tidyAsk.title": "Tidy the rulebook?",
+  "rules.tidyAsk.scope": "{n} active rules go into this pass. Last tidy: {when}.",
+  "rules.tidyAsk.never": "never",
+  "rules.tidyAsk.what": "The model reads the active rules one category at a time and groups the ones that say the same thing. It is told to be conservative: two rules that differ in when they apply, or in what they require, stay apart.",
+  "rules.tidyAsk.effect": "Each group of two or more becomes a single rule. One of them survives carrying the merged wording — so a rule you wrote by hand can come back reworded — and the others are switched off. A rule it groups on its own is left exactly as it is.",
+  "rules.tidyAsk.reversible": "Nothing is deleted. A switched-off rule is still in the list under the retired filter, where Restore brings it back, and each rule keeps its earlier wordings in its own history. Proposed rules and already-retired ones stay out of the pass.",
+  "rules.tidyAsk.queued": "Queued rather than run now: a pass over the whole rulebook is a dozen model calls and minutes of work. Run the queue, then reload this page.",
+  "rules.tidyAsk.go": "Tidy it",
+  "rules.tidyAsk.back": "Leave it alone",
   "rules.tidyAlreadyQueued": "A tidy is already queued.",
   "rules.tidyQueued": "Queued. It merges near-duplicates in the background — run the queue, then reload.",
   "rules.writeHeading": "Write a rule",
+  "rules.categoryLabel": "What kind of rule this is",
+  "rules.category.policy": "policy",
+  "rules.category.product": "product",
+  "rules.category.tone": "tone",
+  "rules.category.general": "general",
+  "setup.model.providerLabel": "Where the model comes from",
+  "setup.voice.languageLabel": "Interface language",
   "rules.contentPlaceholder": "One sentence the drafter must obey",
   "rules.topicsHint": "What is this rule about? Leave everything unticked and it applies to all mail.",
   "rules.topicsUnknown": "Tagged {list}, which is not in the current topic list.",
@@ -274,6 +426,11 @@ export const en = {
   "rules.historyReason.consolidation": "tidied up",
   "rules.historyReason.split": "cut into separate rules",
   "rules.saveButton": "Save",
+  // The rulebook is read by scanning and written one rule at a time, so the
+  // list stopped carrying a textarea per row and the editing moved to a page
+  // of its own. This is the way in, and the way back.
+  "rules.editButton": "Edit",
+  "rules.backToRulebook": "← The rulebook",
   "rules.retireButton": "Retire",
   "rules.restoreButton": "Restore",
   "rules.deleteButton": "Delete",
@@ -282,7 +439,8 @@ export const en = {
 
   // --- The people on the desk ---
   "operators.intro":
-    "Everyone here can do everything. The point of a name is not what it stops — it is being able to say, later, who sent that.",
+    "Everyone here can review and send any of the mail. The point of a name is not what it stops — it is being able to say, later, who sent that.",
+  "operators.adminIntro": "The queue, the archive, this list and the settings are for admins.",
   "operators.noneYet":
     "Nobody has a name yet, so replies go out unattributed. Add one below.",
   "operators.onlySharedPassword":
@@ -291,19 +449,26 @@ export const en = {
   "operators.namePlaceholder": "Their name",
   "operators.passwordPlaceholder": "A password for them",
   "operators.addButton": "Add",
-  "operators.addNote": "They can change the password themselves once they are in.",
+  "operators.addNote": "They can change the password themselves once they are in. Somebody new starts on the mail alone; the settings are handed over below.",
   "operators.newPasswordPlaceholder": "New password",
   "operators.changePasswordButton": "Change password",
   "operators.retireButton": "Retire",
   "operators.restoreButton": "Bring back",
+  "operators.makeAdminButton": "Make admin",
+  "operators.removeAdminButton": "Remove admin",
   "operators.retiredTag": "retired",
+  "operators.adminTag": "admin",
   "operators.you": "you",
   "operators.lastSeen": "last here {when}",
   "operators.neverSignedIn": "has not signed in yet",
+  "operators.passwordChanged": "Password changed. They sign in with the new one from now on; anything they had already approved keeps their name on it.",
+  "operators.added": "{name} can sign in now. Tell them the password you just typed — this screen will not show it again.",
   "operators.errorTaken": "Somebody here already has that name.",
   "operators.errorBlank": "A name and a password, both.",
   "operators.errorLast":
     "That is the last person who can get in, and there is no shared password to fall back on. Retiring them would leave the door open, not locked.",
+  "operators.errorLastAdmin":
+    "That is the last admin, and there is no shared password to fall back on. Take it away and nobody can reach the settings again — this page included.",
 
   // --- Learning from the archive ---
   "backfill.statusQueued": "Queued",
@@ -318,13 +483,33 @@ export const en = {
   "backfill.intro": "The review loop learns from your edits, which means a fresh install knows nothing until you have worked through a few weeks of mail. Your Sent folder already contains the answers. This reads them.",
   "backfill.explainerBefore": "For each archived reply it drafts what the assistant",
   "backfill.explainerWould": "would",
-  "backfill.explainerAfter": "write today, compares that against what you actually sent, and keeps only what the difference teaches. Nothing is sent, nothing appears in your inbox, and every rule it produces is listed on the Rules screen with the conversation behind it. Budget two or three model calls per email.",
+  "backfill.explainerAfter": "write today, compares that against what you actually sent, and keeps only what the difference teaches. Nothing is sent, nothing appears in your inbox, and every rule it produces is listed on the Rules screen with the conversation behind it. Budget three or four model calls per email.",
   "backfill.lookBackLabel": "Look back",
   "backfill.monthsUnit": "months",
   "backfill.atMostLabel": "At most",
   "backfill.repliesUnit": "replies",
   "backfill.scanButton": "Scan the Sent folder",
-  "backfill.rulesProduced": "Rules produced",
+  // Asked before it is spent. Every line is a property of the run — four calls
+  // is classify, draft, critic and extraction; the tidy every 25 items is
+  // `CONSOLIDATE_EVERY` — rather than a reassurance.
+  "backfill.scanAsk.title": "Scan the Sent folder?",
+  "backfill.scanAsk.scope": "At most {limit} replies, from the last {months} months.",
+  "backfill.scanAsk.cost": "Each one is a full generation: the topic is classified, a draft is written, a critic reads it, and a fourth call works out what your actual reply taught. Four model calls apiece — on the order of {calls} for this window — plus a rulebook tidy after every 25 items. Nothing here bills you afterwards, so this is the moment to decide.",
+  "backfill.scanAsk.time": "It runs in the queue at the lowest priority, one reply at a time, behind today's drafting. A few hundred is hours rather than minutes, and this page shows how far it has got.",
+  "backfill.scanAsk.safe": "No mail is sent and nothing reaches your inbox: the drafts it writes are thrown away and never become tasks. Rules it produces are listed on the Rules screen, each with the conversation behind it.",
+  "backfill.scanAsk.stoppable": "Stop ends it whenever you like. Replies already generating finish; the rest are marked cancelled and cost nothing further. Clearing the history and scanning again is how you start over.",
+  "backfill.scanAsk.go": "Scan it",
+  "backfill.scanAsk.back": "Not now",
+  // A job that runs for hours has to keep saying where it has got to and what
+  // it has brought back — a number that is not moving and a run that has
+  // stalled look exactly alike.
+  "backfill.scanning": "Scanning",
+  "backfill.scanDone": "Finished",
+  "backfill.progress": "{done} of {total} replies",
+  // What came back matters as much as what it cost: read on its own, a
+  // progress bar only ever reports the spending.
+  "backfill.yield": "{n} rules back",
+  "backfill.quieterIsBetter": "It gets quieter as it goes. Where the rulebook already gets it right the two agree and nothing is learned — that is the run working, not stalling.",
   "backfill.stopButton": "Stop",
   "backfill.clearHistoryButton": "Clear history",
   "backfill.noSubject": "(no subject)",
@@ -335,6 +520,10 @@ export const en = {
   "setup.nav.model": "Pick a model",
   "setup.nav.mailbox": "Connect the mailbox",
   "setup.nav.voice": "Say who you are",
+  "setup.step.aria": "Setup steps",
+  "setup.step.of": "Step {n} of {total}",
+  "setup.step.last": "All four steps",
+  "setup.step.back": "← Back: {title}",
   "setup.notice.notSaved": "Not saved.",
   "setup.notice.unwritableTitle": "In effect, but not written down.",
   "setup.notice.unwritableBefore": "This is live for the running server, but",
@@ -347,9 +536,10 @@ export const en = {
   "setup.access.pageTitle": "Set up {app}",
   "setup.access.intro": "Four steps, and you can leave after any of them. {app} reads your support mailbox, drafts a reply to each message, and holds it until you approve it — and when you edit a draft before sending, it works out what the edit was for and remembers.",
   "setup.access.privacy": "Everything you type here is written to the same files you would have edited by hand, on this machine. Nothing is sent anywhere.",
-  "setup.access.title": "1. Lock the door",
+  "setup.access.title": "Lock the door",
   "setup.access.hasPassword": "A password is set. Typing a new one replaces it and signs out every other browser — the session key is derived from the password, so that comes free.",
   "setup.access.noPassword": "There is no password yet, so anyone who can reach this port can read and send your mail. One password, shared, if that is all you need.",
+  "setup.access.passwordLabel": "The shared password",
   "setup.access.passwordPlaceholder": "At least 8 characters",
   "setup.access.cronTokenBefore": "A",
   "setup.access.cronTokenAfter": "is generated at the same time, so the scheduler never needs this password.",
@@ -361,18 +551,42 @@ export const en = {
   "setup.access.operatorSome":
     "{n} can sign in by name. Add another here, or manage them later on the People page.",
   "setup.access.operatorNamePlaceholder": "Their name",
+  "setup.access.operatorPasswordLabel": "Their password",
   "setup.access.operatorPasswordPlaceholder": "At least 8 characters",
   "setup.access.operatorNote": "Everyone can do everything; the name is for the record, not the lock.",
   "setup.access.operatorButton": "Add",
   "setup.access.next": "Next: pick a model →",
 
   // --- Setup — model, mailbox, voice ---
-  "setup.model.title": "2. Pick a model",
-  "setup.model.intro": "Anything that speaks the OpenAI chat API works — OpenAI, an Anthropic key, OpenRouter, Together, or Ollama and vLLM on your own hardware. One model does all four jobs unless you split them later.",
-  "setup.model.providerOpenAiCompatible": "OpenAI-compatible",
-  "setup.model.providerAnthropic": "Anthropic",
-  "setup.model.namePlaceholder": "Model name, e.g. gpt-4o-mini or claude-sonnet-4-5",
-  "setup.model.baseUrlPlaceholder": "Base URL — blank for the provider default, or http://localhost:11434/v1 for Ollama",
+  "setup.model.title": "Pick a model",
+  "setup.model.intro": "Pick the service you already have an account with and its address is filled in for you. Anything that speaks the OpenAI chat API works, including Ollama or vLLM on your own hardware. One model does all four jobs unless you split them later.",
+  "setup.model.providerOpenAiCompatible": "Something else that speaks OpenAI — type the address",
+  "setup.model.providerCliClaude": "Claude subscription, through the CLI on this machine",
+  "setup.model.providerCliCodex": "ChatGPT subscription, through the CLI on this machine",
+  // Two services run a mainland platform and an international one, with a
+  // separate account and key on each. The menu names both, so the word after
+  // the service is the one thing that decides whether the key works.
+  "setup.model.regionChina": "mainland China",
+  "setup.model.regionGlobal": "international",
+  "setup.model.cliTitle": "Or spend a subscription you already have",
+  "setup.model.cliIntro": "Claude Pro or Max and ChatGPT Plus have no API endpoint, so there is no key to paste above. What they do have is a command-line tool that spends the subscription, and this screen has gone looking for one.",
+  "setup.model.cliCaveat": "Two things change in this mode. The per-role temperature and length settings stop applying, because neither tool accepts them. And the limit becomes a rolling window rather than a bill, so a heavy morning or a backfill can run it out until the window clears.",
+  "setup.model.cliUnsafeNote": "Both tools are agents that can read files and run commands. Drafting hands them mail from strangers, so this runs them with their tools denied, in an empty directory, with none of this server's own secrets in their environment.",
+  "setup.model.cliReady": "Signed in as {account}, on {plan}.",
+  "setup.model.cliReadyAnon": "Signed in, on {plan}.",
+  "setup.model.cliLoggedOut": "Installed, but signed in to nothing. Run this as the user this server runs as, then reload:",
+  "setup.model.cliApiKey": "Signed in with an API key rather than a subscription. The menu above reaches the same models directly, which is cheaper and faster than going through a coding agent.",
+  "setup.model.cliMissing": "Not installed, or not on this server's PATH.",
+  "setup.model.cliUse": "Use this",
+  "setup.model.cliInUse": "In use",
+  "setup.model.cliTagFound": "Found",
+  "setup.model.cliTagNotReady": "Not ready",
+  "setup.model.cliTagAbsent": "Not found",
+  "setup.model.namePlaceholder": "Which model",
+  "setup.model.nameOther": "Something else — type it",
+  "setup.model.nameCliDefault": "Whatever the tool itself is set to",
+  "setup.model.nameCustom": "The model name, spelled the way the service spells it",
+  "setup.model.baseUrlPlaceholder": "Address — filled in by the menu above; change it only if yours answers somewhere else",
   "setup.model.apiKeySavedPlaceholder": "A key is saved — leave blank to keep it",
   "setup.model.apiKeyPlaceholder": "API key (blank for a local model)",
   "setup.model.savedKeyNote": "Saved keys are never sent back to this page, which is why the box looks empty.",
@@ -380,9 +594,15 @@ export const en = {
   "setup.model.test": "Test it",
   "setup.model.testNote": "Asks the model for one word, through the same code path that writes drafts. A pass here means drafting will run.",
   "setup.model.next": "Next: the mailbox →",
-  "setup.mailbox.title": "3. Connect the mailbox",
+  "setup.mailbox.title": "Connect the mailbox",
   "setup.mailbox.intro": "The account whose support mail you want drafted. Use an app-specific password rather than the real one — Gmail, Fastmail and Zoho all issue them, and it can be revoked without changing your login.",
   "setup.mailbox.addressPlaceholder": "support@yourcompany.com",
+  "setup.mailbox.addressLabel": "The mailbox address",
+  "setup.mailbox.serviceLabel": "Mail service",
+  "setup.mailbox.providerOther": "Something else — type the hosts",
+  "setup.mailbox.imapPortLabel": "IMAP port",
+  "setup.mailbox.smtpPortLabel": "SMTP port",
+  "setup.voice.replyLanguageLabel": "What language replies go out in",
   "setup.mailbox.passwordSavedPlaceholder": "A password is saved — leave blank to keep it",
   "setup.mailbox.passwordPlaceholder": "App password",
   "setup.mailbox.imapHostPlaceholder": "IMAP host, e.g. imap.gmail.com",
@@ -395,14 +615,18 @@ export const en = {
   "setup.mailbox.test": "Test it",
   "setup.mailbox.testNote": "Logs in and reads the top of the inbox. Nothing is imported, marked read, or sent.",
   "setup.mailbox.next": "Next: who you are →",
-  "setup.voice.title": "4. Say who you are",
+  "setup.voice.title": "Say who you are",
   "setup.voice.intro": "This opens every drafting prompt. The facts matter most: they are the things the model would otherwise invent.",
   "setup.voice.organizationPlaceholder": "Company name — who the customer thinks they are writing to",
   "setup.voice.productPlaceholder": "What it makes (optional)",
+  "setup.voice.appNamePlaceholder": "What this desk is called — blank for “{fallback}”",
+  "setup.voice.appNameNote": "The header and the browser tab. Never sent to the model, and never seen by a customer.",
   "setup.voice.voicePlaceholder": "How replies should sound",
+  "setup.voice.factsLabel": "Facts, one per line",
   "setup.voice.factsPlaceholder": "One fact per line. Refund window, support hours, what the product cannot do —\nshort and load-bearing, because every one of these goes into every draft.",
   "setup.voice.signaturePlaceholder": "Signature, appended verbatim — e.g. — The Acme team",
   "setup.voice.replyLanguagePlaceholder": "match",
+  "setup.voice.reviewLanguageLabel": "The language you read",
   "setup.voice.reviewLanguagePlaceholder": "you read",
   "setup.voice.save": "Save",
   "setup.voice.replyLanguageNoteBefore": "Reply language:",
@@ -421,11 +645,9 @@ export const en = {
   "setup.done.allConfigured": "Everything is configured. Fetch your mail and {app} will draft a reply to each new message — the drafts wait for you, and nothing is sent without a click.",
   "setup.done.stillUndone": "Still undone:",
   "setup.done.optional": " — optional",
-  "setup.done.required": " — needed before anything can be drafted",
+  "setup.done.requiredModel": " — needed before anything can be drafted",
+  "setup.done.requiredMailbox": " — needed before any mail can arrive or be sent",
   "setup.done.cronTitle": "Keep it running",
-  "setup.done.cronBefore": "Both buttons on the inbox have a cron equivalent, so a real install does not need anyone clicking. The token was generated when you set the password; it is",
-  "setup.done.cronMiddle": "in your",
-  "setup.done.cronAfter": ".",
   "setup.done.goToInbox": "Go to the inbox",
   "setup.done.fetchMail": "Fetch mail now",
   "setup.done.loadSample": "Load sample data instead",
@@ -440,5 +662,152 @@ export const en = {
   "setup.actions.modelRequired": "A model name is required.",
   "setup.actions.mailboxFieldsRequired": "Address, IMAP host and SMTP host are all needed.",
   "setup.actions.organizationRequired": "Who is replying?",
+  "setup.actions.stripeKeyRequired": "Paste a Stripe key first.",
 
+  // --- The settings screen — what /setup becomes once it is not a wizard ---
+  "settings.intro": "Everything {app} has been told, one subject at a time. Every save takes effect at once — none of it needs a restart.",
+  "settings.jump.aria": "Sections of this screen",
+  // The same four subjects, named as things rather than as instructions. A step
+  // of a wizard is something you do — "lock the door" — and a section of a
+  // settings screen is something that is the case, which is why it is not the
+  // wizard's names in a different order.
+  "settings.nav.access": "Access",
+  "settings.nav.model": "Model",
+  "settings.nav.mailbox": "Mailbox",
+  "settings.nav.voice": "Voice",
+  "settings.nav.billing": "Billing",
+  "settings.nav.running": "Running it",
+  "settings.missing": "Not set yet:",
+  "settings.access.named": "{n} can sign in by name, and the replies they approve go out with that name on them.",
+  "settings.access.nobodyNamed": "Nobody signs in by name here, so an approved reply goes out as nobody in particular.",
+  "settings.access.people": "Names are managed on the People screen",
+  "settings.model.status": "Drafting with {model}.",
+  "settings.model.statusNone": "No model, so nothing can be drafted.",
+  "settings.mailbox.status": "Reading {address} through {host}.",
+  "settings.mailbox.statusNone": "No mailbox connected, so nothing arrives to draft.",
+  "settings.voice.status": "Writing as {organization}.",
+  "settings.voice.statusNone": "Nobody has said who this desk writes for, so every draft calls it “our company”.",
+  // The one section with nothing above it in the wizard: a desk connects Stripe
+  // once it is already answering mail, not before it has a mailbox.
+  "settings.billing.status": "Reading Stripe in {mode} mode.",
+  "settings.billing.statusOff": "A Stripe key is saved, but billing is switched off.",
+  "settings.billing.statusUnknown": "A Stripe key is saved, though it looks like neither a live nor a test key.",
+  "settings.billing.statusNone": "Not connected, so no draft knows what anybody pays.",
+  "settings.billing.keyPlaceholder": "Stripe key — rk_live_… or sk_live_…",
+  "settings.billing.keySavedPlaceholder": "A key is saved. Leave blank to keep it.",
+  "settings.billing.keyNote": "A restricted key with read on customers, subscriptions and charges is enough — nothing here writes.",
+  "settings.billing.unrestricted": "This is a full secret key. A restricted one grants exactly the three reads this desk uses and nothing else.",
+  "settings.billing.enable": "Let drafts see what the sender pays",
+  "settings.billing.enableNote": "Unticked keeps the key and stops every lookup — on the review screen and in the prompt.",
+  "settings.billing.save": "Save",
+  "settings.billing.test": "Test the key",
+  "settings.billing.testNote": "Reads one customer, one subscription and one charge, and names any permission the key is missing.",
+  "settings.billing.open": "Look up an address, or read the catalogue →",
+
+  // --- Running it: the one part of this desk that lives outside it. The card
+  // reports whether anything is calling the four endpoints before it explains
+  // how to make something call them, because a page of crontab handed to
+  // somebody whose crontab already works is a page they have to read to find
+  // out they did not need it. ---
+  "settings.running.silent": "Nothing has called these yet, so this desk moves only when somebody presses a button on the inbox. Below is how to change that.",
+  "settings.running.late": "Something is calling these, but not on time. A scheduler that stopped, a host that slept, or an app that was down for longer than a tick.",
+  "settings.running.onTime": "Something is calling these on schedule, so mail arrives and drafts get written with nobody here.",
+  "settings.running.jobSync": "Reads the inbox and opens a task for anything new. Every five minutes.",
+  "settings.running.jobWorker": "Drafts, translates and triages whatever is queued. Every two minutes.",
+  "settings.running.jobSweep": "Releases tasks a killed worker left mid-job. Hourly.",
+  "settings.running.jobConsolidate": "Tidies the rulebook: merges duplicates, retires what nothing matches. Weekly.",
+  "settings.running.tagOnTime": "on time",
+  "settings.running.tagLate": "late",
+  "settings.running.tagNever": "never called",
+  "settings.running.justNow": "just now",
+  "settings.running.minutesAgo": "{n} min ago",
+  "settings.running.hoursAgo": "{n}h ago",
+  "settings.running.daysAgo": "{n}d ago",
+  // The state worth interrupting for: no token means every call below is
+  // refused before it reads a mailbox, and nothing on any other screen says so.
+  "settings.running.tokenMissingBefore": "No",
+  "settings.running.tokenMissingAfter": "is set, so every one of these calls is turned away at the door. Set a password under Access and a token is written alongside it.",
+  "settings.running.tokenBefore": "The scheduler authenticates with the",
+  "settings.running.tokenAfter": "in your .env and never with the password, so a crontab somebody can read is not a way into this screen.",
+  "settings.running.setupTitle": "Setting it up",
+  "settings.running.docker": "Started with docker compose? The ticker container already does all four on this schedule, and there is nothing here to do.",
+  "settings.running.crontabBefore": "On a host that already runs cron, this is the whole of it. Put your own token on the first line — it is in your",
+  "settings.running.crontabAfter": ", and cron will not read that file for you.",
+  "settings.running.docsBefore": "systemd timers, a certificate in front, and the rest of what a deployment wants are in",
+  "settings.running.docsAfter": ".",
+  "settings.running.nudge": "Nothing is running this desk",
+
+
+  // --- What a misconfigured install is told, in the language it is told
+  // everything else in. These are thrown from `mail/config.ts` and
+  // `ai/config.ts` and surface as the red banner on the setup screen and the
+  // inbox — the one place somebody meets this app before it works at all. ---
+  "config.required": "{name} is required (see .env.example)",
+  "config.port": "{name} must be a valid port, got {value}",
+  "config.bool": "{name} must be true or false, got {value}",
+  "config.number": "{name} must be a number, got {value}",
+  "config.fromAddress": "MAIL_FROM is not a usable address: {value}",
+  "config.gmailBothAuth": "Set either GOOGLE_REFRESH_TOKEN or GOOGLE_PRIVATE_KEY, not both — they are two different ways in and only one can be used.",
+  "config.gmailNoAuth": "MAIL_PROVIDER=gmail needs either GOOGLE_REFRESH_TOKEN (one mailbox) or GOOGLE_PRIVATE_KEY (Workspace domain-wide delegation). See .env.example.",
+  "config.zohoRegion": "ZOHO_REGION must be one of {options}, got {value}",
+  "config.mailProvider": "Unknown MAIL_PROVIDER {value}. Supported: {options}.",
+  "config.anthropicKey": "AI_PROVIDER=anthropic requires AI_API_KEY",
+  "config.aiProvider": "Unknown AI_PROVIDER {value}. Supported: {options}.",
+  "config.aiCli": "Unknown AI_CLI {value}. Supported: {options}.",
+
+  // --- The topics a slug can be, named. A scope is a slug because rules and
+  // the database match on it; this is what a person reads instead. Only the
+  // vocabulary a support desk usually has — anything the model invents that
+  // is not in here is still shown as its own slug, which is the honest
+  // answer and how it looked before. A `label` in aas.config.json wins over
+  // both. See `topicName`. ---
+  "topic.account": "Account",
+  "topic.api": "API",
+  "topic.billing": "Billing",
+  "topic.bug": "Bug",
+  "topic.bug-report": "Bug report",
+  "topic.cancellation": "Cancellation",
+  "topic.churn": "Churn",
+  "topic.complaint": "Complaint",
+  "topic.delivery": "Delivery",
+  "topic.feature-request": "Feature request",
+  "topic.feedback": "Feedback",
+  "topic.onboarding": "Onboarding",
+  "topic.pre-sales": "Pre-sales",
+  "topic.presales": "Pre-sales",
+  "topic.pricing": "Pricing",
+  "topic.privacy": "Privacy",
+  "topic.refund": "Refund",
+  "topic.refund-and-cancellation": "Refund and cancellation",
+  "topic.security": "Security",
+  "topic.spam": "Spam",
+
+  // --- What the desk sells, and the prices a draft is allowed to quote ---
+  "catalog.title": "Products and services",
+  "catalog.intro": "What this desk sells, kept where the drafter can read it. Prices come straight from Stripe; the notes are yours, and no sync overwrites them.",
+  "catalog.notConfigured": "No Stripe key is set, so there is nothing to pull. You can still write entries by hand.",
+  "catalog.syncButton": "Pull from Stripe",
+  "catalog.count": "{n} entries, {on} of them in use",
+  "catalog.syncedResult": "Pulled: {added} new, {updated} updated, {gone} no longer sold.",
+  "catalog.syncFailed": "Stripe could not be read: {error}",
+  "catalog.empty": "Nothing here yet. Pull from Stripe, or write an entry by hand.",
+  "catalog.discontinued": "no longer sold",
+  "catalog.off": "not in drafts",
+  "catalog.fromStripe": "Stripe",
+  "catalog.manual": "by hand",
+  "catalog.noPrices": "No price — nobody can buy this today.",
+  "catalog.noteLabel": "What Stripe cannot tell it",
+  "catalog.notePlaceholder": "Who it suits, what it does not include, the caveat that keeps the reply honest.",
+  "catalog.saveNote": "Save note",
+  "catalog.enable": "Use in drafts",
+  "catalog.disable": "Keep out of drafts",
+  "catalog.delete": "Delete",
+  "catalog.addHeading": "Write an entry by hand",
+  "catalog.addName": "Name",
+  "catalog.addPricing": "Price, as a reply should say it",
+  "catalog.addDescription": "What it is",
+  "catalog.addButton": "Add it",
+  "catalog.previewHeading": "What the drafter reads",
+  "catalog.previewNote": "The block exactly as it goes into every draft, so a wrong switch is found here rather than in a customer's inbox.",
+  "catalog.previewEmpty": "Nothing is in use, so no draft is told what you sell.",
 } as const;

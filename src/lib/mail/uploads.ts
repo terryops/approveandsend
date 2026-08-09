@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 import type { OutgoingAttachment } from './types';
 
 /**
@@ -26,13 +28,26 @@ import type { OutgoingAttachment } from './types';
  */
 export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 
+/** Megabytes, rounded, so the browser and the server quote the same number. */
+export function megabytes(bytes: number): number {
+  return Math.round(bytes / 1024 / 1024);
+}
+
+/**
+ * Too big, said in the reviewer's language.
+ *
+ * Translated at the throw site rather than thrown as a key the action decodes —
+ * the same call `sendReply` makes for the same reason. Every one of these ends
+ * up in `?error=` and is rendered verbatim, so somewhere has to resolve it, and
+ * a second key-to-message table in `actions.ts` would exist for this line alone.
+ *
+ * The same sentence the picker says before it uploads anything; see
+ * `AttachTile`. One key, two places, so the refusal does not change wording
+ * depending on which side of the wire noticed.
+ */
 export class UploadTooLarge extends Error {
   constructor(bytes: number) {
-    super(
-      `Those files come to ${Math.round(bytes / 1024 / 1024)} MB, over the ${Math.round(
-        MAX_UPLOAD_BYTES / 1024 / 1024,
-      )} MB a reply can carry. Send a link instead.`,
-    );
+    super(t('task.attachTooBig', { size: megabytes(bytes), limit: megabytes(MAX_UPLOAD_BYTES) }));
     this.name = 'UploadTooLarge';
   }
 }

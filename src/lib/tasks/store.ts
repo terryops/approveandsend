@@ -1,3 +1,4 @@
+import { isReplyFormat, type ReplyFormat } from '../mail/render';
 import { randomUUID } from 'node:crypto';
 
 import { getDb, type Db } from '../db';
@@ -22,6 +23,7 @@ interface TaskRow {
   analysis: string | null;
   draft: string | null;
   reply_subject: string | null;
+  reply_format: string | null;
   final_reply: string | null;
   reviewer_notes: string | null;
   sent_at: string | null;
@@ -93,6 +95,9 @@ function mapTask(row: TaskRow): Task {
     analysis: parseAnalysis(row.analysis),
     draft: row.draft,
     replySubject: row.reply_subject,
+    // NULL means nobody chose, which for every row written before the column
+    // existed is the same thing as markdown — see migration 26.
+    replyFormat: isReplyFormat(row.reply_format) ? row.reply_format : 'markdown',
     finalReply: row.final_reply,
     reviewerNotes: row.reviewer_notes,
     sentAt: row.sent_at,
@@ -375,6 +380,7 @@ export interface TaskUpdate {
   analysis?: Analysis | null;
   draft?: string | null;
   replySubject?: string | null;
+  replyFormat?: ReplyFormat;
   finalReply?: string | null;
   reviewerNotes?: string | null;
   sentAt?: string | null;
@@ -395,6 +401,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   analysis: 'analysis',
   draft: 'draft',
   replySubject: 'reply_subject',
+  replyFormat: 'reply_format',
   finalReply: 'final_reply',
   reviewerNotes: 'reviewer_notes',
   sentAt: 'sent_at',

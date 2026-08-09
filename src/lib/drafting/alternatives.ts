@@ -45,14 +45,14 @@ export interface DraftOption {
 }
 
 function buildPrompt(task: Task, blocks: Awaited<ReturnType<typeof assemble>>, current: string): string {
-  const { workspace, rulesBlock, contextBlock, threadBlock, filesBlock } = blocks;
+  const { workspace, catalogueBlock, rulesBlock, contextBlock, threadBlock, filesBlock } = blocks;
 
   // The steer block is deliberately not here. A note saying what was wrong with
   // one draft is an instruction for a redraft; on a request for options it
   // would collapse the three into three shades of the same correction.
   return `You are helping a support reviewer decide how to answer this email.
 
-${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}
+${describeWorkspace(workspace)}${catalogueBlock}${rulesBlock}${contextBlock}${threadBlock}
 
 ## The customer's ${threadBlock ? 'latest message' : 'email'}
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}

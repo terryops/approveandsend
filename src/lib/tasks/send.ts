@@ -11,6 +11,7 @@ import { recordEvent } from './events';
 import { enqueueForTranslation } from '../queue/handlers/translate-task';
 import { markHandled } from './mark-read';
 import { addMessage } from './messages';
+import { clearPending } from './outgoing';
 import { getTask, updateTask } from './store';
 import type { Task } from './types';
 
@@ -30,6 +31,22 @@ export interface SendReplyInput {
   /** What the reviewer actually approved, edits included. */
   finalReply: string;
   /**
+   * The reviewer ticked "don't learn from this one" on the confirmation.
+   *
+   * Deliberately not `options.learn`, which reads the same and means something
+   * else: that one is a test knob for calls that only care about the mail, and
+   * folding the two together made every test-mode send record a decision nobody
+   * had made. This is a fact about *this send* — a person judged this reply a
+   * special case — which is why it is on the input and why it goes in the
+   * history. `options.learn` is a fact about the caller.
+   *
+   * It applies to this reply only. "Stop learning" is not a decision anybody
+   * should be able to make for the whole desk from a send button, and a
+   * remembered switch becomes "this desk stopped learning months ago and nobody
+   * remembers who turned it off".
+   */
+  skipLearning?: boolean;
+  /**
    * The subject line they approved, if the review screen sent one.
    *
    * Same reasoning as `finalReply`: what goes out is what was on screen. An
@@ -46,8 +63,11 @@ export interface SendReplyInput {
   /**
    * Files to send with it, already read into memory.
    *
-   * Not persisted anywhere: the Sent folder keeps the copy. What survives here
-   * is their names, on the `sent` event — see `describeUploads`.
+   * Usually the ones the reviewer put on the reply while writing it — see
+   * `outgoing.ts`, which is holding them only until this call. Nothing survives
+   * the send but their names, on the `sent` event: the row goes in the same
+   * transaction that marks the task sent, and the copy that matters is the one
+   * in the Sent folder.
    */
   attachments?: OutgoingAttachment[];
 }
@@ -115,7 +135,7 @@ export async function sendReply(
 
   // Both parts, from the same string. `text` is what the reviewer read; the
   // HTML is that text with paragraph breaks in it, so the two cannot disagree.
-  const html = sendsHtmlReplies() ? replyHtml(reply) : '';
+  const html = sendsHtmlReplies() ? replyHtml(reply, task.replyFormat) : '';
   const subject = outgoingSubject(task, input.subject);
 
   // Claim it before the mail server hears about it.
@@ -153,7 +173,7 @@ export async function sendReply(
       subject,
       // The marks come out of the plain-text half and turn into tags in the
       // HTML one. Both are this one approved string; neither is a second draft.
-      text: replyText(reply),
+      text: replyText(reply, task.replyFormat),
       ...(html ? { html } : {}),
       ...(task.messageIdHeader
         ? { inReplyTo: task.messageIdHeader, references: [task.messageIdHeader] }
@@ -173,6 +193,18 @@ export async function sendReply(
 
   // The filenames, because they are the only trace of them that stays with us.
   const carried = describeUploads(input.attachments ?? []);
+
+  // Two facts about this send that both belong on the one `sent` event: what
+  // rode along with it, and whether the reviewer told it not to learn. Joined
+  // rather than given an event of their own — the nine event kinds are a closed
+  // set on purpose, and "sent, and here is what was true about it" is one thing
+  // that happened, not two.
+  //
+  // Only the reviewer's own opt-out is recorded. A test that passes
+  // `learn: false` has made no decision worth remembering.
+  const detail = [carried, input.skipLearning ? t('task.event.sentNoLearning') : '']
+    .filter(Boolean)
+    .join(' · ');
 
   // Everything the sent mail implies about our own rows, in one transaction.
   // The mail is already gone, so this cannot be undone by failing — but it can
@@ -214,7 +246,7 @@ export async function sendReply(
 
     recordEvent(taskId, 'sent', {
       ...(input.sentBy ? { actor: input.sentBy } : {}),
-      ...(carried ? { detail: carried } : {}),
+      ...(detail ? { detail } : {}),
       db,
     });
 
@@ -222,6 +254,14 @@ export async function sendReply(
     // desk that keeps every option it ever generated is a desk whose database
     // grows with its bill rather than its work.
     clearAlternatives(taskId, db);
+
+    // And the files that went with it. They were only ever here because a
+    // browser cannot refill a file input across a round trip — see migration 29
+    // — and the round trips are over: the mail is gone and the Sent folder is
+    // holding the copy. Dropped here rather than in the action that sent, so
+    // that no future caller of `sendReply` can leave a customer's invoice in
+    // our database by forgetting to.
+    clearPending(taskId, db);
 
     return row;
   });
@@ -240,7 +280,11 @@ export async function sendReply(
   // on IMAP that is the difference between one connection and two.
   await markHandled(task, { provider });
 
-  if (options.learn !== false) {
+  // Not enqueued and then ignored when it is skipped: a job guaranteed to
+  // produce nothing still appears on the queue screen, and that screen's only
+  // job is answering "is anything wrong". Rows that were never going to do
+  // anything dilute the answer.
+  if (options.learn !== false && !input.skipLearning) {
     try {
       enqueueLearnFromSent(
         {

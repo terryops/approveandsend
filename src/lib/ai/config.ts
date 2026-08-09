@@ -1,4 +1,7 @@
+import { t } from '../i18n';
+
 import { AnthropicProvider } from './providers/anthropic';
+import { CLI_KINDS, CliProvider, isCliKind } from './providers/cli';
 import { OpenAiCompatibleProvider } from './providers/openai-compatible';
 import { AI_ROLES, type AiProvider, type AiRole } from './types';
 
@@ -36,7 +39,7 @@ function num(name: string, fallback: number): number {
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
-    throw new Error(`${name} must be a number, got ${JSON.stringify(raw)}`);
+    throw new Error(t('config.number', { name, value: JSON.stringify(raw) }));
   }
   return parsed;
 }
@@ -50,7 +53,7 @@ export function buildProvider(): AiProvider {
   const apiKey = env('AI_API_KEY') ?? '';
 
   if (kind === 'anthropic') {
-    if (!apiKey) throw new Error('AI_PROVIDER=anthropic requires AI_API_KEY');
+    if (!apiKey) throw new Error(t('config.anthropicKey'));
     return new AnthropicProvider(apiKey, env('AI_BASE_URL') ?? 'https://api.anthropic.com/v1');
   }
 
@@ -59,8 +62,22 @@ export function buildProvider(): AiProvider {
     return new OpenAiCompatibleProvider(baseUrl, apiKey, `AI endpoint (${baseUrl})`);
   }
 
+  // Neither subscription has an endpoint to point AI_BASE_URL at, so this one
+  // is a local process rather than a URL and a key. See providers/cli.ts for
+  // what that costs.
+  if (kind === 'cli') {
+    const which = (env('AI_CLI') ?? 'claude').toLowerCase();
+    if (!isCliKind(which)) {
+      throw new Error(t('config.aiCli', { value: JSON.stringify(which), options: CLI_KINDS.join(', ') }));
+    }
+    return new CliProvider(which, env('AI_CLI_BIN') ?? which);
+  }
+
   throw new Error(
-    `Unknown AI_PROVIDER ${JSON.stringify(kind)}. Supported: openai-compatible, anthropic.`,
+    t('config.aiProvider', {
+      value: JSON.stringify(kind),
+      options: 'openai-compatible, anthropic, cli',
+    }),
   );
 }
 
@@ -72,7 +89,7 @@ export function buildProvider(): AiProvider {
 export function loadAiConfig(): AiConfig {
   const defaultModel = env('AI_MODEL');
   if (!defaultModel) {
-    throw new Error('AI_MODEL is required (see .env.example)');
+    throw new Error(t('config.required', { name: 'AI_MODEL' }));
   }
 
   const roles = {} as Record<AiRole, RoleConfig>;

@@ -6,7 +6,7 @@ import { resetAiConfig } from '../ai';
 import { resetWorkspaceConfig } from '../config/workspace';
 import { openDb, type Db } from '../db';
 import { TRANSLATE_TASK, enqueueForTranslation, translateTaskHandler } from '../queue/handlers';
-import { listJobs } from '../queue/store';
+import { completeJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
 import { clearTranslations, getTranslation, hasTranslation, saveTranslation } from './store';
 import { reviewLanguage, translateForReview, translationEnabled } from './translate';
@@ -369,5 +369,45 @@ describe('queueing it', () => {
     enqueueForTranslation(id, { db });
 
     expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
+  });
+
+  /*
+   * The redraft, which is the case the dedupe key could quietly have broken.
+   *
+   * `translate-task:{taskId}` is the same string every time this task is
+   * queued, for the life of the task. That is what stops a reviewer who saves
+   * four times in a minute from buying four translations — and it would just as
+   * happily stop the one that matters, if the key were held by a job that had
+   * already finished. A redraft rewrites the reply, `getTranslation` refuses
+   * the old rendering the moment the text under it changes, and the panel would
+   * then be empty with nothing on its way to fill it.
+   *
+   * It holds only while a job is pending or processing. Once the first one has
+   * run, the next draft gets its own.
+   */
+  it('queues another once the first has finished, which is what a redraft needs', async () => {
+    const id = task('Bonjour', 'Merci de votre patience.');
+    enqueueForTranslation(id, { db });
+
+    queued.push('您好', '感谢您的耐心。');
+    await translateTaskHandler({ taskId: id }, context());
+    completeJob(listJobs({ type: TRANSLATE_TASK }, db)[0]!.id, null, db);
+
+    // What the model writes on a redraft, landing on top of the old reply.
+    updateTask(id, { draft: 'Le remboursement est en route.' }, db);
+    expect(getTranslation(id, 'draft', 'Le remboursement est en route.', 'Chinese', db)).toBeNull();
+
+    enqueueForTranslation(id, { db });
+    expect(listJobs({ type: TRANSLATE_TASK, status: 'pending' }, db)).toHaveLength(1);
+
+    queued.push('退款已在路上。');
+    await translateTaskHandler({ taskId: id }, context());
+
+    expect(getTranslation(id, 'draft', 'Le remboursement est en route.', 'Chinese', db)?.content).toBe(
+      '退款已在路上。',
+    );
+    // The customer's own message never changed, so nobody paid to render it
+    // twice: three calls for four halves.
+    expect(prompts).toHaveLength(3);
   });
 });

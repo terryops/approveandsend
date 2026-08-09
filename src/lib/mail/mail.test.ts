@@ -3,7 +3,15 @@ import { simpleParser } from 'mailparser';
 import { SMTPServer } from 'smtp-server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildMailProvider, loadImapSmtpConfig, resetMailProvider } from './config';
+import { resetWorkspaceConfig } from '../config/workspace';
+
+import {
+  buildMailProvider,
+  loadGmailConfig,
+  loadImapSmtpConfig,
+  loadZohoConfig,
+  resetMailProvider,
+} from './config';
 import { ImapSmtpProvider, decodeId, encodeId } from './providers/imap-smtp';
 import { MailError } from './types';
 
@@ -173,14 +181,26 @@ describe('send', () => {
 
 const ORIGINAL_ENV = { ...process.env };
 
+// These assertions read the message, and the message is translated now — so
+// which language it comes out in has to be decided here rather than by whoever
+// is running the suite. Without this the checkout's own aas.config.json speaks,
+// and a developer whose desk is set to Chinese watches four files fail on text
+// that is correct. Same reasoning as the AAS_CONFIG pin in i18n.test.ts.
+function speakEnglish(): void {
+  process.env.AAS_LANGUAGE = 'en';
+  resetWorkspaceConfig();
+}
+
 beforeEach(() => {
   for (const key of Object.keys(process.env)) {
     if (/^(IMAP|SMTP|MAIL)_/.test(key)) delete process.env[key];
   }
+  speakEnglish();
 });
 
 afterEach(async () => {
   process.env = { ...ORIGINAL_ENV };
+  resetWorkspaceConfig();
   await resetMailProvider();
 });
 
@@ -238,6 +258,69 @@ describe('config', () => {
     expect(() => loadImapSmtpConfig()).toThrow(/IMAP_HOST is required/);
     process.env.IMAP_HOST = 'imap.example.com';
     expect(() => loadImapSmtpConfig()).toThrow(/SMTP_HOST is required/);
+  });
+
+  /*
+   * And says it in the language the rest of the screen is in.
+   *
+   * A misconfigured install is the one state where somebody meets this app
+   * through an error message and nothing else, which makes these the worst
+   * strings in the codebase to leave in English. Each family of message gets a
+   * line here rather than one representative, because they are raised from
+   * four different loaders and it is one forgotten `t()` at a time that puts a
+   * desk back to reading `MAIL_FROM is not a usable address` in Chinese.
+   */
+  function speak(tag: string): void {
+    process.env.AAS_LANGUAGE = tag;
+    resetWorkspaceConfig();
+  }
+
+  it('raises a missing variable in the desk’s own language', () => {
+    speak('zh-CN');
+    expect(() => loadImapSmtpConfig()).toThrow(/MAIL_USER 没有设置/);
+  });
+
+  it('raises a bad port and a bad boolean in the desk’s own language', () => {
+    minimalEnv();
+    speak('zh-CN');
+    process.env.IMAP_PORT = 'yes';
+    expect(() => loadImapSmtpConfig()).toThrow(/IMAP_PORT 得是一个端口号/);
+
+    delete process.env.IMAP_PORT;
+    process.env.IMAP_SECURE = 'maybe';
+    expect(() => loadImapSmtpConfig()).toThrow(/IMAP_SECURE 得是 true 或 false/);
+  });
+
+  it('raises an unusable MAIL_FROM in the desk’s own language', () => {
+    minimalEnv();
+    speak('zh-CN');
+    process.env.MAIL_FROM = 'not an address';
+    expect(() => loadImapSmtpConfig()).toThrow(/MAIL_FROM 不是一个能用来发信的地址/);
+  });
+
+  it('raises both Gmail auth complaints in the desk’s own language', () => {
+    speak('zh-CN');
+    process.env.MAIL_USER = 'support@us.com';
+    // Neither credential: the one somebody hits on their first attempt.
+    expect(() => loadGmailConfig()).toThrow(/需要 GOOGLE_REFRESH_TOKEN/);
+
+    process.env.GOOGLE_REFRESH_TOKEN = 'token';
+    process.env.GOOGLE_PRIVATE_KEY = 'key';
+    expect(() => loadGmailConfig()).toThrow(/只能设一个/);
+  });
+
+  it('raises a wrong Zoho region in the desk’s own language', () => {
+    speak('zh-CN');
+    process.env.MAIL_USER = 'support@us.com';
+    process.env.ZOHO_REGION = 'mars';
+    expect(() => loadZohoConfig()).toThrow(/ZOHO_REGION 得是/);
+  });
+
+  it('raises an unknown provider in the desk’s own language', () => {
+    minimalEnv();
+    speak('zh-CN');
+    process.env.MAIL_PROVIDER = 'carrier-pigeon';
+    expect(() => buildMailProvider()).toThrow(/不是这里认识的/);
   });
 
   it('rejects a nonsense port rather than silently defaulting', () => {

@@ -1,3 +1,5 @@
+import { t } from '../i18n';
+
 import { parseAddress } from './address';
 import { normalizePrivateKey, type GoogleAuthConfig } from './providers/google/auth';
 import { GmailProvider, type GmailConfig } from './providers/google/gmail';
@@ -13,7 +15,7 @@ function env(name: string): string | undefined {
 
 function required(name: string): string {
   const v = env(name);
-  if (!v) throw new Error(`${name} is required (see .env.example)`);
+  if (!v) throw new Error(t('config.required', { name }));
   return v;
 }
 
@@ -22,7 +24,7 @@ function port(name: string, fallback: number): number {
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
-    throw new Error(`${name} must be a valid port, got ${JSON.stringify(raw)}`);
+    throw new Error(t('config.port', { name, value: JSON.stringify(raw) }));
   }
   return parsed;
 }
@@ -37,7 +39,7 @@ function secure(name: string, fallback: boolean): boolean {
   if (raw === undefined) return fallback;
   if (['true', '1', 'yes'].includes(raw)) return true;
   if (['false', '0', 'no'].includes(raw)) return false;
-  throw new Error(`${name} must be true or false, got ${JSON.stringify(raw)}`);
+  throw new Error(t('config.bool', { name, value: JSON.stringify(raw) }));
 }
 
 /**
@@ -60,7 +62,7 @@ export function loadImapSmtpConfig(): ImapSmtpConfig {
   const fromRaw = env('MAIL_FROM') ?? user;
   const from = parseAddress(fromRaw);
   if (!from) {
-    throw new Error(`MAIL_FROM is not a usable address: ${JSON.stringify(fromRaw)}`);
+    throw new Error(t('config.fromAddress', { value: JSON.stringify(fromRaw) }));
   }
 
   const smtpPort = port('SMTP_PORT', 465);
@@ -101,10 +103,7 @@ export function loadGmailConfig(): GmailConfig {
   const refreshToken = env('GOOGLE_REFRESH_TOKEN');
 
   if (serviceAccountKey && refreshToken) {
-    throw new Error(
-      'Set either GOOGLE_REFRESH_TOKEN or GOOGLE_PRIVATE_KEY, not both — ' +
-        'they are two different ways in and only one can be used.',
-    );
+    throw new Error(t('config.gmailBothAuth'));
   }
 
   let auth: GoogleAuthConfig;
@@ -129,16 +128,13 @@ export function loadGmailConfig(): GmailConfig {
       refreshToken,
     };
   } else {
-    throw new Error(
-      'MAIL_PROVIDER=gmail needs either GOOGLE_REFRESH_TOKEN (one mailbox) ' +
-        'or GOOGLE_PRIVATE_KEY (Workspace domain-wide delegation). See .env.example.',
-    );
+    throw new Error(t('config.gmailNoAuth'));
   }
 
   const fromRaw = env('MAIL_FROM') ?? mailbox;
   const from = parseAddress(fromRaw);
   if (!from) {
-    throw new Error(`MAIL_FROM is not a usable address: ${JSON.stringify(fromRaw)}`);
+    throw new Error(t('config.fromAddress', { value: JSON.stringify(fromRaw) }));
   }
 
   return { auth, from };
@@ -156,7 +152,10 @@ export function loadZohoConfig(): ZohoConfig {
   const region = (env('ZOHO_REGION') ?? 'com').toLowerCase();
   if (!isZohoRegion(region)) {
     throw new Error(
-      `ZOHO_REGION must be one of ${Object.keys(ZOHO_REGIONS).join(', ')}, got ${JSON.stringify(region)}`,
+      t('config.zohoRegion', {
+        options: Object.keys(ZOHO_REGIONS).join(', '),
+        value: JSON.stringify(region),
+      }),
     );
   }
 
@@ -164,7 +163,7 @@ export function loadZohoConfig(): ZohoConfig {
   const fromRaw = env('MAIL_FROM') ?? mailbox;
   const from = parseAddress(fromRaw);
   if (!from) {
-    throw new Error(`MAIL_FROM is not a usable address: ${JSON.stringify(fromRaw)}`);
+    throw new Error(t('config.fromAddress', { value: JSON.stringify(fromRaw) }));
   }
 
   return {
@@ -216,7 +215,10 @@ export function buildMailProvider(): MailProvider {
   }
 
   throw new Error(
-    `Unknown MAIL_PROVIDER ${JSON.stringify(kind)}. Supported: imap-smtp, gmail, zoho.`,
+    t('config.mailProvider', {
+      value: JSON.stringify(kind),
+      options: 'imap-smtp, gmail, zoho',
+    }),
   );
 }
 

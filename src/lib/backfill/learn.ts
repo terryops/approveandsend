@@ -63,6 +63,10 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     scope: null,
     priority: 9,
     messageId: incoming.id,
+    // Never sent, so the format is never used — but the drafter is handed a
+    // whole Task and this one is the same shape as the rest. Markdown is the
+    // honest answer anyway: it is what this archived reply would go out as.
+    replyFormat: 'markdown',
     threadId: incoming.threadId ?? null,
     messageIdHeader: incoming.messageIdHeader ?? null,
     subject: incoming.subject,
@@ -135,6 +139,24 @@ export async function runBackfillItem(
     return { status: 'skipped', reason, rulesLearned: 0 };
   };
 
+  /*
+   * The other half of Stop, and the half that costs money.
+   *
+   * A scan enqueues every item at once, so pressing Stop leaves hundreds of
+   * `backfill-learn` jobs already in the queue — cancelling writes to the rows
+   * and cannot reach the jobs. Without this the handler read a row that said
+   * 'skipped', generated against it anyway, and wrote 'learned' back over the
+   * cancellation: Stop cost exactly what not stopping would have, and the only
+   * sign of it was a progress bar going backwards.
+   *
+   * Every skip is terminal on the same inputs — cancelled, no readable body,
+   * nothing inbound preceded it — so refusing to re-run one loses nothing. The
+   * row is left exactly as it is, reason and all.
+   */
+  if (item.status === 'skipped') {
+    return { status: 'skipped', reason: item.skipReason ?? 'Cancelled', rulesLearned: 0 };
+  }
+
   updateBackfillItem(itemId, { status: 'learning', error: null }, db);
 
   const ours = await provider.getMessage(item.sentMessageId);
@@ -176,6 +198,11 @@ export async function runBackfillItem(
     // ago, and a rule learned from a fact the writer never had is a rule
     // learned from fiction.
     context: '',
+    // No catalogue either, and for the same reason one step removed: prices
+    // move. A shadow draft quoting today's price against an archived reply that
+    // quoted last year's differs on a number neither writer was wrong about,
+    // and the learner would turn that difference into a rule about pricing.
+    catalogue: '',
     // And no attachments. The synthetic task has no row in the table; leaving
     // this to the default would list whatever a real task with the same id
     // happens to have.

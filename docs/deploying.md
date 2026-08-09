@@ -22,7 +22,58 @@ The setup wizard notices, fails cleanly, and hands you the lines to paste into
 the file on the host instead.
 
 If your host already runs cron, delete the `ticker` service and point crontab at
-the published port. Same endpoints, one less container.
+the published port. Same endpoints, one less container — see below.
+
+## Nothing runs on its own
+
+There is no scheduler inside this app, deliberately: a timer in a web process
+stops when the process is recycled and says nothing about it. Four endpoints do
+everything that happens without a person, and something outside has to call
+them.
+
+```cron
+CRON_TOKEN=your-token-here
+
+*/5 * * * * curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sync
+*/2 * * * * curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/worker
+17  * * * * curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/sweep
+30 4 * * 1  curl -fsS -m 600 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
+```
+
+The first line is not decoration. cron does not read `.env` — it runs each
+command through a shell with the environment the crontab gives it, so without
+that assignment `$CRON_TOKEN` expands to nothing and every call comes back 401.
+`-f` matters for the same reason: curl exits 0 on a 401, so `-s` alone means
+cron has nothing to mail you about and the desk goes quiet without a word.
+
+The settings screen reports when each of the four was last called, so you can
+tell a desk that was never wired up from one whose scheduler stopped last
+Tuesday. It is under **Running it**, at `/setup?where=running`.
+
+### systemd timers
+
+Worth the extra file on a systemd host: the run is in the journal, and
+`Persistent=true` catches up a tick the machine slept through.
+
+```ini
+# /etc/systemd/system/aas-sync.service
+[Service]
+Type=oneshot
+EnvironmentFile=/srv/approveandsend/.env
+ExecStart=/usr/bin/curl -fsS -m 300 -X POST \
+  -H "Authorization: Bearer ${CRON_TOKEN}" http://127.0.0.1:3000/api/sync
+
+# /etc/systemd/system/aas-sync.timer
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+`EnvironmentFile` is the part cron cannot do: the token comes from the same
+`.env` the app reads, so there is one copy of it rather than two that drift.
+Repeat for the other three with their own cadence.
 
 ## Put a certificate in front of it
 

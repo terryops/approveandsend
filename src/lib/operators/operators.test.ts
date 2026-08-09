@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb, type Db } from '../db';
 import {
   authenticate,
+  countActiveAdmins,
   countActiveOperators,
   createOperator,
   getOperator,
   hashPassword,
   listOperators,
+  setOperatorAdmin,
   setOperatorEnabled,
   setOperatorPassword,
   touchOperator,
@@ -99,6 +101,51 @@ describe('the people on the desk', () => {
     setOperatorEnabled(sam.id, false, db);
 
     expect(listOperators(db).map(o => o.name)).toEqual(['Zoe', 'Sam']);
+  });
+
+  it('makes the first person an admin and nobody after them', () => {
+    // Whoever writes the first row is setting the desk up, and there is no
+    // second person to grant it to them.
+    const sam = createOperator('Sam', 'hunter2', db);
+    const zoe = createOperator('Zoe', 'hunter2', db);
+
+    expect(sam.admin).toBe(true);
+    expect(zoe.admin).toBe(false);
+    expect(getOperator(zoe.id, db)?.admin).toBe(false);
+  });
+
+  it('does not hand the settings to a newcomer because the admin retired', () => {
+    // Counted over every row rather than the active ones: an empty *active*
+    // table is a mistake to refuse, not one to repair by promoting whoever is
+    // added next.
+    const sam = createOperator('Sam', 'hunter2', db);
+    setOperatorEnabled(sam.id, false, db);
+
+    expect(createOperator('Zoe', 'hunter2', db).admin).toBe(false);
+  });
+
+  it('promotes and demotes, and counts who is left', () => {
+    const sam = createOperator('Sam', 'hunter2', db);
+    const zoe = createOperator('Zoe', 'hunter2', db);
+    expect(countActiveAdmins(db)).toBe(1);
+
+    setOperatorAdmin(zoe.id, true, db);
+    expect(countActiveAdmins(db)).toBe(2);
+
+    setOperatorAdmin(sam.id, false, db);
+    expect(getOperator(sam.id, db)?.admin).toBe(false);
+    expect(countActiveAdmins(db)).toBe(1);
+
+    // A retired admin is not one who can still change anything, and the guard
+    // on the people page reads this number to decide whether a demotion is the
+    // last one.
+    setOperatorEnabled(zoe.id, false, db);
+    expect(countActiveAdmins(db)).toBe(0);
+  });
+
+  it('carries the flag through a login', () => {
+    createOperator('Sam', 'hunter2', db);
+    expect(authenticate('Sam', 'hunter2', db)?.admin).toBe(true);
   });
 });
 

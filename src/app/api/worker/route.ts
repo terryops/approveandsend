@@ -1,4 +1,5 @@
 import { requireMachine } from '@/lib/auth/guard';
+import { noteRun } from '@/lib/desk/automation';
 import { DEFAULT_HANDLERS, createWorker } from '@/lib/queue';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!(await requireMachine(request))) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  noteRun('worker');
 
   const max = Number(new URL(request.url).searchParams.get('max'));
   const worker = createWorker({ handlers: DEFAULT_HANDLERS });

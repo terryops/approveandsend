@@ -1,3 +1,5 @@
+import type { ReplyFormat } from '../mail/render';
+
 /**
  * A task is one customer email that needs a reply, plus everything the system
  * has worked out about it and everything the human did to it.
@@ -111,6 +113,10 @@ export interface Task {
   draft: string | null;
   /** The subject to answer under. Null falls back to "Re: " + `subject`. */
   replySubject: string | null;
+  /** How this reply is written, and therefore how it is turned into mail.
+   * Never null here: the store reads a NULL column as `markdown`, which is what
+   * every reply written before the column existed was already treated as. */
+  replyFormat: ReplyFormat;
   finalReply: string | null;
   reviewerNotes: string | null;
   sentAt: string | null;
@@ -130,6 +136,28 @@ export interface Task {
 
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * When this landed on the desk.
+ *
+ * `receivedAt` is the mail's own timestamp and is null on a composed one, for
+ * the honest reason that nobody received it — which left every screen that
+ * prints a time printing nothing at all for those: a heading with an address and
+ * then a gap, an inbox row with an empty last column. "No time" is not a fact
+ * about a letter somebody wrote twenty minutes ago; it reads as a rendering
+ * fault, and it is the one column those rows sort by.
+ *
+ * So the question the screens are actually asking is answered instead: when did
+ * this arrive in front of us. For inbound mail that is when it arrived, and for
+ * a composed one it is when it was written, which is the row's own birthday.
+ *
+ * One function rather than a `??` at each call site, because there are three of
+ * them on three screens and a rule about what a timestamp means should not be
+ * something two of them agree on by accident.
+ */
+export function deskedAt(task: Pick<Task, 'receivedAt' | 'createdAt'>): string {
+  return task.receivedAt ?? task.createdAt;
 }
 
 /** What ingestion knows before anything has looked at the mail. */

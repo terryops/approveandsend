@@ -1,7 +1,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { resetWorkspaceConfig } from '../../../config/workspace';
 
 import { loadGmailConfig } from '../../config';
 import { MailError } from '../../types';
@@ -677,8 +679,18 @@ describe('loadGmailConfig', () => {
     'GOOGLE_IMPERSONATE_USER',
   ];
 
+  // See the note on the same pin in mail.test.ts: the messages below are
+  // translated, so the language they arrive in is this file's decision and not
+  // the checkout's.
+  beforeEach(() => {
+    process.env.AAS_LANGUAGE = 'en';
+    resetWorkspaceConfig();
+  });
+
   afterEach(() => {
     for (const key of KEYS) delete process.env[key];
+    delete process.env.AAS_LANGUAGE;
+    resetWorkspaceConfig();
   });
 
   it('builds refresh-token auth and defaults MAIL_FROM to the mailbox', () => {

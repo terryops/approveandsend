@@ -1,4 +1,5 @@
 import { requireMachine } from '@/lib/auth/guard';
+import { noteRun } from '@/lib/desk/automation';
 import { syncInbox } from '@/lib/ingest/sync';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!(await requireMachine(request))) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  // After the guard and before the work: this records that a scheduler exists,
+  // which is true the moment an authenticated call arrives. See `noteRun`.
+  noteRun('sync');
 
   const url = new URL(request.url);
   const limit = Number(url.searchParams.get('limit'));

@@ -449,6 +449,34 @@ describe('stopping and clearing', () => {
     expect(counts.learning).toBe(1);
   });
 
+  /*
+   * The half of Stop that was missing.
+   *
+   * A scan enqueues every item up front, so by the time anybody presses Stop
+   * there are already four hundred `backfill-learn` jobs in the queue with
+   * nothing in them that knows about the cancellation. The row said 'skipped'
+   * and the handler read it and generated anyway — four model calls apiece —
+   * then wrote 'learned' over the cancellation. Stop cost exactly as much as
+   * not stopping, and the only visible trace was a progress bar that jumped
+   * backwards.
+   */
+  it('a cancelled item spends nothing when its job finally lands', async () => {
+    const provider = archive();
+    await scanSentMail({ provider, db });
+    const [item] = listBackfillItems({}, db);
+
+    cancelPendingBackfill(db);
+
+    // Enough for a full run, so a handler that ignored the cancellation would
+    // find everything it needed and succeed.
+    queued.push(DRAFT, APPROVED, NO_RULES);
+    const result = await runBackfillItem(item!.id, { provider, db });
+
+    expect(result.status).toBe('skipped');
+    expect(prompts).toHaveLength(0);
+    expect(listBackfillItems({}, db)[0]!.status).toBe('skipped');
+  });
+
   it('clearing forgets the run but keeps the rules it taught', () => {
     createRule({ content: 'A rule the backfill produced.', sourceTaskId: 'backfill:x' }, db);
     createBackfillItem({ sentMessageId: 'a' }, db);

@@ -156,7 +156,7 @@ function zohoRoutes(over: Record<string, (req: IncomingMessage, res: ServerRespo
 
     if (url.endsWith('/details')) return json(res, 200, summary());
     if (url.endsWith('/content')) {
-      return json(res, 200, { messageId: '1786003364656153000', content: '<p>Hello <b>there</b></p>' });
+      return json(res, 200, { messageId: '1786003364656153000', content: '<p style="margin:0 0 12px">Hello <b>there</b></p>' });
     }
     if (url.endsWith('/header')) {
       return json(res, 200, {
@@ -325,7 +325,7 @@ describe('ZohoProvider reading', () => {
     fake = await startFake(zohoRoutes());
     const detail = await provider(fake.origin).getMessage(`${INBOX}:1786003364656153000`);
 
-    expect(detail.html).toBe('<p>Hello <b>there</b></p>');
+    expect(detail.html).toBe('<p style="margin:0 0 12px">Hello <b>there</b></p>');
     expect(detail.text).toBe('Hello there');
     // Only /header carries this, and without it the reply we send cannot be
     // threaded by the customer's mail client.
@@ -410,7 +410,7 @@ describe('ZohoProvider writing', () => {
     // Through the shared renderer, so a caller that passes only text gets the
     // same markup as one that asked for HTML — there is no second, subtly
     // different converter living in this provider any more.
-    expect(content).toBe('<p>Use &lt;b&gt; tags &amp; such<br>second line</p>');
+    expect(content).toBe('<p style="margin:0 0 12px">Use &lt;b&gt; tags &amp; such<br>second line</p>');
   });
 
   it('refuses an empty body or no recipients', async () => {
@@ -491,7 +491,7 @@ describe('ZohoProvider writing', () => {
       provider(fake.origin).send({
         to: [{ address: 'a@example.com' }],
         subject: 'x',
-        html: '<p><img src="cid:logo"></p>',
+        html: '<p style="margin:0 0 12px"><img src="cid:logo"></p>',
         attachments: [
           { filename: 'logo.png', content: Buffer.from('png'), contentId: 'logo' },
         ],

@@ -749,6 +749,158 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 26,
+    name: 'reply_format',
+    up: db => {
+      db.exec(`
+        -- Which of the three ways this reply was written: 'markdown', 'text' or
+        -- 'html'. See ReplyFormat in mail/render.ts for what each one means.
+        --
+        -- NULL rather than a default, and read as 'markdown' everywhere. Every
+        -- reply written before this column existed was interpreted for '**bold**'
+        -- and '- bullets' on its way out, so 'markdown' is not a guess about what
+        -- those replies meant — it is a statement of what already happened to
+        -- them. Backfilling the string would say the same thing less honestly:
+        -- NULL is "nobody chose", which is true of all of them.
+        --
+        -- Per task rather than per workspace on purpose. A desk answers in plain
+        -- prose nearly all of the time and needs a table or a link exactly once
+        -- in a while, and a setting would make that once-in-a-while choice into
+        -- a decision about every reply after it.
+        ALTER TABLE tasks ADD COLUMN reply_format TEXT;
+      `);
+    },
+  },
+  {
+    version: 27,
+    name: 'catalog',
+    up: db => {
+      db.exec(`
+        -- What this desk sells, so a reply can say the price without guessing.
+        --
+        -- The facts list in the workspace config was already the place for
+        -- "things that are true and that the model would otherwise invent", and
+        -- a catalogue is exactly that. It is a table rather than more strings in
+        -- that file for one reason: prices change in Stripe, and a fact that has
+        -- to be re-typed into a JSON file every time somebody edits a price is a
+        -- fact that goes stale and then gets quoted at a customer.
+        CREATE TABLE catalog_items (
+          id          TEXT PRIMARY KEY,
+
+          -- Two owners, one row, and the split is the whole design.
+          --
+          -- Everything above the line is Stripe's and is overwritten wholesale
+          -- on every sync. Everything below it belongs to whoever runs the desk
+          -- and is never touched by a sync — the first version wrote the whole
+          -- row and silently ate a note someone had spent ten minutes on.
+          source      TEXT NOT NULL DEFAULT 'manual',  -- 'stripe' | 'manual'
+          -- Stripe's product id. NULL for a hand-written row, which is how a
+          -- service that is not billed through Stripe still gets described.
+          external_id TEXT,
+          name        TEXT NOT NULL,
+          description TEXT,
+          -- The prices, already rendered into the sentence they appear as:
+          -- "20.00 USD/month · 200.00 USD/year". Formatted on the way in rather
+          -- than on the way out because a price is minor units plus a currency
+          -- plus an interval, and the place that knows how to read all three is
+          -- the Stripe client, not the template.
+          pricing     TEXT,
+          -- Stripe's own active flag, kept rather than deleting the row. A
+          -- product that has been archived is still the answer to "do you still
+          -- sell X" — "not any more" is a different sentence from silence.
+          available   INTEGER NOT NULL DEFAULT 1,
+
+          -- Operator-owned, below the line. A sync must not write these.
+          note        TEXT,
+          enabled     INTEGER NOT NULL DEFAULT 1,
+
+          synced_at   TEXT,
+          created_at  TEXT NOT NULL,
+          updated_at  TEXT NOT NULL
+        );
+
+        -- One row per Stripe product. NULLs compare distinct in SQLite, so this
+        -- constrains the synced rows and leaves hand-written ones alone.
+        CREATE UNIQUE INDEX idx_catalog_external ON catalog_items(source, external_id);
+        CREATE INDEX idx_catalog_enabled ON catalog_items(enabled, name);
+      `);
+    },
+  },
+  {
+    version: 28,
+    name: 'operator_admin',
+    up: db => {
+      // One bit of role, which migration 9 argued against and which four
+      // screens have since made necessary.
+      //
+      // The argument there still holds for the work: everyone who reviews mail
+      // may review any of it, and nothing here gates a task, a rule or a reply.
+      // What it did not anticipate is that the desk grew screens that are not
+      // work — the queue, the archive scan, the people list and the settings —
+      // and those are places where one wrong press spends money, retires a
+      // colleague, or points the mailbox somewhere else. "Everyone can do
+      // everything" was a defensible answer while everything was mail; it is
+      // not one for the field holding the SMTP password.
+      //
+      // Every existing row becomes an admin, and that is not a default so much
+      // as the only honest upgrade: these people could reach all four screens
+      // yesterday, and a migration that quietly took it away would, on an
+      // install with no `ADMIN_PASSWORD`, leave nobody able to give it back.
+      // Demoting is one press on the people page; being locked out of the
+      // people page is not recoverable from inside the app.
+      db.exec(`
+        ALTER TABLE operators ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+        UPDATE operators SET is_admin = 1;
+      `);
+    },
+  },
+  {
+    version: 29,
+    name: 'outgoing_attachments',
+    up: db => {
+      // Files the reviewer is putting on a reply, between picking them and the
+      // send.
+      //
+      // Bytes this time, which is the opposite of what migration 14 decided
+      // about the customer's own attachments — and the reason is the browser
+      // rather than the storage. A page cannot fill a file input: what somebody
+      // picks exists only inside the request that carries it. That was free
+      // while the picker sat on the confirmation panel, because that panel is
+      // the form that posts the mail. Picking on the review screen, where the
+      // reply is actually written, means the bytes have to survive a round trip,
+      // and there is nowhere else to put them.
+      //
+      // Bounded and short-lived, which is what keeps this from becoming the
+      // second copy of customer data migration 14 refused to make. Fifteen
+      // megabytes a reply — the ceiling mail imposes on us anyway, see
+      // MAX_UPLOAD_BYTES — and the rows are deleted in the same transaction that
+      // marks the task sent. What outlives the send is what always did: the
+      // filenames, on the `sent` event.
+      db.exec(`
+        CREATE TABLE outgoing_attachments (
+          id           TEXT PRIMARY KEY,
+          task_id      TEXT NOT NULL,
+          filename     TEXT NOT NULL,
+          content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+          size         INTEGER NOT NULL DEFAULT 0,
+          content      BLOB NOT NULL,
+          created_at   TEXT NOT NULL,
+
+          FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_outgoing_attachments_task
+          ON outgoing_attachments(task_id, created_at);
+
+        -- Picking invoice.pdf a second time means the second one. Without this
+        -- the reviewer who re-picks a file they have just corrected sends the
+        -- customer both copies and lets them guess.
+        CREATE UNIQUE INDEX idx_outgoing_attachments_name
+          ON outgoing_attachments(task_id, filename);
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -12,6 +12,8 @@ import type {
   SendResult,
 } from '../mail/types';
 
+import { listEvents } from './events';
+import { attachToTask, listPending, pendingAttachments } from './outgoing';
 import { sendReply } from './send';
 import { createTask, getTask, updateTask } from './store';
 import type { TaskStatus } from './types';
@@ -221,5 +223,99 @@ describe('sendReply', () => {
     await expect(sendReply('nope', { finalReply: 'Hello' }, { provider, db })).rejects.toThrow(
       t('task.errorNoSuchTask'),
     );
+  });
+
+  /**
+   * "Don't learn from this one" is a decision, and the two things that make it
+   * one are that no job runs and that the history says who decided.
+   *
+   * The third assertion is the one that caught the first attempt at this: the
+   * opt-out was wired to `options.learn`, which is the knob every test in this
+   * file uses to mean "I only care about the mail" — so every one of them
+   * started recording a choice nobody had made.
+   */
+  describe('not learning from this one', () => {
+    it('runs no learning job and says so in the history', async () => {
+      const id = task('awaiting_review');
+
+      await sendReply(id, { finalReply: 'A one-off.', skipLearning: true }, { provider, db });
+
+      expect(provider.sent).toHaveLength(1);
+      expect(
+        db.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'learn-from-sent'`).get(),
+      ).toEqual({ n: 0 });
+
+      const sent = listEvents(id, db).find(event => event.action === 'sent');
+      expect(sent?.detail).toBe(t('task.event.sentNoLearning'));
+    });
+
+    it('queues the job and says nothing extra when it is not asked for', async () => {
+      const id = task('awaiting_review');
+
+      await sendReply(id, { finalReply: 'The usual.' }, { provider, db });
+
+      expect(
+        db.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'learn-from-sent'`).get(),
+      ).toEqual({ n: 1 });
+      expect(listEvents(id, db).find(event => event.action === 'sent')?.detail).toBeNull();
+    });
+
+    it('is not the same thing as a caller that simply does not want the job', async () => {
+      const id = task('awaiting_review');
+
+      await sendReply(id, { finalReply: 'The usual.' }, { provider, db, learn: false });
+
+      expect(
+        db.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'learn-from-sent'`).get(),
+      ).toEqual({ n: 0 });
+      // No job, and no claim that a person chose that.
+      expect(listEvents(id, db).find(event => event.action === 'sent')?.detail).toBeNull();
+    });
+  });
+
+  /*
+   * The files the reviewer put on the reply while writing it.
+   *
+   * They live in `outgoing_attachments` only because a browser cannot refill a
+   * file input across a round trip — see migration 29 — so the send is where
+   * that reason expires. Cleared inside the transaction that marks the task
+   * sent rather than by the action that called this, so no future caller can
+   * leave a customer's invoice in the database by forgetting to.
+   */
+  describe('what rode along', () => {
+    it('hands the files to the provider and keeps only their names', async () => {
+      const id = task('awaiting_review');
+      attachToTask(id, [{ filename: 'invoice.pdf', content: Buffer.alloc(64, 1) }], db);
+
+      await sendReply(
+        id,
+        { finalReply: 'Attached.', attachments: pendingAttachments(id, db) },
+        { provider, db, learn: false },
+      );
+
+      expect(provider.sent[0]?.attachments?.map(a => a.filename)).toEqual(['invoice.pdf']);
+      expect(listPending(id, db)).toEqual([]);
+      expect(listEvents(id, db).find(event => event.action === 'sent')?.detail).toBe(
+        'attached invoice.pdf',
+      );
+    });
+
+    it('leaves them where the reviewer can retry when the send fails', async () => {
+      const id = task('awaiting_review');
+      attachToTask(id, [{ filename: 'invoice.pdf', content: Buffer.alloc(64, 1) }], db);
+      provider.failNextSend = 'smtp: connection refused';
+
+      await expect(
+        sendReply(
+          id,
+          { finalReply: 'Attached.', attachments: pendingAttachments(id, db) },
+          { provider, db, learn: false },
+        ),
+      ).rejects.toThrow(/connection refused/);
+
+      // A failed send that also ate the attachment would make the retry a
+      // different mail from the one the reviewer approved.
+      expect(listPending(id, db).map(f => f.filename)).toEqual(['invoice.pdf']);
+    });
   });
 });

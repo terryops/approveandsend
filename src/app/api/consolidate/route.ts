@@ -1,4 +1,5 @@
 import { requireMachine } from '@/lib/auth/guard';
+import { noteRun } from '@/lib/desk/automation';
 import { enqueueConsolidateRules } from '@/lib/queue/handlers';
 import { consolidationGate } from '@/lib/rules/consolidate';
 
@@ -16,6 +17,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!(await requireMachine(request))) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  // Recorded even in the week the gate declines: the call arrived, which is
+  // what the settings screen is asking about. A card that reported the weekly
+  // tidy as never scheduled because it had nothing to tidy would be wrong about
+  // the crontab on every quiet desk.
+  noteRun('consolidate');
 
   const force = new URL(request.url).searchParams.get('force') === '1';
   const gate = consolidationGate();

@@ -2,6 +2,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { resetWorkspaceConfig } from '../config/workspace';
+
 import { callAI, resetAiConfig } from './index';
 import { AiError } from './types';
 
@@ -62,7 +64,18 @@ const completion = (text: string) => ({
 
 const ORIGINAL_ENV = { ...process.env };
 
+// These assertions read the message, and the message is translated now — so
+// which language it comes out in has to be decided here rather than by whoever
+// is running the suite. Without this the checkout's own aas.config.json speaks,
+// and a developer whose desk is set to Chinese watches four files fail on text
+// that is correct. Same reasoning as the AAS_CONFIG pin in i18n.test.ts.
+function speakEnglish(): void {
+  process.env.AAS_LANGUAGE = 'en';
+  resetWorkspaceConfig();
+}
+
 beforeEach(() => {
+  speakEnglish();
   resetAiConfig();
   for (const key of Object.keys(process.env)) {
     if (key.startsWith('AI_')) delete process.env[key];
@@ -77,6 +90,7 @@ afterEach(async () => {
   // an assertion that throws first would otherwise leave a socket listening.
   for (const close of started.splice(0)) await close();
   process.env = { ...ORIGINAL_ENV };
+  resetWorkspaceConfig();
   resetAiConfig();
 });
 

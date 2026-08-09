@@ -1,5 +1,6 @@
 import { getMeta } from '@/lib/db/meta';
 import { t } from '@/lib/i18n';
+import { type Checkable } from '@/lib/setup/checks';
 
 export type Query = Record<string, string | string[] | undefined>;
 
@@ -39,7 +40,7 @@ export function Notice({ query, path }: { query: Query; path: string }) {
 
   if (one(query, 'saved')) {
     return (
-      <p className="banner" style={{ borderColor: 'var(--line)' }}>
+      <p className="banner quiet">
         {t('setup.notice.savedBefore')} <code>{path}</code>
         {t('setup.notice.savedAfter')}
       </p>
@@ -50,7 +51,7 @@ export function Notice({ query, path }: { query: Query; path: string }) {
 }
 
 /** The stored verdict from the last time a Test button was pressed. */
-export function LastCheck({ step }: { step: 'model' | 'mailbox' }) {
+export function LastCheck({ step, anchor = step }: { step: Checkable; anchor?: string }) {
   const raw = getMeta(`setup.check.${step}`);
   if (!raw) return null;
 
@@ -65,7 +66,13 @@ export function LastCheck({ step }: { step: 'model' | 'mailbox' }) {
   const stamp = when && !Number.isNaN(when.getTime()) ? when.toISOString().slice(0, 16).replace('T', ' ') : '';
 
   return (
-    <p id="result" className="banner" style={parsed.ok ? { borderColor: 'var(--line)' } : undefined}>
+    // Named after its step rather than `result`: on the settings screen every
+    // check is on the same page, and two elements answering to `#result` are
+    // one anchor that lands on whichever came first.
+    <p
+      id={anchor.endsWith('-check') ? anchor : `${anchor}-check`}
+      className={parsed.ok ? 'banner quiet' : 'banner'}
+    >
       <strong>{parsed.ok ? t('setup.notice.checkOk') : t('setup.notice.checkFailed')}</strong>{' '}
       {parsed.detail}
       {stamp && <span className="meta"> {t('setup.notice.checkedAt', { stamp })}</span>}

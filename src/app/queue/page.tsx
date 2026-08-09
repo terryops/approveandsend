@@ -1,6 +1,9 @@
-import { requirePage } from '@/lib/auth/guard';
+import Link from 'next/link';
+
+import { requireAdminPage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listJobs, queueStats, type QueueStats } from '@/lib/queue';
+import { readQueue } from '@/lib/queue/verdict';
 
 import { deleteJobNow, releaseJobNow, retryJobNow, runQueue, sweepNow } from '../actions';
 
@@ -11,18 +14,49 @@ export default async function QueuePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requirePage();
+  await requireAdminPage();
 
   const query = await searchParams;
   const stats = queueStats();
   const jobs = listJobs({ limit: 50 });
+  const verdict = readQueue(jobs);
+  const failure = verdict.jobId ? jobs.find(job => job.id === verdict.jobId) : undefined;
 
   return (
     <>
+      {/* Hidden, for the reason the inbox's is — see the note there. */}
+      <h1 className="visually-hidden">{t('nav.queue')}</h1>
+
+      {/* First, because this screen is only ever opened because something did
+          not happen, and five counts are not an answer to that. The way out is
+          the half that matters: `AI_MODEL is required` is fixed in setup, not
+          by the Retry button that used to be the only thing on offer. */}
+      <div className={`queue-verdict${verdict.stuck ? '' : ' clear'}`}>
+        <h2>{t(verdict.what)}</h2>
+        {verdict.stuck && (
+          <>
+            {/* Verbatim. Rewriting an error we did not recognise is how a
+                signpost ends up pointing at the wrong setting. */}
+            {failure?.error && <p className="what-it-said">{failure.error}</p>}
+            {verdict.fix && (
+              <div className="actions">
+                <Link className="button-link" href={verdict.fix.href}>
+                  {t(verdict.fix.label)}
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="row" style={{ marginBottom: 16 }}>
-        <span className="grow meta">
+        <span className="grow meta stats">
+          {/* Each count is one unit and must not come apart. Chinese and
+              Japanese wrap between any two characters, so "失败: 1" broke into
+              "失" and "败: 1" on a narrow screen — a label split down the middle
+              and a number attached to half of it. */}
           {(Object.entries(stats) as [keyof QueueStats, number][]).map(([status, count]) => (
-            <span key={status} style={{ marginRight: 14 }}>
+            <span className="stat" key={status}>
               {t(`queue.status.${status}`)}: <strong>{count}</strong>
             </span>
           ))}
@@ -71,7 +105,10 @@ export default async function QueuePage({
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id}>
+                /* The row the block above is talking about, marked — so "a job
+                   failed" and the fifty rows under it can be joined up without
+                   reading every Detail cell. */
+                <tr key={job.id} className={job.id === verdict.jobId ? 'failed' : undefined}>
                   <td>{job.type}</td>
                   <td>
                     {/* The status word carries the meaning, but the colour is

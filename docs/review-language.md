@@ -41,7 +41,7 @@ customer's message and the reply. Point the translator role at a cheap model —
 this is transcription, not judgement:
 
 ```bash
-AI_MODEL_TRANSLATOR=gpt-4o-mini
+AI_MODEL_TRANSLATOR=gpt-5.6-luna
 ```
 
 A message already in your review language costs one call and stores nothing.

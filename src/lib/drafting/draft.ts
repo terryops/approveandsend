@@ -6,6 +6,8 @@ import {
   normaliseTopicSlug,
   type WorkspaceConfig,
 } from '../config/workspace';
+import { catalogBlock } from '../catalog/prompt';
+import { listCatalog } from '../catalog/store';
 import { contextForPrompt } from '../context/gather';
 import { classifyTopic } from './classify';
 import type { Db } from '../db';
@@ -72,6 +74,15 @@ export interface DraftOptions {
    * feeding it in would teach rules from a fact that was not available.
    */
   context?: string;
+  /**
+   * Override the catalogue block. '' leaves the prices out entirely.
+   *
+   * The backfill passes '' for the same reason it passes an empty context: it
+   * drafts against replies that were sent years ago, and a rule learned from a
+   * counterfactual draft that quoted today's prices would be a rule taught by a
+   * fact nobody had at the time.
+   */
+  catalogue?: string;
   /**
    * Override the conversation history block. '' forces a first-contact prompt.
    */
@@ -151,6 +162,8 @@ contents, and do not ask for a file that is already in this list.`;
 function buildPrompt(
   task: Task,
   workspace: WorkspaceConfig,
+  /** What the desk sells; '' when nothing has been catalogued. */
+  catalogueBlock: string,
   rulesBlock: string,
   contextBlock: string,
   /** Already decided, and already used to choose the rules above. */
@@ -176,7 +189,13 @@ function buildPrompt(
   // which is which. A drafter shown four messages and asked for "a reply" will
   // otherwise answer whichever one it found most interesting, which on a thread
   // where the customer has already been placated is the angry one.
-  return `${describeWorkspace(workspace)}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
+  // The catalogue sits with the persona rather than with the looked-up context,
+  // because it is the same for every mail this desk answers. That keeps the
+  // cacheable prefix — workspace, then catalogue — intact, and it puts the
+  // prices above the rules, which is the order they are read in: a rule about
+  // how to discuss pricing is worth nothing to a model that has already decided
+  // what the price is.
+  return `${describeWorkspace(workspace)}${catalogueBlock}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
 
 ## ${threadBlock ? "The customer's latest message — this is what you are replying to" : "The customer's email"}
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -329,6 +348,15 @@ export interface Assembled {
   workspace: WorkspaceConfig;
   /** Undefined where the desk has no topic vocabulary to route by. */
   topic: string | undefined;
+  /**
+   * What the desk sells, and the instruction not to invent the rest of it.
+   *
+   * Assembled here rather than in each prompt builder so that the drafter, the
+   * critic, the alternatives and the composer all see the same catalogue. A
+   * critic that cannot see the price list cannot catch an invented price, which
+   * is the single thing it is most useful for catching.
+   */
+  catalogueBlock: string;
   rulesBlock: string;
   contextBlock: string;
   threadBlock: string;
@@ -346,8 +374,10 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
 
   // What the mail is about has to be settled before the rules are chosen, or
   // the rules are chosen by nothing. A task that already carries a topic — a
-  // regeneration, a backfill — keeps it rather than paying for the same answer
-  // twice.
+  // regeneration, say — keeps it rather than paying for the same answer twice.
+  // The backfill's synthetic task does not: nothing has ever classified that
+  // archived exchange, so every item pays for one, and that is the fourth call
+  // the confirmation panel quotes.
   const topic = task.scope || (await classifyTopic(task, workspace));
 
   const rules = listRules({ enabledOnly: true }, db);
@@ -371,6 +401,10 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
   return {
     workspace,
     topic: topic || undefined,
+    // Overridable alongside `context` and for the same reason: the backfill
+    // learns rules from replies sent years ago, and today's price list is not
+    // what the person writing them could see.
+    catalogueBlock: options.catalogue ?? catalogBlock(listCatalog({ enabledOnly: true }, db)).text,
     rulesBlock: block.text + formatRetrieved(dropped.rules),
     // Whatever the enrichment job found, if it ran. Empty when no sources are
     // configured, which is the default and costs nothing.
@@ -398,13 +432,13 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
 export async function draftReply(task: Task, options: DraftOptions = {}): Promise<DraftResult> {
   const db = options.db ?? getDb();
   const {
-    workspace, topic, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
+    workspace, topic, catalogueBlock, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
     appliedIds, droppedIds,
   } = await assemble(task, options);
 
   const raw = await callAI(
     buildPrompt(
-      task, workspace, rulesBlock, contextBlock, topic,
+      task, workspace, catalogueBlock, rulesBlock, contextBlock, topic,
       threadBlock, steerBlock, filesBlock,
     ),
     { role: 'drafter' },
@@ -430,7 +464,8 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
 
   if (options.critic) {
     const critique = await criticise(
-      task, signed, workspace, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
+      task, signed, workspace, catalogueBlock, rulesBlock, contextBlock, threadBlock, steerBlock,
+      filesBlock,
     );
     if (critique) {
       result.critique = critique;
@@ -456,6 +491,10 @@ async function criticise(
   task: Task,
   draft: string,
   workspace: WorkspaceConfig,
+  // The catalogue is worth more to the critic than to the drafter. An invented
+  // price is the mistake a support reply makes that costs actual money, and it
+  // is invisible without the list to check the number against.
+  catalogueBlock: string,
   rulesBlock: string,
   // The critic sees the looked-up context too, and needs it more than the
   // drafter does: "claims not supported by the facts above" is how a reply
@@ -475,7 +514,7 @@ async function criticise(
 ): Promise<Critique | undefined> {
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
-${describeWorkspace(workspace)}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
+${describeWorkspace(workspace)}${catalogueBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
 
 ## The customer's ${threadBlock ? 'latest message' : 'email'}
 Subject: ${task.subject}
@@ -487,7 +526,7 @@ ${draft}
 
 Check it for: claims that are not supported by the facts above, anything on the
 never-promise list, breaches of the rules, the wrong language, tone that does
-not match${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}${filesBlock ? ', and whether it asks for a file they already attached' : ''}. Ignore matters of taste — a reply you would have phrased
+not match${catalogueBlock ? ', any product, plan or price that does not appear exactly as written in the catalogue above — a number that is close is a wrong number' : ''}${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}${filesBlock ? ', and whether it asks for a file they already attached' : ''}. Ignore matters of taste — a reply you would have phrased
 differently is not a problem.
 
 JSON only:

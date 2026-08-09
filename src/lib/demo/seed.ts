@@ -1,6 +1,7 @@
 import { getDb, type Db } from '../db';
-import { createRule, listRules } from '../rules/store';
-import { createTask, listTasks, updateTask, type TaskUpdate } from '../tasks/store';
+import { deskUntouched } from '../desk/untouched';
+import { createRule } from '../rules/store';
+import { createTask, updateTask, type TaskUpdate } from '../tasks/store';
 import type { Analysis, NewTask } from '../tasks/types';
 
 /**
@@ -271,14 +272,12 @@ export interface SeedResult {
  * demo mail appearing in a real reviewer's queue.
  */
 export function seedDemoData(db: Db = getDb()): SeedResult {
-  // Proposals included, and this is the load-bearing case: a rulebook of
-  // nothing but pending suggestions reads as empty to a query that hides them,
-  // and this check is the only thing standing between a live desk and a queue
-  // full of demo mail.
-  if (
-    listTasks({ limit: 1 }, db).length > 0 ||
-    listRules({ proposed: 'include' }, db).length > 0
-  ) {
+  // The last line of defence, and deliberately still checked here rather than
+  // trusted to whoever drew the button: this function is exported, and a caller
+  // that forgot to ask is a caller that fills a live queue with fictional mail.
+  // Same predicate the callers use — see `deskUntouched` for why it is one
+  // function and not three copies.
+  if (!deskUntouched(db)) {
     return { tasks: 0, rules: 0, skipped: true };
   }
 

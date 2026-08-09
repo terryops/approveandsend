@@ -1,29 +1,44 @@
 'use server';
 
+import { isReplyFormat, type ReplyFormat } from '@/lib/mail/render';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 
-import { currentOperator, requireApi } from '@/lib/auth/guard';
+import { currentOperator, requireAdminApi, requireApi } from '@/lib/auth/guard';
+import { DEFAULT_SCAN_LIMIT } from '@/lib/backfill/scan';
 import { cancelPendingBackfill, clearBackfill } from '@/lib/backfill/store';
+import {
+  createCatalogItem,
+  deleteCatalogItem,
+  getCatalogItem,
+  updateCatalogItem,
+} from '@/lib/catalog/store';
+import { syncCatalogFromStripe } from '@/lib/catalog/sync';
 import { seedDemoData } from '@/lib/demo/seed';
+import { setThemeCookie, type Theme } from '@/lib/desk/theme';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { COOKIE_NAME, adminPassword, checkPassword, isProtected } from '@/lib/auth/session';
 import {
   authenticate,
+  countActiveAdmins,
   countActiveOperators,
   createOperator,
+  getOperator,
+  setOperatorAdmin,
   setOperatorEnabled,
   setOperatorPassword,
   touchOperator,
 } from '@/lib/operators/store';
-import { t } from '@/lib/i18n';
+import { t, type Locale } from '@/lib/i18n';
+import { stepHref } from '@/lib/setup/state';
+import { saveWorkspaceConfig } from '@/lib/setup/workspace-file';
 import { syncInbox } from '@/lib/ingest/sync';
 import { readUploads } from '@/lib/mail/uploads';
 import {
   DEFAULT_HANDLERS,
   createWorker,
-  enqueueAlternatives,
   enqueueBackfillScan,
   enqueueCompose,
   enqueueConsolidateRules,
@@ -32,6 +47,7 @@ import {
   enqueueSummariseRules,
   deleteJob,
   hasLiveDuplicate,
+  nudgeQueue,
   releaseJob,
   retryJob,
 } from '@/lib/queue';
@@ -41,11 +57,15 @@ import { installStarterRules } from '@/lib/rules/starter';
 import { deleteUnlessSent, rejectTask, reopenTask as reopen } from '@/lib/tasks/lifecycle';
 import { getAlternative } from '@/lib/tasks/alternatives';
 import { recordEvent } from '@/lib/tasks/events';
+import { attachToTask, detachFromTask, pendingAttachments } from '@/lib/tasks/outgoing';
 import { getVersion, recordDraft } from '@/lib/tasks/versions';
+import { setReviewLayoutCookie, type ReviewLayout } from '@/lib/tasks/layout';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { createTask, getTask, updateTask } from '@/lib/tasks/store';
 import { sweepStuckTasks } from '@/lib/tasks/sweep';
+import { hasTranslation, saveTranslation } from '@/lib/translation/store';
+import { reviewLanguage, translateForReview } from '@/lib/translation/translate';
 
 /**
  * Every mutation the UI can perform.
@@ -58,6 +78,46 @@ import { sweepStuckTasks } from '@/lib/tasks/sweep';
 function field(form: FormData, name: string): string {
   const value = form.get(name);
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * The same read, but able to tell "cleared" from "not asked about".
+ *
+ * `field` answers `''` to both, and for most fields that is fine because every
+ * form that can change them contains them. It is not fine for the ones that
+ * moved into a panel: the review screen's forms no longer carry `notes`, so
+ * `field(form, 'notes') || null` wrote null on every Save and every Approve —
+ * silently erasing the sentence the reviewer had written about their own edit,
+ * which is also the sentence the rule extractor learns from.
+ *
+ * `undefined` means the form never mentioned it, and `updateTask` skips a key
+ * it is not given. An empty string still means cleared, because a box somebody
+ * emptied on purpose is an answer.
+ */
+function optional(form: FormData, name: string): string | undefined {
+  const value = form.get(name);
+  return typeof value === 'string' ? value.trim() : undefined;
+}
+
+/**
+ * A place on this desk, and the inbox if it is anything else.
+ *
+ * `returnTo` is a form field, so it is whatever the person who posted the form
+ * put there, and `redirect()` follows an absolute URL as willingly as a path.
+ * Without this, two actions that require a session are an open redirect: post
+ * `returnTo=https://evil.example/` and the desk sends its own logged-in reviewer
+ * off the site. Next's own origin check guards the action call, not where the
+ * action decides to send the browser afterwards.
+ *
+ * A path, and only a path. `//host` and `/\host` are both protocol-relative — a
+ * backslash is a slash to a URL parser — and a control character inside the
+ * string is a way to smuggle one past a naive `startsWith`.
+ */
+function sameOrigin(raw: string): string {
+  if (!raw.startsWith('/')) return '/';
+  if (raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return '/';
+  return raw;
 }
 
 /**
@@ -107,22 +167,53 @@ export async function logout(): Promise<void> {
   redirect('/login');
 }
 
+/**
+ * The format the reviewer had selected when they pressed the button.
+ *
+ * Read off the same form as the draft, for the reason the subject and the draft
+ * travel together: the format decides what the text in the box *means*, so a
+ * reply saved with one format and sent under another is a different reply. An
+ * absent or unrecognised field leaves the row alone rather than resetting it to
+ * markdown — a client that did not send the field is not a reviewer asking for
+ * a change.
+ */
+function formatFrom(form: FormData): { replyFormat: ReplyFormat } | Record<string, never> {
+  const value = form.get('format');
+  return isReplyFormat(value) ? { replyFormat: value } : {};
+}
+
 /** Saving without sending. The reviewer's edits are the training signal, so
- * losing them to a closed tab loses more than the typing. */
+ * losing them to a closed tab loses more than the typing.
+ *
+ * And nothing at all once the mail is gone or going, for the reason `keepEdits`
+ * refuses it: `sendReply` writes `finalReply` from the text it was handed, and a
+ * save that lands underneath it leaves a task whose record of what was proposed
+ * is text typed after the customer had already read it. The screen offers no
+ * Save in either state — see the task page, where a claim hides every button —
+ * so getting here means a stale tab or a form posted twice, and both of those
+ * are exactly the race worth refusing. */
 export async function saveDraft(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
   const draft = field(form, 'draft');
   const before = getTask(id);
 
+  // Back to the task rather than to `?saved=1`: nothing was saved, and a banner
+  // saying otherwise is the one thing worse than the refusal.
+  if (!before || before.status === 'sent' || before.status === 'sending') {
+    redirect(`/tasks/${id}`);
+  }
+
   // The subject box travels with the draft box, for the reason the draft box
   // travels with the Send button: what goes out is what is on screen. Cleared
   // to empty means "use the customer's own subject", which is a choice, so it
   // is stored as null rather than ignored.
+  const notes = optional(form, 'notes');
   updateTask(id, {
     draft,
     replySubject: field(form, 'subject').trim() || null,
-    reviewerNotes: field(form, 'notes') || null,
+    ...formatFrom(form),
+    ...(notes === undefined ? {} : { reviewerNotes: notes || null }),
   });
 
   // An edited draft's translation is now of text nobody is going to send.
@@ -163,41 +254,273 @@ export async function saveDraft(form: FormData): Promise<void> {
  * whose record of what was proposed is text that was typed after it went.
  */
 async function keepEdits(form: FormData, id: string): Promise<void> {
-  const draft = field(form, 'draft');
-  const subject = field(form, 'subject').trim() || null;
+  // All three read with `optional`, and that is load-bearing rather than tidy.
+  //
+  // The layout switch is a form in the page header, outside the draft — see
+  // `setReviewLayout` — and without JavaScript it posts none of these. Read with
+  // `field`, an absent draft arrived as `''`, compared unequal to the text on the
+  // row, and was written: switching the view with a script blocked **emptied the
+  // reviewer's draft and their subject line in the database**. The comment that
+  // used to sit on that form claimed `keepEdits` treated the empty fields as
+  // "not asked about"; this is that claim made true.
+  const draft = optional(form, 'draft');
+  const subject = optional(form, 'subject');
+  const notes = optional(form, 'notes');
   const before = getTask(id);
   if (!before || before.status === 'sent' || before.status === 'sending') return;
 
   // Kept even when the draft is untouched. A reviewer who fixed only the
   // subject and then pressed Redraft would otherwise watch their one edit
   // disappear, and be given no reason for it.
-  if (subject !== before.replySubject) updateTask(id, { replySubject: subject });
+  if (subject !== undefined && (subject || null) !== before.replySubject) {
+    updateTask(id, { replySubject: subject || null });
+  }
+  // And the note, which is the third box in that same form. Changing the format
+  // or the view posted the draft and the subject and dropped the note on the
+  // floor — the same quiet loss, in the field nobody thinks to save first.
+  if (notes !== undefined && (notes || null) !== before.reviewerNotes) {
+    updateTask(id, { reviewerNotes: notes || null });
+  }
+  if (draft === undefined) return;
   if (draft.trim() === (before.draft ?? '').trim()) return;
 
   updateTask(id, { draft });
   recordDraft(id, draft, { source: 'human' });
   recordEvent(id, 'edited', { actor: (await currentOperator())?.id ?? null });
+  // The same call `saveDraft` makes, and for the same reason — this path had
+  // been writing a new draft and leaving the old translation to be refused by
+  // its own fingerprint check, with nothing queued to replace it. Every button
+  // that is not Save comes through here: Redraft, Ask for options, Dismiss, the
+  // format tabs, the layout switch. A reviewer who does not read the reply's
+  // language pressed any one of them and the panel went empty for good.
+  enqueueForTranslation(id);
+}
+
+/**
+ * Whatever is in the file picker, kept the way `keepEdits` keeps the draft.
+ *
+ * The picker lives inside the review form, so its contents arrive with whichever
+ * button was pressed — and the two presses that are *about* the files are Attach
+ * and Send. Both call this, which is what makes "pick a file, press Send"
+ * carry the file rather than lose it: the confirmation panel renders from the
+ * table this writes.
+ *
+ * Throws when the reply would come out over the ceiling. Both callers turn that
+ * into `?error=` on the task, because the alternative — swallowing it — is a
+ * file the reviewer watched themselves pick and the customer never receives.
+ */
+async function keepFiles(form: FormData, id: string): Promise<void> {
+  const picked = await readUploads(form);
+  if (picked.length) attachToTask(id, picked);
+}
+
+/**
+ * Files, put on the reply while it is being written.
+ *
+ * This is a button in the review form rather than a form of its own, for the
+ * reason every other button there is: posting the whole form is what carries the
+ * draft, and a picker that saved an invoice by throwing away ten minutes of
+ * editing would be worse than no picker.
+ */
+export async function attachFiles(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await keepEdits(form, id);
+
+  let failure: string | null = null;
+  try {
+    await keepFiles(form, id);
+  } catch (error) {
+    failure = message(error);
+  }
+
+  // Revalidated and *not* redirected, which is the difference between the tile
+  // appearing under the hand that added it and the whole screen jumping.
+  //
+  // A redirect to the address you are already on is still a navigation, and the
+  // router answers a navigation by putting the page back at the top — so
+  // attaching a file to a reply you had scrolled down to threw you up to the
+  // subject line, every time, on the one screen where scrolling back means
+  // finding your place in a letter again. There is nothing to redirect *to*:
+  // this action does not change which page you are on. Revalidating swaps the
+  // row of tiles in place and leaves everything else, including the scroll and
+  // the cursor in the draft box, exactly where it was.
+  //
+  // The failure still redirects, because the sentence saying why lands in the
+  // banner at the top and being taken to it is the point.
+  revalidatePath(`/tasks/${id}`);
+  if (failure) redirect(`/tasks/${id}?error=${encodeURIComponent(failure)}`);
+}
+
+/**
+ * One of them, taken back off.
+ *
+ * The id is bound to the action rather than carried as the button's value; see
+ * the note on `useAlternative` for why the obvious HTML silently does nothing.
+ *
+ * No redirect here either, and for the same reason — see `attachFiles`.
+ */
+export async function detachFile(fileId: string, form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await keepEdits(form, id);
+  detachFromTask(id, fileId);
+  revalidatePath(`/tasks/${id}`);
+}
+
+/**
+ * Redraft, asked rather than assumed.
+ *
+ * "Redraft" with nothing said asks the same model the same question and is
+ * entitled to the same answer, so the instruction is the whole of the feature —
+ * which is why the box for it used to sit open under every draft on every
+ * screen, whether or not anybody was going to redraft anything. A permanently
+ * open input for an action nobody has taken is clutter that also teaches people
+ * to ignore it. This asks at the moment of asking, with whatever they last
+ * said already in the box.
+ *
+ * The edits go in first, same as the send path: a reviewer who fixed the
+ * subject and then hit Redraft must not watch that work disappear.
+ */
+export async function askRedraft(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await keepEdits(form, id);
+  redirect(`/tasks/${id}?redraft=1`);
+}
+
+/**
+ * The step between deciding to send and sending.
+ *
+ * Approve and Send is the one irreversible button on the desk, and until now it
+ * was also a single click on a screen full of other buttons. This puts the mail
+ * in front of the reviewer one more time before it leaves: what the customer
+ * wrote, what is about to go back, and both of them in the language the
+ * reviewer reads.
+ *
+ * A round trip rather than a dialog in the browser, for the reason the draft box
+ * has no client state at all: the panel has to show what will actually be sent,
+ * and the only copy that can promise that is the one on disk. So the edits are
+ * written first and the confirmation renders from the row — a screen that read
+ * from the textarea could show one thing and post another.
+ *
+ * Writing first is also what made this the one draft writer in the file without
+ * the guard every other one carries. `keepEdits`, `restoreDraft` and
+ * `setReplyFormat` all refuse a `sent` or `sending` task and say why; this wrote
+ * three columns unconditionally, on the action bound to the review form itself.
+ * A confirm landing while a send holds the claim rewrote the draft under it. The
+ * panel this redirects to is already gated on `sendable`, so the refusal costs
+ * nothing: the reviewer lands on the task and reads what actually happened to it.
+ */
+export async function confirmSend(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const before = getTask(id);
+  if (!before || before.status === 'sent' || before.status === 'sending') {
+    redirect(`/tasks/${id}`);
+  }
+  const draft = field(form, 'draft');
+  // The review screen's form does not carry a notes box any more — it is asked
+  // for on the panel this redirects to — so an absent field must leave whatever
+  // is on the row alone rather than clear it on the way past.
+  const notes = optional(form, 'notes');
+  const subject = field(form, 'subject');
+
+  updateTask(id, {
+    draft,
+    replySubject: subject || null,
+    ...formatFrom(form),
+    ...(notes === undefined ? {} : { reviewerNotes: notes || null }),
+  });
+
+  // Anything still sitting in the picker, before the panel goes up. A reviewer
+  // who picks a file and presses Send has attached it — the alternative is a
+  // confirmation that lists no files and a mail that carries none, which is the
+  // exact failure the picker used to have on the other side of this redirect.
+  //
+  // After the draft is written, so an oversized pick costs the reviewer the file
+  // and not their editing.
+  try {
+    await keepFiles(form, id);
+  } catch (error) {
+    redirect(`/tasks/${id}?error=${encodeURIComponent(message(error))}`);
+  }
+
+  // The stored translation is keyed to the exact text it was made from, so an
+  // edited draft has none — and a confirmation screen that shows the reply
+  // untranslated to someone who cannot read it is the leap of faith this whole
+  // step exists to remove. One call, at the one moment it is worth paying for.
+  const language = reviewLanguage();
+  if (language && draft.trim() !== '' && !hasTranslation(id, 'draft', draft, language)) {
+    try {
+      const rendered = await translateForReview(draft, language);
+      if (rendered) saveTranslation(id, 'draft', language, draft, rendered);
+    } catch {
+      // A translator that is down must not stop somebody sending mail. The
+      // panel says plainly that there is no translation rather than pretending.
+    }
+  }
+
+  redirect(`/tasks/${id}?confirm=1`);
 }
 
 export async function approveAndSend(form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
-  const notes = field(form, 'notes');
+  // `optional`, not `field`. The confirmation panel does carry a hidden `notes`
+  // input, so this was safe — but safe because of a field on another screen,
+  // which is the kind of safety that ends the day somebody tidies the panel.
+  const notes = optional(form, 'notes');
+  // The way out of the learning loop, offered on the confirmation and nowhere
+  // else. It applies to this one reply: it is not a preference, because "stop
+  // learning" is not a decision anybody should be able to make for the whole
+  // desk from a send button, and a remembered switch becomes "this desk stopped
+  // learning months ago and nobody remembers who turned it off".
+  //
+  // It changes the third step only. The mail goes out and the row is written
+  // exactly the same either way — see `sendReply`, where the order of those
+  // three is not negotiable — and the decision is recorded on the `sent` event,
+  // because in three months "why did this one teach nothing" has to have an
+  // answer that is not a guess.
+  const skipLearning = form.get('skipLearning') === '1';
 
   let failure: string | null = null;
   try {
     // The edited text is saved before the send is attempted: if the provider
     // is down, the reviewer's work is still on disk when they come back.
-    updateTask(id, { draft: field(form, 'draft'), reviewerNotes: notes || null });
-    // Read before the send, so an oversized attachment fails the request
-    // rather than the mail — and fails it after the draft is already saved.
-    const attachments = await readUploads(form);
+    //
+    // Not onto a row that is already sent or claimed, though. This write sits
+    // ahead of `sendReply`'s claim, so a double-clicked button or a stale tab
+    // rewrote the draft of a mail that had already gone and was told no
+    // afterwards — the refusal arrived, and the record of what was proposed had
+    // already been replaced by the text that lost the race. The claim still
+    // decides whether anything is sent; this only decides whether the row
+    // survives being refused.
+    const before = getTask(id);
+    if (before && before.status !== 'sent' && before.status !== 'sending') {
+      updateTask(id, {
+        draft: field(form, 'draft'),
+        ...formatFrom(form),
+        ...(notes === undefined ? {} : { reviewerNotes: notes || null }),
+      });
+    }
+    // Whatever the reviewer put on this reply while writing it. Read from the
+    // row rather than from this form, for the same reason the panel above
+    // renders from the row: what goes out has to be what was on screen when
+    // Send was pressed, and the panel has no picker to post one.
+    //
+    // `sendReply` deletes them in the transaction that marks the task sent, so
+    // there is no clean-up on this side and none to forget on a failure — a
+    // send that throws leaves the files where the reviewer can see them and try
+    // again.
+    const attachments = pendingAttachments(id);
     await sendReply(id, {
       finalReply: field(form, 'draft'),
       subject: field(form, 'subject'),
       ...(notes ? { reviewerNotes: notes } : {}),
       sentBy: (await currentOperator())?.id ?? null,
       ...(attachments.length ? { attachments } : {}),
+      ...(skipLearning ? { skipLearning: true } : {}),
     });
   } catch (error) {
     failure = message(error);
@@ -214,7 +537,10 @@ export async function dismissTask(form: FormData): Promise<void> {
   const id = field(form, 'taskId');
   const dismissed = rejectTask(id, {
     reason: field(form, 'reason'),
-    notes: field(form, 'notes'),
+    // `rejectTask` already distinguishes undefined from empty — see its input
+    // type — so passing the absent field through as undefined is what stops a
+    // dismissal wiping the note that explains the draft.
+    notes: optional(form, 'notes'),
     actor: (await currentOperator())?.id ?? null,
   });
   // Dismissed is a decision, not an oversight: somebody looked at this and said
@@ -223,6 +549,21 @@ export async function dismissTask(form: FormData): Promise<void> {
   if (dismissed) await markHandled(dismissed);
   revalidatePath('/');
   redirect('/');
+}
+
+/**
+ * Opening the dismissal panel, keeping the edits on the way.
+ *
+ * The mirror of `askRedraft`. It posts rather than links for the same reason:
+ * the button lives inside the draft's form, so going to the panel has to carry
+ * whatever is in the box or a reviewer who tidied the draft and then decided not
+ * to send it would lose the tidying on the way to explaining why.
+ */
+export async function askDismiss(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await keepEdits(form, id);
+  redirect(`/tasks/${id}?dismiss=1`);
 }
 
 /**
@@ -258,7 +599,8 @@ export async function redraftTask(form: FormData): Promise<void> {
   // queued a drafter, the send then finished and wrote `sent` plus the reply
   // that went out, and the drafting job — still in flight — overwrote that
   // with a draft for a mail the customer had already read.
-  if (task && task.status !== 'sending') {
+  const asked = Boolean(task) && task?.status !== 'sending';
+  if (asked) {
     // Back to pending first, or the job's own guard would see a task that is
     // already awaiting review and the queue would dedupe the request away.
     //
@@ -266,10 +608,11 @@ export async function redraftTask(form: FormData): Promise<void> {
     // question and is entitled to the same answer; the box under the draft is
     // where the reviewer already says what is wrong with it, and the drafter
     // reads it from here.
+    const instruction = optional(form, 'notes');
     updateTask(id, {
       status: 'pending',
       error: null,
-      reviewerNotes: field(form, 'notes') || null,
+      ...(instruction === undefined ? {} : { reviewerNotes: instruction || null }),
     });
     recordEvent(id, 'redraft', {
       detail: field(form, 'notes'),
@@ -279,9 +622,36 @@ export async function redraftTask(form: FormData): Promise<void> {
     // Redraft is often doing it because the reply was wrong about who this
     // person is, which is the case a stale — or failed — lookup produces.
     await enqueueForDrafting(id);
+    // Started now rather than whenever a cron happens to fire.
+    //
+    // Nothing in this process turns the queue: jobs move when `/api/worker` is
+    // hit on a schedule or when somebody opens the Queue screen and presses the
+    // button. That is the right shape for a desk that runs unattended, and it
+    // was the wrong shape for a button a person just clicked and is watching —
+    // Redraft enqueued the work, closed the panel, and on an install without the
+    // crontab set up the redraft simply never happened.
+    //
+    // `after` rather than awaiting it: a drafting job is a model call and can
+    // take the better part of a minute, and the reviewer should get their screen
+    // back immediately and watch it there. The claim the worker takes is what
+    // makes this safe to run alongside a cron that fires mid-draft.
+    //
+    // Through `nudgeQueue`, which is the same call the review screen's poller
+    // makes. This built its own worker, and a worker built here is a worker the
+    // flag in that module cannot see: two reviewers pressing Redraft at the same
+    // moment, or one pressing it while a poll tick is mid-drain, was exactly the
+    // pile-up the flag exists to prevent, arriving down the one path that had
+    // been left out of it.
+    after(() => nudgeQueue(5));
   }
   revalidatePath(`/tasks/${id}`);
-  redirect(`/tasks/${id}?queued=1`);
+  // Back to the panel only when there is something to watch. The flag alone put
+  // a reviewer who pressed Redraft mid-send on a screen with no panel, no
+  // banner and no explanation — the page renders the working state for `pending`
+  // and `drafting`, and this branch changed neither. A button that posts,
+  // redirects, and comes back with nothing is the failure the Dismiss button was
+  // just fixed for; this is it one action over.
+  redirect(asked ? `/tasks/${id}?redrafting=1` : `/tasks/${id}`);
 }
 
 /**
@@ -346,6 +716,23 @@ export async function composeEmail(form: FormData): Promise<void> {
   });
 
   enqueueCompose(task.id);
+  // Turned now rather than left for whenever a cron happens to fire.
+  //
+  // The same call Redraft makes, against the same hole and for the same reason:
+  // somebody wrote this brief thirty seconds ago and is being sent straight to
+  // the screen where the result is supposed to appear. Nothing in this process
+  // turns the queue on its own, so on an install without the crontab set up the
+  // job sat at `pending` and the result never came — a compose screen that
+  // accepts a letter and then quietly does nothing with it, which is worse than
+  // one that refuses. Redraft was given this kick and this path was not, so the
+  // two buttons that ask the model for prose behaved differently for no reason
+  // a person could see.
+  //
+  // `after`, so the redirect is not held behind a model call: the review screen
+  // polls while the task is in the machine's hands and renders the draft when it
+  // lands. Through `nudgeQueue` rather than a worker built here — see that
+  // module for why two people composing at the same moment must not build two.
+  after(() => nudgeQueue(5));
   redirect(`/tasks/${task.id}?queued=1`);
 }
 
@@ -389,6 +776,133 @@ export async function composeEmail(form: FormData): Promise<void> {
  * arguments, and it leaves the textarea in the FormData, which is the whole
  * reason these tabs live inside the draft's form.
  */
+/**
+ * Switching the reply between Markdown, plain text and HTML.
+ *
+ * Bound rather than carried on the button, for exactly the reason the note above
+ * gives: a submit button's name and value do not survive a Server Action, so the
+ * obvious `<button name="format" value="html">` would post nothing and the tabs
+ * would look clickable and do nothing.
+ *
+ * It applies immediately rather than waiting for Save, and that is the point of
+ * making it a submit at all: the format decides how the box below is turned into
+ * mail, so the preview beside it is wrong until the row knows. `keepEdits` runs
+ * first so switching never costs somebody the sentence they were part-way
+ * through — the tabs sit inside the draft's own form precisely so the textarea
+ * comes with them.
+ *
+ * The text is never rewritten. Converting Markdown into HTML on the way through
+ * would be this app editing a reply nobody approved, and converting back is
+ * lossy in both directions.
+ */
+export async function setReplyFormat(format: ReplyFormat, form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  await keepEdits(form, id);
+
+  const task = getTask(id);
+  if (task && task.status !== 'sent' && task.status !== 'sending') {
+    updateTask(id, { replyFormat: format });
+  }
+
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}?saved=1`);
+}
+
+/**
+ * Switching between the two ways of reading the review screen.
+ *
+ * The switch lives in the page header, beside the nav, because that is where a
+ * control over the whole screen belongs and because it has to be reachable from
+ * the top of a long task. That puts it outside the draft's own form, so
+ * `CarryDraft` copies the boxes into it on submit — see the note there, and in
+ * `keepEdits`, for why that form ships with no hidden fields of its own. Without
+ * a script the view still switches and nothing on the row is touched; only an
+ * unsaved half-sentence goes, the way an unsaved anything goes when you navigate.
+ *
+ * `taskId` may still be absent, so the redirect falls back to whatever page
+ * asked.
+ *
+ * No query parameter: how somebody reads is a property of the reader, not of the
+ * link, and putting it in the address bar makes a shared URL impose your reading
+ * on whoever opens it.
+ */
+export async function setReviewLayout(layout: ReviewLayout, form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  if (id) await keepEdits(form, id);
+  await setReviewLayoutCookie(layout);
+
+  const back = id ? `/tasks/${id}` : sameOrigin(field(form, 'returnTo'));
+  // The layout, not the page — the same call `setTheme` and
+  // `setInterfaceLanguage` make, and for the same reason: the switch this action
+  // toggles is rendered by the root layout, so revalidating the page it was
+  // pressed on left the pill lit on the option that was current *before* the
+  // press. The screen relaid out and the control disagreed with it, which reads
+  // as a broken button rather than as a stale cache.
+  //
+  // It also fixes a call that was doing nothing at all: `back` is
+  // `sameOrigin(returnTo)` when there is no task, and that carries the query —
+  // `/?status=sent&q=refund` — which `revalidatePath` does not take.
+  revalidatePath('/', 'layout');
+  redirect(back);
+}
+
+/**
+ * Light, dark, or the machine's answer.
+ *
+ * A cookie and a redirect, like the layout switch — no script, and no flash of
+ * the wrong palette on the way in, because the attribute is on `<html>` in the
+ * markup the server sends rather than added by something that has to load first.
+ *
+ * Nothing to keep here. This form is in the header and carries no draft, and
+ * unlike the layout switch it is offered on every screen rather than on the one
+ * with a half-written reply in it — so there is deliberately no `keepEdits`.
+ * Somebody changing the palette mid-sentence on the review screen loses the
+ * sentence, which is the same thing any navigation does and is the honest cost of
+ * a control that belongs to the whole app rather than to that form.
+ */
+export async function setTheme(chosen: Theme, form: FormData): Promise<void> {
+  await requireApi();
+  await setThemeCookie(chosen);
+
+  const back = sameOrigin(field(form, 'returnTo'));
+  revalidatePath('/', 'layout');
+  redirect(back);
+}
+
+/**
+ * The language of the interface, changed from the header rather than from the
+ * wizard.
+ *
+ * Desk-wide, not per person, and that is the existing decision rather than a new
+ * one — see `locale()` in lib/i18n. A support desk is a room of people who share
+ * a language, and "the second field on the mailbox screen" has to be a sentence
+ * one colleague can say to another. This writes the same workspace file the
+ * setup step writes; it just stops the answer being buried four screens deep.
+ *
+ * And it reports the write the way the wizard does. The result was being thrown
+ * away, so on a deployment whose config file is read-only — a container with the
+ * app directory mounted `ro`, which is a normal way to run this — the menu
+ * closed, the page came back in the same language, and nothing said why. That is
+ * indistinguishable from a broken control, which is the exact confusion
+ * `localePinned` exists to prevent for the other cause. The voice step is where
+ * this file is edited and the one screen that knows how to offer the
+ * paste-it-yourself fallback — wherever that step currently lives, which is a
+ * page of the wizard on a new install and a section of the settings screen on
+ * an old one.
+ */
+export async function setInterfaceLanguage(language: Locale, form: FormData): Promise<void> {
+  await requireApi();
+  const result = saveWorkspaceConfig({ language });
+
+  revalidatePath('/', 'layout');
+  if (!result.saved) {
+    redirect(stepHref('voice', `unwritable=${encodeURIComponent(result.error ?? 'unknown')}`));
+  }
+  redirect(sameOrigin(field(form, 'returnTo')));
+}
+
 export async function useAlternative(alternativeId: string, form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'taskId');
@@ -542,7 +1056,21 @@ export async function editRule(form: FormData): Promise<void> {
   redirect('/rules');
 }
 
-export async function toggleRule(form: FormData): Promise<void> {
+/*
+ * The target state arrives bound, for the reason the option id on
+ * `useAlternative` does — and this button is where that lesson had not been
+ * applied yet.
+ *
+ * It was `<button name="enabled" value={String(!rule.enabled)} formAction={…}>`,
+ * which is the obvious HTML and does not survive a Server Action: React needs
+ * the clicked button's `name` to encode which action to invoke, so it overwrites
+ * it and the rendered markup says `name="$ACTION_ID_…"`. The field never
+ * arrived, `field(form, 'enabled') === 'true'` was therefore always false, and
+ * the button could only ever switch a rule off. Retiring one worked; restoring
+ * it silently retired it again, which looks exactly like a page that did not
+ * reload.
+ */
+export async function toggleRule(enabled: boolean, form: FormData): Promise<void> {
   await requireApi();
   const id = field(form, 'ruleId');
   const content = field(form, 'content');
@@ -556,7 +1084,7 @@ export async function toggleRule(form: FormData): Promise<void> {
   updateRule(
     id,
     {
-      enabled: field(form, 'enabled') === 'true',
+      enabled,
       ...(rewritten
         ? {
             content,
@@ -589,7 +1117,7 @@ export async function removeRule(form: FormData): Promise<void> {
  * typing can fix in the form they are looking at.
  */
 export async function addOperator(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const name = field(form, 'name');
   const password = field(form, 'password');
 
@@ -602,11 +1130,13 @@ export async function addOperator(form: FormData): Promise<void> {
     redirect('/operators?error=taken');
   }
   revalidatePath('/operators');
-  redirect('/operators?added=1');
+  // The name, so the page can say who. Encoded because it is whatever somebody
+  // typed, and rendered as text on the other side.
+  redirect(`/operators?added=${encodeURIComponent(name)}`);
 }
 
 export async function changeOperatorPassword(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const password = field(form, 'password');
   if (!password) redirect('/operators?error=blank');
   setOperatorPassword(field(form, 'operatorId'), password);
@@ -614,10 +1144,15 @@ export async function changeOperatorPassword(form: FormData): Promise<void> {
   redirect('/operators?changed=1');
 }
 
-export async function setOperatorAccess(form: FormData): Promise<void> {
-  await requireApi();
+/*
+ * Bound, not posted — the same React trap as `toggleRule` above. Here the dead
+ * field also made the guard below misfire: restoring the only operator on a
+ * passwordless install read as an attempt to disable the last one, so the one
+ * button that could undo the lockout answered with an error about causing it.
+ */
+export async function setOperatorAccess(enabled: boolean, form: FormData): Promise<void> {
+  await requireAdminApi();
   const id = field(form, 'operatorId');
-  const enabled = field(form, 'enabled') === 'true';
 
   // Disabling the last active operator on an install with no shared password
   // does not lock the door — it removes it, and the next visitor walks in
@@ -627,8 +1162,43 @@ export async function setOperatorAccess(form: FormData): Promise<void> {
     redirect('/operators?error=last');
   }
 
+  // And retiring the last admin locks the settings rather than the door. Same
+  // shape of mistake, one floor down: the desk keeps working, nobody can
+  // change the mailbox it works on, and the screen where that is undone is one
+  // of the four this flag governs. Only when there is no shared password —
+  // with one set there is always a way back in as nobody in particular.
+  if (!enabled && adminPassword() === null && getOperator(id)?.admin && countActiveAdmins() <= 1) {
+    redirect('/operators?error=lastAdmin');
+  }
+
   setOperatorEnabled(id, enabled);
   revalidatePath('/operators');
+  redirect('/operators');
+}
+
+/**
+ * Who may reach the queue, the archive, this list and the settings.
+ *
+ * Bound rather than posted, like `setOperatorAccess` above and for the same
+ * reason. The guard is the one that matters here: demoting the last admin on
+ * an install with no shared password leaves a desk that cannot be configured
+ * by anyone, from any screen, and the only repair is a SQLite client on the
+ * host. It is refused rather than warned about.
+ */
+export async function setOperatorRole(admin: boolean, form: FormData): Promise<void> {
+  await requireAdminApi();
+  const id = field(form, 'operatorId');
+
+  if (!admin && adminPassword() === null && countActiveAdmins() <= 1) {
+    redirect('/operators?error=lastAdmin');
+  }
+
+  setOperatorAdmin(id, admin);
+  revalidatePath('/operators');
+  // The nav is rendered by the root layout, so the demoted person's four links
+  // hang around until something rebuilds it. On their next navigation this is
+  // what has already made that a fresh render rather than a cached one.
+  revalidatePath('/', 'layout');
   redirect('/operators');
 }
 
@@ -653,7 +1223,7 @@ export async function syncNow(): Promise<void> {
  * for v0.1 — see `/api/worker` for the scheduled one.
  */
 export async function runQueue(): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const worker = createWorker({ handlers: DEFAULT_HANDLERS });
   let query = '';
   try {
@@ -678,7 +1248,7 @@ export async function runQueue(): Promise<void> {
  * an error worth a stack trace.
  */
 export async function retryJobNow(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const id = field(form, 'jobId');
   const job = retryJob(id);
   revalidatePath('/queue');
@@ -696,14 +1266,14 @@ export async function retryJobNow(form: FormData): Promise<void> {
 }
 
 export async function releaseJobNow(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const job = releaseJob(field(form, 'jobId'));
   revalidatePath('/queue');
   redirect(job ? '/queue?released=1' : `/queue?error=${encodeURIComponent(t('queue.notStuck'))}`);
 }
 
 export async function deleteJobNow(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   // No confirmation step. A job is a note to do something, not the something:
   // the task it refers to is untouched, the sweep will find it if it is left
   // owing work, and re-enqueueing is one button away on the task itself.
@@ -720,7 +1290,7 @@ export async function deleteJobNow(form: FormData): Promise<void> {
  * showing up on the inbox.
  */
 export async function sweepNow(): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   let query = '';
   try {
     const result = await sweepStuckTasks();
@@ -731,6 +1301,28 @@ export async function sweepNow(): Promise<void> {
   revalidatePath('/queue');
   revalidatePath('/');
   redirect(`/queue${query}`);
+}
+
+/**
+ * The step between deciding to tidy and tidying.
+ *
+ * "Tidy the rulebook" was a bare button on a toolbar, and what it starts is a
+ * model pass that rewords rules somebody wrote by hand and switches others off.
+ * Nothing about the label says that, and the confirmation it deserves is not
+ * "are you sure" — it is an account of what the pass does, what it leaves
+ * alone, and how to undo it.
+ *
+ * A page state rather than a browser dialog, for the reason the send
+ * confirmation is one — see `askDismiss`. The only thing it carries is which
+ * filter the rulebook is under, because the panel's way out is a link back to
+ * this page and the round trip must not quietly switch the list underneath it.
+ * Compared rather than passed through: this ends up in a URL, and the one
+ * spelling that means anything is the one the page reads.
+ */
+export async function askTidy(form: FormData): Promise<void> {
+  await requireApi();
+  const showAll = field(form, 'show') === 'all';
+  redirect(showAll ? '/rules?show=all&tidy=ask' : '/rules?tidy=ask');
 }
 
 /**
@@ -748,6 +1340,39 @@ export async function tidyRulebook(): Promise<void> {
   redirect(`/rules?tidy=${result.deduped ? 'already' : 'queued'}`);
 }
 
+/** A number from a form, held to the bounds the input advertises. */
+function bounded(raw: string, fallback: number, min: number, max: number): number {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * The step between choosing a window and paying for it.
+ *
+ * `askTidy`'s twin, and the case for it is stronger. "Scan the Sent folder"
+ * reads like listing a directory; what it starts is a full generation per
+ * archived reply — classify, draft, criticise, extract — running for hours
+ * against a mailbox nobody has looked at in a year, and there is no bill on
+ * this screen to notice it on afterwards. The number that decides the cost is
+ * already in the form; the panel is where it is said out loud.
+ *
+ * A page state rather than a browser dialog, for the reason the send
+ * confirmation is one — see `askDismiss`. It carries both numbers, because the
+ * panel is what actually posts them: a round trip that dropped them would
+ * quietly run the defaults over whatever somebody had typed. Clamped here to
+ * the bounds the inputs advertise, since `min` and `max` are a browser's
+ * courtesy and this ends up in a URL anybody can edit.
+ */
+export async function askBackfill(form: FormData): Promise<void> {
+  await requireAdminApi();
+
+  const months = bounded(field(form, 'months'), 12, 1, 120);
+  const limit = bounded(field(form, 'limit'), DEFAULT_SCAN_LIMIT, 1, 5000);
+
+  redirect(`/backfill?scan=ask&months=${months}&limit=${limit}`);
+}
+
 /**
  * Learning from the mailbox's history.
  *
@@ -756,7 +1381,7 @@ export async function tidyRulebook(): Promise<void> {
  * finished would be a button that always fails.
  */
 export async function startBackfill(form: FormData): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
 
   const limit = Number.parseInt(field(form, 'limit'), 10);
   const months = Number.parseInt(field(form, 'months'), 10);
@@ -780,7 +1405,7 @@ export async function startBackfill(form: FormData): Promise<void> {
 
 /** Stopping a run. Items already generating are left to finish. */
 export async function stopBackfill(): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   const cancelled = cancelPendingBackfill();
   revalidatePath('/backfill');
   redirect(`/backfill?stopped=${cancelled}`);
@@ -794,7 +1419,7 @@ export async function stopBackfill(): Promise<void> {
  * where you retire the ones you disagree with.
  */
 export async function clearBackfillHistory(): Promise<void> {
-  await requireApi();
+  await requireAdminApi();
   clearBackfill();
   revalidatePath('/backfill');
   redirect('/backfill?cleared=1');
@@ -812,4 +1437,98 @@ export async function loadDemo(): Promise<void> {
   revalidatePath('/');
   revalidatePath('/rules');
   redirect(result.skipped ? '/' : `/?demo=${result.tasks}`);
+}
+
+/**
+ * Pulling the price list out of Stripe and into the desk.
+ *
+ * A button rather than a schedule. A catalogue changes when somebody changes
+ * it, which on most desks is a few times a year, and a nightly job would be
+ * spending a Stripe call a day to notice nothing — while still being a day
+ * stale on the one morning it matters. The person who just edited a price is
+ * the person who knows to press this.
+ *
+ * The counts go back in the URL rather than into a flash cookie: a sync that
+ * reports "0 added, 0 updated" is how somebody discovers their key is pointed
+ * at the test catalogue, and that sentence has to survive a reload.
+ */
+export async function syncCatalog(): Promise<void> {
+  await requireApi();
+
+  let destination: string;
+  try {
+    const counts = await syncCatalogFromStripe();
+    destination =
+      `/catalog?added=${counts.added}&updated=${counts.updated}&gone=${counts.discontinued}`;
+  } catch (error) {
+    // Shown, not swallowed. The two failures that matter here — a key without
+    // the products permission, and a test key on a live desk — both look
+    // exactly like an empty catalogue if this is turned into a silent no-op.
+    destination = `/catalog?failed=${encodeURIComponent(
+      error instanceof Error ? error.message : 'unknown',
+    )}`;
+  }
+
+  revalidatePath('/catalog');
+  redirect(destination);
+}
+
+/**
+ * The half of an entry that Stripe cannot know.
+ *
+ * What a product does not include, who it does not suit, the caveat that stops
+ * the reply being technically true and wrong. It survives every sync — see
+ * `applySync` — which is the only reason it is worth writing.
+ */
+export async function saveCatalogNote(form: FormData): Promise<void> {
+  await requireApi();
+  updateCatalogItem(field(form, 'itemId'), { note: field(form, 'note') || null });
+  revalidatePath('/catalog');
+  redirect('/catalog');
+}
+
+/**
+ * Out of every prompt, without leaving the desk.
+ *
+ * Deleting a synced row would only bring it back on the next sync, so the
+ * switch is the real control: the row stays, its note stays, and the drafter
+ * stops being told about it.
+ */
+export async function toggleCatalogItem(enabled: boolean, form: FormData): Promise<void> {
+  await requireApi();
+  updateCatalogItem(field(form, 'itemId'), { enabled });
+  revalidatePath('/catalog');
+  redirect('/catalog');
+}
+
+/** Something the desk sells that Stripe has never billed for. */
+export async function addCatalogItem(form: FormData): Promise<void> {
+  await requireApi();
+  const name = field(form, 'name');
+  if (name) {
+    createCatalogItem({
+      name,
+      description: field(form, 'description') || null,
+      pricing: field(form, 'pricing') || null,
+      note: field(form, 'note') || null,
+      source: 'manual',
+    });
+  }
+  revalidatePath('/catalog');
+  redirect('/catalog');
+}
+
+/**
+ * Only ever a hand-written row.
+ *
+ * A synced one has no delete: it would reappear on the next sync, and offering
+ * a button whose effect expires is worse than not offering one. Switch it off
+ * instead.
+ */
+export async function removeCatalogItem(form: FormData): Promise<void> {
+  await requireApi();
+  const item = getCatalogItem(field(form, 'itemId'));
+  if (item?.source === 'manual') deleteCatalogItem(item.id);
+  revalidatePath('/catalog');
+  redirect('/catalog');
 }

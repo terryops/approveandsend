@@ -1,4 +1,5 @@
 import { callAI } from '../ai';
+import { RESOURCES, readable, stripeKey, stripeMode, stripeRestricted } from '../billing/stripe';
 import { getWorkspaceConfig } from '../config/workspace';
 import { mailProvider } from '../mail/config';
 
@@ -20,6 +21,15 @@ export interface CheckResult {
   /** One line, shown verbatim. Says what happened, not what to feel about it. */
   detail: string;
 }
+
+/**
+ * The subjects with something to connect to, which is what a Test button needs.
+ *
+ * Named here rather than in the page, because the verdict is stored under this
+ * word (`setup.check.<name>`) and the button, the storage key and the banner
+ * that reads it back all have to agree on the spelling.
+ */
+export type Checkable = 'model' | 'mailbox' | 'stripe';
 
 /** Provider errors are long, multi-line and often carry a whole HTML page. */
 function summarise(error: unknown): string {
@@ -77,6 +87,54 @@ export async function checkMailbox(): Promise<CheckResult> {
   } catch (error) {
     return { ok: false, detail: summarise(error) };
   }
+}
+
+/**
+ * Reads all three lists, and reports each one separately.
+ *
+ * Not one call. A restricted key is granted permission by permission, and the
+ * ordinary mistake is granting two of the three — which authenticates, passes
+ * any check that stops at "the key works", and then quietly produces a billing
+ * screen with no payments on it for a customer who has paid twelve times.
+ * Naming the resource that was refused turns a support mystery into a line in
+ * the Stripe dashboard the operator can go and tick.
+ */
+export async function checkStripe(): Promise<CheckResult> {
+  if (!stripeKey()) return { ok: false, detail: 'No key is set.' };
+
+  const results = await Promise.all(
+    RESOURCES.map(async resource => {
+      try {
+        await readable(resource);
+        return { resource, error: null as string | null };
+      } catch (error) {
+        return { resource, error: summarise(error) };
+      }
+    }),
+  );
+
+  const mode = stripeMode();
+  // A test key on a live desk finds nobody and says so in every draft, so the
+  // mode belongs in the verdict even when everything passed.
+  const where = mode ? `${mode} mode` : 'an unrecognised key';
+  const refused = results.filter(result => result.error !== null);
+
+  if (refused.length === RESOURCES.length) {
+    return { ok: false, detail: refused[0]!.error! };
+  }
+  if (refused.length > 0) {
+    return {
+      ok: false,
+      detail: `Connected in ${where}, but cannot read ${refused
+        .map(result => result.resource)
+        .join(' or ')}: ${refused[0]!.error}`,
+    };
+  }
+
+  const narrow = stripeRestricted()
+    ? ''
+    : ' This is a full secret key — a restricted key with read on those three would do.';
+  return { ok: true, detail: `Connected in ${where}. Customers, subscriptions and charges all readable.${narrow}` };
 }
 
 /**

@@ -331,6 +331,17 @@ rules page it is the line a rule collapses to, which is the difference between
 a rulebook of four hundred and a page nobody can scan. In the prompt it is an
 index.
 
+That is also why `/rules` is a list and `/rules/[id]` is a page. The rulebook
+used to be every rule open at once — a textarea, a category and three buttons
+each, two hundred and thirteen times — which is the shape of writing a rule,
+and nine tenths of what this screen is used for is finding one. So the list is
+one line per rule ordered by how often each has fired, and editing has a page of
+its own. The ordering is display only: emission stays in insertion order, or
+two runs of the same prompt cannot be compared. Rules used zero times are not
+hidden; sorting by use puts every one of them on the last screen, which is the
+only screen anybody reads carefully, and a rule that has never fired is either
+written too narrowly or ready to retire.
+
 When the budget bites, the rules that did not fit are no longer dropped in
 silence. They are listed as summaries, a small call picks the ones this
 particular email needs, and those are read in full. A rule the model chose to
@@ -488,7 +499,7 @@ can take minutes, repairing a missing backslash beats re-running the call.
 
 ## The review UI
 
-Six screens, no client-side state, no CSS framework. Every mutation is a plain
+No client-side state, no CSS framework. Every mutation is a plain
 `<form action={serverAction}>`, which buys three things that a React form does
 not: it works before the JavaScript has loaded, a half-written draft survives a
 reload because it was posted rather than held in component state, and there is
@@ -496,9 +507,69 @@ no client copy of the draft that can disagree with the one on disk about what
 is being sent.
 
 The review screen puts the textarea and the Send button in the same form, so
-what goes out is exactly what is on screen. Save, Redraft and Dismiss are
-`formAction` buttons on that same form, which means they all see the reviewer's
-current edits rather than the last saved version.
+what goes out is exactly what is on screen. Save, Redraft, Dismiss and the
+format tabs are all `formAction` buttons on that same form, which means they see
+the reviewer's current edits rather than the last saved version — and it is the
+form membership that carries the draft, not a script.
+
+Three controls live in the header instead, because they govern the whole screen
+rather than the reply: the interface language, the review layout, and the theme.
+Each is a cookie and a redirect. Two of the three are behind a `details` at the
+right-hand end of the header, with the sign-out button: a language and a palette
+are decided on somebody's first afternoon and then left alone for months, and
+paying for that with header width on every screen is what turned the row into a
+hedge of equally loud chips. What stays out in the open is what a hand actually
+lands on — where you are, what the queue is doing, and the two buttons that
+start it. The layout switch is the awkward one — it is
+outside the draft's form and its POST still has to not cost anything, so
+`CarryDraft` copies the boxes across on submit and *creates* the hidden fields
+while doing it. That last part is the safety: an empty `draft` in a POST cannot
+be told apart from a draft somebody cleared, so a form that shipped those fields
+empty and never got a script to fill them would hand `keepEdits` a blank reply to
+write over the real one. Absent is a question `keepEdits` can answer; empty is
+not, which is why it reads all three boxes with `optional()`.
+
+The reply box opens at the length of the reply. It used to be a fixed 260px with
+the rest of the mail below its edge, which on a screen whose only job is reading
+what is about to be sent collects approvals for text nobody saw — a textarea that
+looks full is read as full. The height is said twice: `rows`, worked out on the
+server by `reply-box.ts`, and `field-sizing: content`, which replaces that
+estimate with the browser's own measurement where it is supported and keeps it
+right while somebody types. The estimate errs tall, because slack at the bottom
+of a box costs nothing and a hidden last paragraph costs a wrong send. The one
+exception is a reply that quotes the mail it answers: a thread the reviewer has
+already read has no length worth respecting, so the box stops where the quote
+starts plus a look at the top of it, and the rest scrolls.
+
+The note about a redraft is shown there rather than asked for. It is written in
+the redraft panel, at the moment somebody asks for a redraft, which is the only
+moment it does anything — it steers that redraft and it feeds the rule extractor.
+A second open box repeating it under the draft asked again for an answer already
+given, in the one card where every other box is part of the mail. Every action
+that reads `notes` reads it with `optional()`, so a form that does not carry the
+field leaves the sentence on the row instead of clearing it.
+
+Light and dark are one table of `light-dark()` pairs in `globals.css` and a
+`data-theme` attribute on `<html>`, rendered by the server from the cookie rather
+than applied by a script — a theme that arrives after first paint is a white
+flash on a dark desk, once per navigation. Three states, not two: "system" is the
+default and stays live, so a machine that goes dark at sunset takes the desk with
+it. The attribute only ever says `light` or `dark`; unanswered is the absence of
+it, and the stylesheet's media query is what handles that. Every colour resolves
+from `color-scheme`, so the switch sets that one property and the browser's own
+scrollbars and `select` popups follow without being told separately.
+
+There are four `'use client'` files, and the rule all of them obey is that none
+owns anything. `review-keys.tsx` binds `⌘↵`, `S`, `R`, `X`, `J` and `K`, and
+every one of those presses a button or follows a link already on the page; its
+`DraftOverlay` colours the sentences the reviewer wrote by rendering a second
+copy of the same string behind a transparent textarea, and switches on the
+transparency itself, so a script that never arrives leaves an ordinary box;
+`dismiss-on-escape.tsx` closes a panel the Back link already closes;
+`task-poller.tsx` refreshes a screen waiting on the queue, which a reload does
+too; `search-form.tsx` routes a `method="get"` submit that works without it.
+Turn JavaScript off and the desk is the desk — slower to drive, identical in
+what it can do and in what it will send.
 
 Approve does three things in a fixed order: write the edited text to the task,
 send the mail, then enqueue the learning job. If the provider is down the edits
@@ -506,6 +577,72 @@ are still on disk and the task stays `awaiting_review` — the reviewer comes
 back to their own words and an error message, not to a blank box. If enqueueing
 the learning job fails, that is logged and swallowed: the mail has already gone,
 and telling the reviewer the send failed would get the customer two copies.
+
+## Setup, and the screen it becomes
+
+`/setup` is asked the same question twice in an installation's life, by two
+people who are not the same person. The first has just started the server and
+does not yet know what the four subjects are, so they get a wizard: numbered,
+one subject per page, a forward link that names where it goes. The second is
+that same person a month later, who came to change a model name and knows
+exactly what they came for — and walking them past "Step 1 of 4: lock the
+door" to reach it is the interface asking them to sit through an introduction
+they have already had.
+
+So one address wears two shapes. The settings shape is a directory down the
+left and one subject at a time on the right, each opening with what it is *set
+to* — "Drafting with gpt-5.6-luna" — rather than with a paragraph explaining
+what a model is. By then it is a screen of this application rather than a way
+into it, and the nav calls it Settings.
+
+The six subjects used to be one page with a row of pills that jumped between
+them. The pills were honest about the page having parts and could not stay put:
+pressing one scrolled them off the top with everything else, so the way from the
+mailbox to the model was back up through four hundred pixels of somebody else's
+settings. A menu that does not move is the whole difference — and once it does
+not move, there is no reason for the other five subjects to be under the one you
+came for. Which subject is showing therefore has to reach the server, so it is
+`?where=model` and not `#model`: a fragment is the half of a URL a server never
+receives. See `paneHref`.
+
+The forms are written once and worn twice (`sections.tsx`); what differs is
+what surrounds them. Two of those differences are more than chrome. The wizard
+offers to create the first operator, because a name on a reply is worth more
+than a shared password and nobody finds `/operators` before something has
+already gone wrong; the settings screen links there instead, since that screen
+does the same job and three more. And the step pages stop existing once the
+wizard is over — `/setup/model` forwards to the model section — so a model is
+changed in exactly one place, whichever bookmark or old redirect got you there.
+
+Every box on both shapes carries its name on the page. They were placeholders —
+sixteen fields whose only label vanished at the first keystroke, on the one screen
+where somebody is typing values they have never typed before, and where a wrong
+one is a mail server that will not connect. The names are mostly the placeholders
+themselves, promoted: "IMAP host, e.g. imap.gmail.com" was already a name and an
+example, which is what a label and its hint are. Only four were genuinely missing
+and had to be written, because "At least 8 characters" is a constraint rather than
+a name. What stays in a box is either a literal worth typing (`match`, `993`,
+`support@yourcompany.com`) or two lines of instruction about how to fill it in —
+worth having in an empty box, not above a full one — and the state-dependent
+asides ("a key is saved, leave blank to keep it") appear only in the state they
+are about.
+
+Rows of fields are `.fields` rather than `.row`, and that is the difference
+between a card and a card with a box hanging over its edge: `.row` aligns on the
+first baseline, which for a labelled field is the *name*, so two fields whose
+names differed by one wrapped line put their boxes at different heights. The
+voice form had four boxes and a Save button on one such row with two of them
+pinned at `width: 110`, and it overflowed — the third language was clipped by the
+card that contained it.
+
+Which shape is current is `settingsMode()`, and the rule is deliberately not
+"is this desk configured yet": locking the door is the wizard's own first step,
+so that rule would change the shape underneath somebody standing on step two.
+It is "has the wizard been finished, or has this desk plainly been running
+without it" — one task or one rule is enough evidence of the second, and it has
+to be, because `shouldOnboard` only ever redirects an install that is both
+unconfigured and unused. A deployment configured by hand is therefore never
+sent to the wizard at all, and its `completedAt` stays null for ever.
 
 ## Auth
 
@@ -528,6 +665,18 @@ An unset `ADMIN_PASSWORD` disables auth rather than bricking the app, because
 the first thing anyone does is `npm run dev` on loopback and a login wall with
 no credentials to type helps nobody. Every page renders a red banner in that
 state.
+
+One bit of role and no more: an operator is an admin or is not. Nothing gates
+the *work* — every reviewer sees every task, edits any draft and sends under
+their own name — and the flag governs the four screens that are not work: the
+queue, the archive scan, the people list and the settings. That line is drawn
+where the damage is. A wrong press on a task sends a bad reply, which is
+visible and answerable; a wrong press on the settings changes which mailbox the
+desk is speaking for. The first person created is an admin because there is
+nobody else to grant it, `ADMIN_PASSWORD` counts as one because it is the key
+to the whole install, and the last admin cannot be retired or demoted while
+there is no shared password — that state is a desk nobody can configure again
+from inside the app.
 
 ## Licensing
 

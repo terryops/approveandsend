@@ -1,4 +1,5 @@
 import { requireMachine } from '@/lib/auth/guard';
+import { noteRun } from '@/lib/desk/automation';
 import { sweepStuckTasks } from '@/lib/tasks/sweep';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!(await requireMachine(request))) {
     return Response.json({ error: 'Not authenticated' }, { status: 401 });
   }
+
+  noteRun('sweep');
 
   const url = new URL(request.url);
   const graceMinutes = Number(url.searchParams.get('graceMinutes'));

@@ -50,6 +50,14 @@ export interface Topic {
 export interface WorkspaceConfig {
   /** The organisation replying. Appears in the prompt as "you work for X". */
   organization: string;
+  /**
+   * What this desk calls itself, in the header and the browser tab.
+   *
+   * Unlike everything else here it is never sent to a model — it is the label
+   * on the tool, not a fact about the business. Empty falls back to the
+   * product's own name; see `appName()`.
+   */
+  appName: string;
   /** What it sells. Omit if the organisation name already says it. */
   product?: string;
   /**
@@ -89,7 +97,11 @@ export interface WorkspaceConfig {
    * in the email panels is `reviewLanguage`, what the customer gets is
    * `replyLanguage`, and this is what the screen around them is written in.
    * A team can want their own language on the buttons while still reading
-   * drafts in English, and the reverse. `en` when unset.
+   * drafts in English, and the reverse.
+   *
+   * Empty means nobody has answered yet, which is not the same as choosing
+   * English: an install still walking through the wizard takes the browser's
+   * own preference until someone picks one. See `locale()`.
    */
   language: string;
   /**
@@ -127,12 +139,13 @@ export interface WorkspaceConfig {
 
 export const DEFAULT_WORKSPACE: WorkspaceConfig = {
   organization: 'our company',
+  appName: '',
   voice: 'Warm, direct and specific. No filler apologies, no corporate padding.',
   facts: [],
   signature: '',
   replyLanguage: 'match',
   reviewLanguage: '',
-  language: 'en',
+  language: '',
   topics: [],
   neverPromise: [
     'refund amounts or dates that have not been confirmed',
@@ -216,6 +229,46 @@ export function topicLabel(slug: string, config: WorkspaceConfig = getWorkspaceC
   return config.topics.find(topic => topic.slug === slug)?.label || slug;
 }
 
+/** How many colours the topic cell has to hand out. Matches `.tag.topic.tone-*`. */
+export const TOPIC_TONES = 6;
+
+/**
+ * Which of those colours a topic wears, 1..TOPIC_TONES.
+ *
+ * Its place in the configured vocabulary, so the first six topics on a desk are
+ * six different colours. A hash of the slug was the first answer and it was the
+ * wrong one: hashing is stable across config edits, which sounds like the
+ * property you want until you try it on a real vocabulary and three of the five
+ * topics you actually use come out the same colour. Distinguishable is the
+ * entire feature. Stable-but-identical is not a weaker version of it, it is the
+ * thing it was supposed to fix.
+ *
+ * So the cost is stated plainly instead: insert a topic in the middle of the
+ * list and the ones below it shift a colour. That is a deliberate edit to a file
+ * somebody opens perhaps twice a year, and appending — which is how a
+ * vocabulary actually grows — moves nothing.
+ *
+ * The slug, not the label: labels are translated and edited, and a topic must
+ * not change colour because somebody rewrote what it is called.
+ *
+ * Everything outside the vocabulary falls back to a hash. Those are free-form
+ * scopes from an install with no topics configured, or a topic deleted while
+ * tasks still carried it — there is no list to take a position in, and a colour
+ * from the slug beats grey. FNV-1a: four lines, no dependency, and identical in
+ * every JavaScript engine, which matters because this renders on the server.
+ */
+export function topicTone(slug: string, config: WorkspaceConfig = getWorkspaceConfig()): number {
+  const index = config.topics.findIndex(topic => topic.slug === slug);
+  if (index >= 0) return (index % TOPIC_TONES) + 1;
+
+  let hash = 2166136261;
+  for (let i = 0; i < slug.length; i += 1) {
+    hash ^= slug.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) % TOPIC_TONES) + 1;
+}
+
 /**
  * Slug to label, for the search box.
  *
@@ -262,6 +315,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
     ...(asString(process.env.AAS_PRODUCT) ?? asString(fromFile.product)
       ? { product: asString(process.env.AAS_PRODUCT) ?? asString(fromFile.product) }
       : {}),
+    appName: asString(fromFile.appName) ?? DEFAULT_WORKSPACE.appName,
     voice: asString(process.env.AAS_VOICE) ?? asString(fromFile.voice) ?? DEFAULT_WORKSPACE.voice,
     facts: asStringArray(fromFile.facts) ?? DEFAULT_WORKSPACE.facts,
     signature: asString(process.env.AAS_SIGNATURE) ?? asString(fromFile.signature) ?? DEFAULT_WORKSPACE.signature,

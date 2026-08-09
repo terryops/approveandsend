@@ -242,6 +242,7 @@ describe('workspace config', () => {
   it('puts the facts and the never-promise list into the persona block', () => {
     const config: WorkspaceConfig = {
       organization: 'Acme',
+      appName: '',
       voice: 'Terse.',
       facts: ['Refunds take 5-10 business days.'],
       signature: '',

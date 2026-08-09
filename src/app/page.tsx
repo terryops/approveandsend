@@ -1,21 +1,18 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
-import { requirePage } from '@/lib/auth/guard';
-import { topicLabel, topicLabelMap } from '@/lib/config/workspace';
-import { t } from '@/lib/i18n';
+import { isAdmin, requirePage } from '@/lib/auth/guard';
+import { topicTone } from '@/lib/config/workspace';
+import { automation } from '@/lib/desk/automation';
+import { deskToday } from '@/lib/desk/today';
+import { deskUntouched } from '@/lib/desk/untouched';
+import { t, topicName, topicNameMap, type MessageKey } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
-import { isTaskStatus, type Task, type TaskStatus } from '@/lib/tasks/types';
+import { deskedAt, isTaskStatus, TASK_STATUSES, type Task, type TaskStatus } from '@/lib/tasks/types';
 
-import {
-  bulkDelete,
-  bulkDismiss,
-  bulkReopen,
-  loadDemo,
-  logout,
-  runQueue,
-  syncNow,
-} from './actions';
+import { bulkDelete, bulkDismiss, bulkReopen, loadDemo, syncNow } from './actions';
+import { SearchForm } from './search-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +31,30 @@ export const dynamic = 'force-dynamic';
 const FILTERS: (TaskStatus | 'all')[] = [
   'awaiting_review',
   'pending',
-  'failed',
   'sent',
+  'failed',
   'all',
   'dismissed',
 ];
 
 /** Not for us. Reachable by its own tab, and absent from every other. */
 const BIN: readonly TaskStatus[] = ['dismissed'];
+
+/**
+ * The machine's turn.
+ *
+ * These rows appear under the review queue rather than in it. Mixed in, every
+ * line makes the reader ask "is this one mine?" before reading it; split off,
+ * every line in the group above is theirs. They are still on the screen because
+ * "nothing is waiting on me" and "nothing is happening at all" are two very
+ * different afternoons, and the tabs alone cannot tell them apart without a
+ * click.
+ */
+const MACHINE: readonly TaskStatus[] = ['pending', 'drafting', 'sending'];
+
+/** Its complement, derived rather than typed out — a status added later belongs
+    to one side or the other, and it should not take an edit here to say which. */
+const NOT_MACHINE: readonly TaskStatus[] = TASK_STATUSES.filter(s => !MACHINE.includes(s));
 
 // Built per request rather than at module scope: the locale is resolved from
 // the workspace config, which is not readable while this module is evaluated.
@@ -128,6 +141,16 @@ function senderName(task: Task): string {
   return local || task.fromAddress;
 }
 
+/**
+ * What the light says. Its own function because the pill is now written twice
+ * — once as a link and once as a label — and a three-branch ternary copied
+ * into both is how the two stop agreeing.
+ */
+function queueLight(state: ReturnType<typeof deskToday>['queue']): MessageKey {
+  if (state === 'running') return 'chrome.queueRunning';
+  return state === 'stalled' ? 'chrome.queueStalled' : 'chrome.queueIdle';
+}
+
 function groupBySender(tasks: Task[]): SenderGroup[] {
   const groups = new Map<string, SenderGroup>();
 
@@ -168,6 +191,11 @@ export default async function InboxPage({
   // they cleared their inbox.
   if (shouldOnboard()) redirect('/setup');
 
+  // Not what this screen shows — a reviewer sees every task an admin does —
+  // but what it is allowed to point at. Two of the pills below open screens
+  // that are now admin-only. See the note on each.
+  const admin = await isAdmin();
+
   const params = await searchParams;
   const search = typeof params.q === 'string' ? params.q.trim() : '';
 
@@ -183,7 +211,7 @@ export default async function InboxPage({
   const status = isTaskStatus(requested) ? requested : null;
 
   // So that typing the tag you can see finds the rows wearing it.
-  const searchFilter = search ? { search, topicLabels: topicLabelMap() } : {};
+  const searchFilter = search ? { search, topicLabels: topicNameMap() } : {};
 
   const tasks = listTasks({
     // A search reaches into the bin; browsing does not. Hiding a dismissed
@@ -199,6 +227,184 @@ export default async function InboxPage({
   const unopened = countUnopened();
   const LABELS = labels();
   const groups = groupBySender(tasks);
+  // Read here rather than in the root layout, which is where it used to live.
+  //
+  // Two things were wrong with that and they pull in opposite directions. It
+  // was four counts and a queue read on every render of every screen, for a
+  // group the header only ever shows on this one — and it was *frozen*, because
+  // a root layout does not re-render when you navigate: send five replies and
+  // the header still reported the count from when the tab was opened, and the
+  // light that exists to catch a dead crontab could not change state without a
+  // reload. Read by the screen that shows it, both stop being true.
+  const today = deskToday();
+
+  // The machine's rows, under their own heading, and only on the tab where the
+  // distinction is the point. On `sent` or `all` nobody is reading for whose
+  // turn it is, so the extra heading would be a line that separates nothing.
+  // Not while searching either: a search is looking for one email, and the
+  // answer should not be filed under a subheading.
+  const machineGroups =
+    requested === 'awaiting_review' && !search
+      ? groupBySender(listTasks({ excludeStatuses: NOT_MACHINE, limit: 100 }))
+      : [];
+
+  // Whether this desk has ever had anything on it, which is a different
+  // question from whether the tab in front of you is empty — and the only one
+  // that decides whether the sample-data button is worth showing. Asked only
+  // once the list has already come back empty, because that is the only time
+  // the answer is used and it is two more queries.
+  const untouched = tasks.length === 0 && !search && deskUntouched();
+
+  // Whether anything outside this app is calling its four endpoints.
+  //
+  // The light beside this one reports the worker and cannot report the sync:
+  // it watches the jobs table, and mail that was never fetched enqueues
+  // nothing, so a desk with a dead crontab and a desk with a quiet morning both
+  // read "idle". This is the half that says which — and it is a pointer to the
+  // page that explains it rather than a state of the light, because the answer
+  // is never "look at the queue", it is always "go and set up a scheduler".
+  //
+  // Not while the desk is untouched: somebody who has not finished the wizard
+  // is being asked to fix something they have not been offered yet.
+  const unscheduled = !untouched && automation().silent;
+
+  // A badge on every row is a badge on no row. Where the tab pins the status —
+  // which is every tab but "everything" — the badge repeats the tab heading
+  // once per line, so it only survives on the lists that genuinely mix.
+  const mixed = status === null;
+
+  /**
+   * One card per sender, one row per email.
+   *
+   * A function rather than an inlined `.map` because the machine's rows below
+   * are drawn by the same one. Two copies of a six-column grid is how the two
+   * halves of this screen drift apart — the day one of them gains a column, the
+   * other quietly does not.
+   *
+   * `machine` is the only difference between them, and it changes two things:
+   * the status is written as a word beside the subject instead of worn as a
+   * badge (there are three of those statuses, so it is a fact rather than a
+   * repeat of the heading), and there is no analysis to show, because nothing
+   * has read the email yet.
+   */
+  const renderGroups = (list: SenderGroup[], machine = false) =>
+    list.map((group) => (
+      <div className="sender-group" key={group.address}>
+        <ul>
+          {group.tasks.map((task, index) => {
+            // `deskedAt`, so a composed mail is not the one row in the queue
+            // with an empty time column — see the helper.
+            const time = when(deskedAt(task));
+            const unread = task.status === 'awaiting_review' && !task.openedAt;
+            // Worth interrupting for. The whole row changes ground and takes a
+            // rule down its left edge, because a pill the size of every other
+            // pill is not findable in forty rows — which is what "the risk
+            // signal is too weak" meant.
+            const care = task.risk?.level === 'high';
+            return (
+              <li key={task.id} className={`inbox-row${care ? ' care' : ''}`}>
+                <input
+                  type="checkbox"
+                  name="taskId"
+                  value={task.id}
+                  aria-label={task.subject || t('inbox.noSubject')}
+                />
+                {/* Named once. The rows under it are the same person, and
+                    repeating the address four times is four chances to misread
+                    it as four people.
+
+                    The unopened dot leads the row rather than the subject:
+                    it is the first thing the eye crosses on the way in, and at
+                    the front of the line it reads as "this one" instead of as
+                    punctuation in the middle of a sentence. Per row, not per
+                    sender — it says something about this email.
+
+                    `aria-hidden`, so the fact was carried entirely in seven
+                    accent-coloured pixels and reached a screen reader not at
+                    all. The word rides along beside it. */}
+                <span className="sender" title={group.address}>
+                  {unread && (
+                    <>
+                      <span className="dot" aria-hidden="true" />
+                      <span className="visually-hidden">{t('inbox.unreadOne')}</span>
+                    </>
+                  )}
+                  {index === 0 ? (
+                    group.name
+                  ) : (
+                    <span
+                      className="continuation"
+                      title={t('inbox.alsoFrom', { name: group.name })}
+                    >
+                      &#9492;
+                    </span>
+                  )}
+                </span>
+                {/* The whole cell is the link, both lines of it: a target the
+                    width of the row beats a target the width of a subject line,
+                    and there is no client JS here to make the rest of the row
+                    clickable. */}
+                <Link className={`subject ${unread ? '' : 'read'}`} href={`/tasks/${task.id}`}>
+                  <span className="line">
+                    {task.subject || t('inbox.noSubject')}
+                    {/* Which of the machine's three it is, as a word. A badge
+                        would put a third pill on a row whose whole point is
+                        that it is not asking anything of you. */}
+                    {machine && (
+                      <span className="row-status">{LABELS[task.status] ?? task.status}</span>
+                    )}
+                  </span>
+                  {!machine && task.analysis?.intent && (
+                    <span className="snippet">{task.analysis.intent}</span>
+                  )}
+                  {/* The reasons, not a badge. A badge has to be remembered to
+                      mean anything; a sentence does not, and `task.risk.factors`
+                      was already in the data — it just never reached a screen at
+                      a size worth reading. */}
+                  {care && (
+                    <span className="care-why">
+                      {[
+                        t('task.risk.high'),
+                        ...(task.risk?.factors ?? []).map(f => t(`task.riskFactor.${f}`)),
+                      ].join(' · ')}
+                    </span>
+                  )}
+                </Link>
+                <span className="topic-cell">
+                  {task.scope && (
+                    // The slug stays on the title: it is what the rules page and
+                    // the DB call this, so anybody debugging a rule that did not
+                    // fire needs it reachable.
+                    // The tone is a class and not a `style`: the colour has to
+                    // come from the palette so it follows the theme, and one
+                    // written into the markup cannot. See `topicTone`.
+                    <span className={`tag topic tone-${topicTone(task.scope)}`} title={task.scope}>
+                      {topicName(task.scope)}
+                    </span>
+                  )}
+                </span>
+                {/* Only where the list actually mixes. Every row under a tab
+                    that names one status wears that status, so the badge was
+                    the tab heading repeated forty times — and a queue where
+                    every row carries a badge is a queue with no badges. The
+                    risk pill went for the same reason one step earlier: the row
+                    it sat on is already coloured and already says why. */}
+                {mixed && (
+                  <span className="tags">
+                    <span className={`tag ${task.status}`}>
+                      {LABELS[task.status] ?? task.status}
+                    </span>
+                  </span>
+                )}
+                <span className="at" {...(time ? { title: time.full } : {})}>
+                  {time?.label ?? ''}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ));
 
   // What "all" is a count of, so the tab and the list it opens agree.
   const total = Object.entries(counts).reduce(
@@ -232,40 +438,141 @@ export default async function InboxPage({
 
   return (
     <div className="inbox">
-      {/* Its own line, above the tabs, and that is a statement about scope: the
-          box searches everything and the tabs narrow what it found, so it reads
-          top to bottom in the order the filtering happens. It also simply does
-          not fit — six tabs, a search field and three buttons come to more than
-          this column is wide, and cramming them left one tab dangling on a
-          second line.
+      {/* Named, but not shown. Every screen has to open its outline with an
+          `h1` — it is what a screen reader's "jump to the heading" lands on, and
+          without one the first heading here is a card's "TO REVIEW". Hidden
+          rather than drawn, because the header already says where you are: the
+          nav marks the active link, and a second "Inbox" in 30px type above the
+          search box would be the app telling somebody something they can see. */}
+      <h1 className="visually-hidden">{t('nav.inbox')}</h1>
+
+      {/* What the desk has already done, whether anything is moving, and the two
+          things you can hand it.
+
+          On this screen because this is the screen it is about — the header
+          carried it, gated to the inbox by a client component, and paid for it
+          on every other screen in queries that were then thrown away. Above the
+          search box rather than on its row: the toolbar gave these buttons up
+          once already so the search field could have the width back, and taking
+          it again would undo that.
+
+          The numbers are the only place the work that is already done is
+          visible at all. The queue only ever shows what is left, which by design
+          never looks finished, so a reviewer thirty replies into an afternoon
+          has nothing on screen saying so. */}
+      <div className="row desk-row">
+        <div className="desk-state">
+          <p className="desk-today">
+            {t('chrome.todaySent', { n: today.sent })}
+            {' · '}
+            {t('chrome.todayLearned', { n: today.learned })}
+          </p>
+
+          {/* Whether the worker is alive — not whether the queue has anything in
+              it, which is the question this used to ask and which lit up green
+              precisely when the desk was broken. The middle state is the one it
+              exists for: work waiting, nothing moving. See `deskToday`. */}
+          {/* A link for whoever can act on it and a label for everybody else.
+              What it says is worth saying either way — a reviewer waiting on a
+              draft has a right to know the desk has stalled — but the screen it
+              opens is one of the four an admin keeps, and a pill that bounces
+              you back to the page you clicked it from is worse than a pill that
+              never offered. */}
+          {admin ? (
+            <Link className={`queue-light ${today.queue}`} href="/queue">
+              <span className="dot" aria-hidden="true" />
+              {t(queueLight(today.queue))}
+            </Link>
+          ) : (
+            <span className={`queue-light ${today.queue}`}>
+              <span className="dot" aria-hidden="true" />
+              {t(queueLight(today.queue))}
+            </span>
+          )}
+
+          {/* Beside the light rather than instead of it. The two say different
+              things — one is about the queue this minute, the other about
+              whether anything will ever put work in it — and a desk with a
+              scheduler never sees this at all. */}
+          {/* Admins only, and this one is hidden rather than defanged: it is
+              not a report on the desk, it is a job to do — set a scheduler up —
+              and telling somebody who cannot open the settings that the
+              settings are wrong is a daily reminder with no button on it. */}
+          {unscheduled && admin && (
+            <Link className="queue-light unscheduled" href="/setup?where=running">
+              <span className="dot" aria-hidden="true" />
+              {t('settings.running.nudge')}
+            </Link>
+          )}
+        </div>
+
+        {/* The two things you can do to the desk rather than to a screen: start
+            a letter of your own, or pull in the ones that arrived. Next to the
+            light that reports what the desk is doing with either.
+
+            Writing came out of the header, where it was the one nav link that
+            was an action rather than a place — offered on every screen of the
+            app by a row that has no idea what you are in the middle of. Here it
+            is one entry point, on the screen where mail is the subject.
+
+            Run queue used to stand where Compose does. It was a button for a
+            thing that already happens: the worker runs on a schedule, and the
+            light to the left of these says whether it is. What it was really
+            for — a stuck queue you want to shove — belongs on `/queue`, which
+            has the same button and is one click away through that light. */}
+        <div className="desk-actions">
+          {/* A glyph, and the word next to it rather than instead of it. The
+              icon is what a hand finds in a row of same-sized pills; the word is
+              what tells you which one this is, and what a screen reader gets —
+              the mark is `aria-hidden`, like the unopened dot on a row.
+
+              U+FE0E after the pencil, or a platform with an emoji font for it
+              draws a full-colour cartoon in a row of monochrome type. */}
+          <Link className="compose" href="/compose">
+            <span className="mark" aria-hidden="true">
+              &#9998;&#65038;
+            </span>
+            {t('inbox.compose')}
+          </Link>
+          <form action={syncNow}>
+            <button type="submit">{t('inbox.fetchMail')}</button>
+          </form>
+        </div>
+      </div>
+
+      {/* Search and the tabs on one line, reading left to right in the order the
+          filtering happens: the box reaches everything, the tabs narrow what it
+          found. They wrap rather than squeeze — a tab is one word and a number
+          and must never be two lines — so on a narrow column or a long-worded
+          language the row becomes two rows and nothing is crushed.
 
           A plain GET form, so a search is a URL: shareable, bookmarkable, and it
           survives the back button. No action, no client state, and the box keeps
-          the query in it so you can edit rather than retype. */}
-      <form className="row searchbar" method="get" action="/">
-        <input
-          type="search"
-          name="q"
+          the query in it so you can edit rather than retype.
+
+          The tab is deliberately not carried. Searching means searching
+          everything, always, and narrowing afterwards — one rule, rather than a
+          box whose reach depends on where you were standing.
+
+          The strings are passed in rather than looked up inside: `t()` reads the
+          workspace config off disk, which is a server-only thing to do, and this
+          is the one component that runs in the browser. */}
+      <div className="row toolbar">
+        <SearchForm
           defaultValue={search}
           placeholder={t('inbox.searchPlaceholder')}
-          aria-label={t('inbox.searchPlaceholder')}
+          submitLabel={t('inbox.search')}
         />
-        {/* The tab is deliberately not carried. Searching means searching
-            everything, always, and narrowing afterwards — one rule, rather than
-            a box whose reach depends on where you were standing. */}
-        <button type="submit">{t('inbox.search')}</button>
-      </form>
 
-      {/* The filters carry the counts, so there is no separate line of statistics
-          to keep in sync with them. A tab that says how much is behind it is the
-          same fact in one place instead of two. */}
-      <div className="row toolbar">
-        <div className="filters grow">
+        {/* The filters carry the counts, so there is no separate line of
+            statistics to keep in sync with them. A tab that says how much is
+            behind it is the same fact in one place instead of two. */}
+        <div className="filters">
           {FILTERS.map((f) => {
             const n = f === 'all' ? allCount : (counts[f as TaskStatus] ?? 0);
             const href = search ? `/?status=${f}&q=${encodeURIComponent(search)}` : `/?status=${f}`;
             return (
-              <a key={f} href={href} className={requested === f ? 'active' : ''}>
+              <Link key={f} href={href} className={requested === f ? 'active' : ''}>
                 {LABELS[f] ?? f}
                 {n > 0 && <span className="n">{n}</span>}
                 {/* Only against awaiting_review, and only when it is not the
@@ -273,19 +580,10 @@ export default async function InboxPage({
                 {f === 'awaiting_review' && unopened > 0 && unopened < n && (
                   <span className="n unread-count">{t('inbox.unread', { count: unopened })}</span>
                 )}
-              </a>
+              </Link>
             );
           })}
         </div>
-        <form action={syncNow}>
-          <button type="submit">{t('inbox.fetchMail')}</button>
-        </form>
-        <form action={runQueue}>
-          <button type="submit">{t('inbox.runQueue')}</button>
-        </form>
-        <form action={logout}>
-          <button type="submit">{t('inbox.signOut')}</button>
-        </form>
       </div>
 
       {notice && (
@@ -299,11 +597,11 @@ export default async function InboxPage({
       {search && tasks.length > 0 && (
         <p className="meta search-note">
           {t('inbox.searchResults', { count: tasks.length, query: search })}{' '}
-          <a href="/">{t('inbox.searchClear')}</a>
+          <Link href="/">{t('inbox.searchClear')}</Link>
         </p>
       )}
 
-      {tasks.length === 0 ? (
+      {tasks.length === 0 && (
         <div className="card">
           <div className="empty">
             {search ? (
@@ -312,106 +610,96 @@ export default async function InboxPage({
                     answered by offering to invent sample data. */}
                 <p>{t('inbox.searchNoResults', { query: search })}</p>
                 <p>
-                  <a href="/">{t('inbox.searchClear')}</a>
+                  <Link href="/">{t('inbox.searchClear')}</Link>
                 </p>
               </>
-            ) : (
+            ) : untouched ? (
               <>
                 <p>{t('inbox.emptyTitle')}</p>
-                {/* Only offered on a genuinely empty database — see seedDemoData. */}
+                {/* Only on a database with nothing in it at all — see
+                    `deskUntouched`. `seedDemoData` refuses on a desk that has
+                    been used, so on any other empty screen this button was a
+                    button that did nothing: it posted, the seed declined, and
+                    the redirect landed back on the same empty tab with no
+                    message. Offered where it works, and nowhere else. */}
                 <form action={loadDemo}>
                   <button type="submit">{t('inbox.loadSampleData')}</button>
                 </form>
               </>
+            ) : (
+              <>
+                {/* An empty tab on a desk that has mail on it. Which is a fact
+                    about the filter, not about the desk — and the answer to it
+                    is the tab that holds everything, not a fictional inbox. */}
+                <p>{t('inbox.emptyFilter', { tab: LABELS[status ?? 'all'] })}</p>
+                {status !== null && (
+                  <p>
+                    <Link href="/?status=all">{t('inbox.emptyFilterAll')}</Link>
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* Beside the empty state rather than instead of it, which is the whole
+          reason this is a second condition and not the other half of a ternary.
+          The machine's rows were rendered inside `tasks.length > 0`, so the one
+          screen they were written for could never show them: a desk that has
+          just synced twelve emails has nothing under Awaiting review and twelve
+          rows being drafted, and what it printed was "Nothing under Awaiting
+          review" and no sign that anything was happening. That is exactly the
+          "nothing is waiting on me" against "nothing is happening at all"
+          distinction the group below exists to make. */}
+      {(tasks.length > 0 || machineGroups.length > 0) && (
         // One form around every group. The checkboxes share a name, so the post
         // carries every ticked id and nothing else — no client state, and no way
         // for the screen and the request to disagree.
-        <form className="list-form">
-          {groups.map((group) => (
-            <div className="sender-group" key={group.address}>
-              <ul>
-                {group.tasks.map((task, index) => {
-                  const time = when(task.receivedAt);
-                  const unread = task.status === 'awaiting_review' && !task.openedAt;
-                  return (
-                    <li key={task.id} className="inbox-row">
-                      <input
-                        type="checkbox"
-                        name="taskId"
-                        value={task.id}
-                        aria-label={task.subject || t('inbox.noSubject')}
-                      />
-                      {/* Named once. The rows under it are the same person, and
-                          repeating the address four times is four chances to
-                          misread it as four people. */}
-                      <span className="sender" title={group.address}>
-                        {index === 0 ? (
-                          group.name
-                        ) : (
-                          <span
-                            className="continuation"
-                            title={t('inbox.alsoFrom', { name: group.name })}
-                          >
-                            &#9492;
-                          </span>
-                        )}
-                      </span>
-                      {/* The whole cell is the link, both lines of it: a target
-                          the width of the row beats a target the width of a
-                          subject line, and there is no client JS here to make
-                          the rest of the row clickable. */}
-                      <a className={`subject ${unread ? '' : 'read'}`} href={`/tasks/${task.id}`}>
-                        <span className="line">
-                          {/* Only where it means something. Every pending task is
-                              unread by definition, and a dot on all of them is a
-                              dot that tells you nothing. */}
-                          {unread && (
-                            <span className="dot" title={t('inbox.unreadOne')} aria-hidden="true" />
-                          )}
-                          {task.subject || t('inbox.noSubject')}
-                        </span>
-                        {task.analysis?.intent && (
-                          <span className="snippet">{task.analysis.intent}</span>
-                        )}
-                      </a>
-                      <span className="topic-cell">
-                        {task.scope && (
-                          // The slug stays on the title: it is what the rules
-                          // page and the DB call this, so anybody debugging a
-                          // rule that did not fire needs it reachable.
-                          <span className="tag topic" title={task.scope}>
-                            {topicLabel(task.scope)}
-                          </span>
-                        )}
-                      </span>
-                      <span className="tags">
-                        {/* Only when it is worth interrupting for. A queue where
-                            every row wears a badge is a queue with no badges. */}
-                        {task.risk?.level === 'high' && (
-                          <span className="tag risk-high">{t('task.risk.high')}</span>
-                        )}
-                        <span className={`tag ${task.status}`}>
-                          {LABELS[task.status] ?? task.status}
-                        </span>
-                      </span>
-                      <span className="at" {...(time ? { title: time.full } : {})}>
-                        {time?.label ?? ''}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+        //
+        // The flag goes on the form rather than on each row because the column
+        // has to be there or not there for the whole list: a grid whose track
+        // count changes row by row is six columns that no longer line up, which
+        // is the one thing the fixed widths exist to prevent.
+        <form className={`list-form${mixed ? '' : ' no-status'}`}>
+          {renderGroups(groups)}
+
+          {/* The rows the model still has, under their own heading and a notch
+              quieter. Kept on the screen because "nothing is waiting on me" and
+              "nothing is happening at all" are two very different afternoons —
+              and outside the group above, because the value of that group is
+              that every line in it is yours.
+
+              The heading says "AI Processing" while everything around it in the
+              code says machine: `MACHINE`, `machineGroups`, `.machine-side`.
+              That is on purpose and not drift. Internally the question is "whose
+              turn is it", which is what splits the list; on screen the answer
+              has to name the thing doing the work, because a reviewer reading
+              "with the machine" has to translate it before it means anything and
+              "AI" is the word the tagline already uses.
+
+              Inside the same form. One list of ticked ids goes out either way;
+              a second form here would be a second post that the bulk bar at the
+              bottom could not reach. */}
+          {machineGroups.length > 0 && (
+            <div className="machine-side">
+              <h2>{t('inbox.machineSide')}</h2>
+              {renderGroups(machineGroups, true)}
             </div>
-          ))}
+          )}
+
           {/* Under the list rather than above it, and carrying no count: it is a
               footer to what you have been reading, not a toolbar you have to get
-              past to read anything. */}
+              past to read anything.
+
+              There was a sentence along this row explaining that ticking boxes
+              lets you act on several at once, and that approving is never one of
+              them. Both halves were being told to somebody looking at a column
+              of checkboxes and three buttons named after what they do — the
+              first half is what a checkbox is, and the second is a promise the
+              row keeps by not having the button. A caption that describes the
+              controls beside it is a caption the controls did not need. */}
           <div className="row bulk">
-            <span className="meta grow">{t('inbox.bulkHint')}</span>
             <button type="submit" formAction={bulkDismiss}>
               {t('inbox.bulkDismiss')}
             </button>
