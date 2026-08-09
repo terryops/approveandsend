@@ -278,7 +278,22 @@
  * Last means only the characters nothing else has get that far.
  */
 :root {
-  --font-latin: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  /*
+   * `--font-inter` and `--font-serif` are declared on `<html>` by `next/font` —
+   * see the root layout. They are named first and the system families stay
+   * behind them: a font that is still downloading, or a build that never
+   * fetched one, falls through to exactly the stack this app shipped with
+   * rather than to Times.
+   */
+  --font-latin: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial;
+  /*
+   * And the Latin half of the reading face. The CJK half is deliberately the
+   * same as everywhere else — see `--font-read` below for why a Chinese letter
+   * does not get a Chinese serif.
+   */
+  --font-read-latin: var(--font-serif), ui-serif, Charter, 'Iowan Old Style', Georgia,
+    'Times New Roman';
   /*
    * Simplified Chinese by default, because `zh-CN` is the CJK locale this app
    * actually ships — see `lib/i18n`. The overrides below are what make that a
@@ -315,15 +330,58 @@
 :lang(ja) {
   --font-cjk: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic',
     Meiryo, 'Noto Sans CJK JP', 'Noto Sans JP';
+  --font-cjk-read: var(--font-cjk);
 }
 
 :lang(ko) {
   --font-cjk: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR', 'Noto Sans KR';
+  --font-cjk-read: var(--font-cjk);
 }
 
 :lang(zh-Hant) {
   --font-cjk: 'PingFang TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei',
     'Noto Sans CJK TC', 'Noto Sans TC';
+  --font-cjk-read: 'Kaiti TC', BiauKai, 'BiauKaiTC', DFKai-SB, '標楷體', var(--font-cjk);
+}
+
+/*
+ * 楷体, and only where 楷体 is a language's own hand.
+ *
+ * The reading face is a serif for the Latin, and the Chinese answer to a serif is
+ * not 宋体 here but 楷体 — a brush hand rather than a woodblock one, and the
+ * closest thing Chinese has to the written quality Source Serif brings to the
+ * Latin beside it. Set together they read as one voice; PingFang beside a serif
+ * reads as two.
+ *
+ * Three constraints are worth writing down, because each of them is a way this
+ * could have gone wrong:
+ *
+ * **Chinese only.** A Chinese font carries kana, so a 楷体 named ahead of
+ * Hiragino would set a Japanese letter's かな in a Chinese calligraphic hand.
+ * That is why `:lang(ja)` and `:lang(ko)` above say plainly that their reading
+ * face is their interface face — the alternative was not a better Japanese serif
+ * but a wrong one.
+ *
+ * **It falls back to the sans, not to `serif`.** This is the important line in
+ * the whole block. A desk with no 楷体 installed — most Linux, and Windows
+ * outside the Chinese SKU — would take the generic `serif` and land on SimSun,
+ * which is the thin, broken 13px 宋体 this entire pass began by getting rid of.
+ * Ending the chain on `var(--font-cjk)` means the fallback is PingFang: not the
+ * hand we wanted, and never worse than what the interface already uses.
+ *
+ * **Body only, never chrome.** 楷体 is a display and quotation face in Chinese
+ * typography, and it thins out badly below about 15px — a row of 13px tags in it
+ * is mush. It is reachable only through `--font-read`, which nothing in the
+ * interface names.
+ *
+ * The honest cost: 楷体 sets lighter than PingFang at the same size, and on a 1x
+ * display its thin strokes will break up where PingFang would not. On a Retina
+ * desk reading mail at `--t5` it is the better face; on a 1080p Windows monitor
+ * it is a trade.
+ */
+:root {
+  --font-cjk-read: 'Kaiti SC', STKaiti, 'TW-Kai', KaiTi, '楷体', 'AR PL UKai CN',
+    var(--font-cjk);
 }
 
 /*
@@ -355,11 +413,75 @@
  * down to everything that has no opinion — leaving the ones that do, like that
  * `<pre>`, alone.
  */
+/*
+ * `:where([lang])` and not `[lang]`, so this weighs one class and not two.
+ *
+ * The attribute is here to restrict *what matches*, not to win anything, and left
+ * to count it would outrank the reading rule below — which is a plain class, and
+ * which lands on the same element, because the letter is both the thing that
+ * carries a language and the thing set in the serif. A Japanese letter would have
+ * come out in the interface sans. `:where()` contributes nothing to specificity,
+ * so the two rules are level and the later one — the more specific idea — wins.
+ */
 body,
-[lang]:lang(ja),
-[lang]:lang(ko),
-[lang]:lang(zh-Hant) {
+:where([lang]):lang(ja),
+:where([lang]):lang(ko),
+:where([lang]):lang(zh-Hant) {
   font-family: var(--font-latin), var(--font-cjk), sans-serif, var(--font-emoji);
+  /*
+   * The reading stack is composed here too, on the same four selectors and for
+   * the same reason — this is where `--font-cjk` is known to be the right one.
+   * Composed at `:root` instead it would be substituted once, against the
+   * Simplified default, and every Japanese letter set in the serif would take
+   * 楷体 for its kana. Declared here it is a variable the prose rules can name in
+   * one word, and it still tracks the language of the element it is on.
+   *
+   * `--font-cjk-read` and not `--font-cjk`: the reading face wants 楷体 where the
+   * interface wants PingFang. That token already ends in the sans stack, so
+   * `serif` at the end of this line is a last resort nothing Chinese reaches.
+   */
+  --font-read: var(--font-read-latin), var(--font-cjk-read), serif, var(--font-emoji);
+}
+
+/*
+ * The reading stack: a serif for the Latin, and the same sans as everywhere else
+ * for the Chinese, Japanese and Korean.
+ *
+ * That mixture is a compromise and it is worth being straight about which way it
+ * went. The consistent answer would be a CJK serif — Source Han Serif beside
+ * Source Serif, 宋体 beside the Latin one — and it loses on two counts. It is
+ * megabytes per weight for a face that would have to cover text nobody has
+ * written yet, which is the same wall the interface font stopped at. And the
+ * screen convention it would be imitating is a print convention: Chinese body
+ * text on screen is set in 黑体, not 宋体, and the 宋体 a Windows desk actually
+ * has is SimSun, which at 16px is the thin, broken thing this whole pass started
+ * out fixing.
+ *
+ * So a Latin word inside a Chinese sentence comes out seriffed while the
+ * characters around it do not. That is visible if you look for it, and it is the
+ * ordinary state of mixed-script typesetting — the alternative was a worse
+ * Chinese face for the sake of matching a font nobody was comparing it to.
+ *
+ * `--font-read` itself is composed with the sans stack above, where the language
+ * is known. What is left here is naming the four places it applies.
+ *
+ * `.draft-box` is in the list for the same reason it is in the line-height rule:
+ * the mirror's own rule sets `font: inherit` further down the file, at equal
+ * specificity, and the shorthand would take the family back to the sans. Setting
+ * it on the wrapper means what the mirror inherits is already the serif, so both
+ * routes land in the same place.
+ *
+ * `pre.email` restates it inside its own rule rather than joining this one —
+ * that rule has a `font: inherit` of its own, later in the file, and it would win
+ * here too.
+ *
+ * `.reply-rendered` is pointedly absent. See its rule.
+ */
+.email-body,
+.draft-box,
+textarea.draft,
+.draft-box.overlay .draft-mirror {
+  font-family: var(--font-read);
 }
 
 /*
@@ -428,6 +550,28 @@ body,
    * the way back. `ch` rather than px so it tracks the size it caps.
    */
   --measure: 68ch;
+
+  /*
+   * And a wider one for mail, which is not the same problem.
+   *
+   * The letter is `white-space: pre-wrap`, which means the line breaks in it are
+   * the sender's. A great deal of support mail still arrives hard-wrapped near
+   * the 78 columns RFC 5322 recommends, and a cap narrower than that does not
+   * tighten those lines — it breaks each of them a second time and leaves the
+   * remainder stranded underneath. Two words on a line, once per sentence, all
+   * the way down the letter. It reads as a broken renderer, and 68ch was doing it
+   * to every hard-wrapped mail on the desk.
+   *
+   * 76 is measured rather than guessed: a real 78-character line of this comes to
+   * 72ch in the reading face at `--t5`, so this clears the convention with room
+   * for a sender who wraps at 80. It is wider than the app's own measure and
+   * meant to be — a serif at this size carries a longer line than the sans does,
+   * and the alternative is not a shorter line but a wrongly broken one.
+   *
+   * Soft-wrapped mail — one long paragraph per block, which is what most clients
+   * now send — is still capped, which is the half of the job that always mattered.
+   */
+  --measure-mail: 76ch;
 }
 
 * {
@@ -1150,7 +1294,7 @@ header.top nav a.active:hover {
   margin: 0 0 12px;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: var(--measure);
+  max-width: var(--measure-mail);
   /*
    * Last lines with a word on them. `pretty` asks the browser to spend a little
    * more on the final lines of a paragraph so one does not arrive with a single
@@ -1173,17 +1317,33 @@ header.top nav a.active:hover {
  * paragraph gap as the mail, so what is on screen measures the same as what
  * arrives.
  */
+/*
+ * …and the one piece of prose on this desk that does not take the serif.
+ *
+ * Everything else the reviewer reads is being read *here*, so it is set in the
+ * face this desk chose for reading. This panel is the exception because of what
+ * it claims to be: it is titled "what they will get", it is built by the same
+ * `previewHtml` the send path calls, and the rule two files over says the thing
+ * on screen has to measure the same as the thing that arrives. It does not
+ * arrive in Source Serif. Gmail will set it in Arial or Roboto and Apple Mail in
+ * Helvetica or SF, and a sans here is the closest honest guess at all of them.
+ *
+ * It reads as an inconsistency beside the draft box, and it is the useful kind:
+ * the box is where you write and this is their inbox, and the two not looking
+ * alike is the most direct way to say so.
+ */
 .reply-rendered {
   max-height: 460px;
   overflow: auto;
   line-height: var(--lh-read);
+  font-family: var(--font-latin), var(--font-cjk), sans-serif, var(--font-emoji);
 }
 
 .reply-rendered p,
 .reply-rendered ul,
 .reply-rendered ol {
   margin: 0 0 12px;
-  max-width: var(--measure);
+  max-width: var(--measure-mail);
   text-wrap: pretty;
 }
 
@@ -2836,8 +2996,12 @@ pre.email {
   word-break: break-word;
   margin: 0;
   font: inherit;
+  /* Both of these are restated after the shorthand, which resets everything it
+     does not name — including the two that make this read as mail rather than as
+     interface. */
+  font-family: var(--font-read);
   line-height: var(--lh-read);
-  max-width: var(--measure);
+  max-width: var(--measure-mail);
   max-height: 460px;
   overflow: auto;
 }

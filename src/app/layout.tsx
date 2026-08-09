@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Inter, Source_Serif_4 } from 'next/font/google';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
@@ -16,6 +17,55 @@ import { NavLinks } from './nav';
 import { CarryDraft } from './tasks/[id]/review-keys';
 
 import './globals.css';
+
+/**
+ * The two faces this desk brings with it, and the reason it brings any.
+ *
+ * Everything else here is a system font, which is free, instant and different on
+ * every machine — the same screen is SF Pro on a Mac, Segoe on Windows and
+ * whatever the distribution picked on Linux, and the last of those three is where
+ * "looks like an internal tool" comes from. Two files fix the Latin half of that
+ * for everybody. The CJK half stays on the system faces on purpose: the matching
+ * companions here are Source Han Serif and Source Han Sans, which are megabytes
+ * per weight, and a support desk cannot subset ahead of time for text a stranger
+ * has not written yet.
+ *
+ * `next/font` downloads both at build time and serves them from this origin, so
+ * a running install makes no request to Google and works with no internet at all
+ * — which matters more here than usual, because this thing is self-hosted next to
+ * somebody's mailbox.
+ *
+ * Variable rather than a list of weights: the stylesheet asks for 550 and 650 in
+ * a dozen places and those are real weights on a variable face, where on a static
+ * one they round to the nearest of four.
+ *
+ * `variable` rather than `className`, because these are two fonts doing two jobs
+ * and the stylesheet decides which lands where. `className` would set
+ * `font-family` on `<html>` and settle it here instead.
+ */
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+/**
+ * The reading face, for the mail and nothing else.
+ *
+ * A serif for the letter and the reply, a sans for the application around them —
+ * so the two are told apart by their type before either is read, which is the
+ * half of "where do I look first" that size alone was doing on its own.
+ *
+ * Source Serif is a screen serif rather than a book one: low contrast, sturdy
+ * stems, a large x-height, and it holds together at 16px on a bad monitor where
+ * a Didone would break up into hairlines. Italic is included because a customer
+ * quoting a product name gets one.
+ */
+const serif = Source_Serif_4({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-serif',
+  display: 'swap',
+});
 
 /**
  * Generated rather than declared, because both halves of it are now settings.
@@ -117,7 +167,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     // Rendered into the markup rather than set by a script once the page is up.
     // A theme applied after first paint is a white flash on a dark desk, every
     // navigation, and this app has no client state to apply it from anyway.
-    <html lang={here} data-theme={themeAttribute(chosen)}>
+    //
+    // Both font variables land on `<html>`, where `globals.css` composes them
+    // into the stacks — see `--font-latin` and `--font-read`. Neither class sets
+    // a `font-family` by itself.
+    <html
+      lang={here}
+      data-theme={themeAttribute(chosen)}
+      className={`${inter.variable} ${serif.variable}`}
+    >
       <body>
         <div className="shell">
           <header className="top">

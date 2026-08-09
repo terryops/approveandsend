@@ -33,6 +33,13 @@ COPY . .
 # NEXT_STANDALONE switches on `output: standalone`, which is what makes the
 # runner stage small. It is off by default because `next start` — the command
 # the README gives — cannot serve a standalone build.
+#
+# This step needs the network, and for one reason beyond npm: `next/font` fetches
+# Inter and Source Serif from fonts.gstatic.com here and bakes them into
+# `.next/static`. That is what buys a running desk with no outbound requests at
+# all — the fonts are served from this origin — but it does mean an air-gapped
+# *build* fails at this line rather than quietly shipping fallback faces. Behind a
+# proxy, pass `HTTPS_PROXY` as a build arg; `next/font` reads it.
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_STANDALONE=1
 RUN npm run build
