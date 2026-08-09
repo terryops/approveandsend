@@ -1543,6 +1543,33 @@ header.top nav a.active:hover {
 .compare textarea.draft {
   height: auto;
 }
+
+/*
+ * …and the pane beside it has to be let off the same leash, which it was not.
+ *
+ * The rule above frees the reply to be as tall as what is in it, and the comment
+ * on it says the translation's natural height lands within a line or two of the
+ * same — which is true, and which never got a chance to happen. `.email-body`
+ * carries `max-height: 460px`, so the translation stopped there and scrolled
+ * while the draft went on growing. Past about forty lines of reply the right-hand
+ * column ends mid-sentence against a tall column of empty card, and that does not
+ * read as a box that ran out of room; it reads as a translation that gave up
+ * halfway. On a desk whose whole job is approving text you cannot otherwise
+ * check, a pane that silently stops is the worst available failure.
+ *
+ * The cap itself is right where it was written. Three long letters stacked above
+ * the reply would push Send off the screen, and the customer's mail has no length
+ * worth respecting. It is only wrong for the one `.email-body` that is a
+ * translation of *our* text, whose length we chose.
+ *
+ * `:has(.draft-box)` is what tells the two pairs apart, and it is the honest
+ * question rather than a marker class: both pairs are `.compare` — the letter
+ * with its translation, and the reply with its translation — and the draft box
+ * exists in exactly one of them.
+ */
+.compare:has(.draft-box) .email-body {
+  max-height: none;
+}
 /* A container query rather than a viewport one, so the split only happens
    when this box actually has room for it — with or without the sidebar. */
 @container (min-width: 640px) {

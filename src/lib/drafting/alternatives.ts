@@ -2,6 +2,7 @@ import { callAI } from '../ai';
 import { describeWorkspace } from '../config/workspace';
 import { assemble, type DraftOptions } from './draft';
 import { extractJson } from '../json-repair';
+import { operatorLanguage } from '../i18n';
 import type { Task } from '../tasks/types';
 import { clip, htmlToText } from '../thread-context';
 
@@ -83,12 +84,24 @@ An option nobody could send is not an option. If the case honestly admits fewer
 than ${NEW_APPROACHES} further defensible approaches, return the ones that exist
 rather than padding the list with an answer you would not stand behind.
 
+## Two languages, and which is which
+Every \`body\` goes to the customer, so it is written in the language they wrote
+in — same as any other reply from this desk.
+
+Every \`strategy\` is the opposite: it is the name of a button. The reviewer picks
+between these three by reading three short labels side by side, and they read
+${operatorLanguage()}, so that is what the labels are written in whatever
+language the mail arrived in. A strip of options named in a language the person
+choosing between them has to decode is a strip they open one at a time — which
+is the entire cost the labels exist to save. Leave product names, error strings
+and identifiers exactly as they appear.
+
 JSON only, no prose around it:
 {
-  "current": "a few words on what the reply already drafted commits us to",
+  "current": "a few words in ${operatorLanguage()} on what the reply already drafted commits us to",
   "options": [
     {
-      "strategy": "a few words on what this one commits us to, e.g. refund immediately, ask for the export id first",
+      "strategy": "a few words in ${operatorLanguage()} on what this one commits us to, e.g. refund immediately, ask for the export id first",
       "body": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
     }
   ]

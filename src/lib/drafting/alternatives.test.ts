@@ -121,6 +121,39 @@ describe('suggestAlternatives', () => {
     expect(prompts[0]).toContain('Never promise a delivery date.');
   });
 
+  it('asks for the labels in the language the desk is read in', async () => {
+    // The strategy is the name of a tab, not part of the reply — a reviewer
+    // running the desk in Japanese should not be picking between three English
+    // labels. `draft.ts` has said this about `intent` and `keyPoints` all along
+    // and this prompt never did, so the tab strip came back in English on every
+    // desk. The reply itself is unaffected: it still goes out in the customer's
+    // language, which is the next assertion down.
+    process.env.AAS_LANGUAGE = 'ja';
+    resetWorkspaceConfig();
+    queued.push(OPTIONS);
+
+    try {
+      await suggestAlternatives(task(), 'A draft.', { db });
+    } finally {
+      delete process.env.AAS_LANGUAGE;
+      resetWorkspaceConfig();
+    }
+
+    expect(prompts[0]).toContain('Japanese');
+    // Named in English rather than as `ja` or 日本語 — see LOCALE_NAMES.
+    expect(prompts[0]).not.toContain('日本語');
+  });
+
+  it('still sends the reply itself in the customer\'s language', async () => {
+    // The half of the split that is easy to break: telling the model to label
+    // in the operator's language and having it answer the customer in it too.
+    queued.push(OPTIONS);
+
+    await suggestAlternatives(task(), 'A draft.', { db });
+
+    expect(prompts[0]).toContain('Every `body` goes to the customer');
+  });
+
   it('leaves the reviewer note out of it', async () => {
     // A note is an instruction for a redraft. Applied here it would collapse
     // three approaches into three shades of the same correction.
