@@ -70,6 +70,7 @@ const WORKSPACE_ENV = [
   'AAS_VOICE',
   'AAS_SIGNATURE',
   'AAS_REPLY_LANGUAGE',
+  'AAS_AUTO_APPROVE_RULES',
 ];
 
 beforeEach(async () => {
@@ -157,6 +158,41 @@ describe('workspace config', () => {
   it('ignores non-string entries in the facts list', () => {
     writeConfig({ facts: ['real fact', 42, null, '  '] });
     expect(loadWorkspaceConfig().facts).toEqual(['real fact']);
+  });
+
+  it('teaches itself without asking unless the desk says otherwise', () => {
+    expect(loadWorkspaceConfig().autoApproveRules).toBe(true);
+    writeConfig({ autoApproveRules: false });
+    expect(loadWorkspaceConfig().autoApproveRules).toBe(false);
+  });
+
+  it('takes the approval gate from the environment, spelled any of the usual ways', () => {
+    writeConfig({ autoApproveRules: true });
+    for (const [text, expected] of [
+      ['false', false],
+      ['0', false],
+      ['no', false],
+      ['off', false],
+      ['true', true],
+      ['1', true],
+      ['YES', true],
+    ] as const) {
+      process.env.AAS_AUTO_APPROVE_RULES = text;
+      resetWorkspaceConfig();
+      expect(loadWorkspaceConfig().autoApproveRules, text).toBe(expected);
+    }
+  });
+
+  it('falls through to the file rather than guessing at a value it cannot read', () => {
+    // A typo here decides whether a stranger's email can rewrite the rulebook,
+    // so an unreadable answer is no answer — not a quiet "no".
+    writeConfig({ autoApproveRules: false });
+    process.env.AAS_AUTO_APPROVE_RULES = 'maybe';
+    resetWorkspaceConfig();
+    expect(loadWorkspaceConfig().autoApproveRules).toBe(false);
+
+    writeConfig({ autoApproveRules: 'nonsense' });
+    expect(loadWorkspaceConfig().autoApproveRules).toBe(true);
   });
 
   it('normalises the topic vocabulary and drops entries that are not topics', () => {
@@ -251,6 +287,7 @@ describe('workspace config', () => {
     language: 'en',
       topics: [],
       neverPromise: ['a refund date'],
+      autoApproveRules: true,
       contextSources: [],
     };
 

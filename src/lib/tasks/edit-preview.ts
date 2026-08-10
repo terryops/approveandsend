@@ -53,12 +53,6 @@ function short(text: string, max = 60): string {
   return clean.length > max ? `${clean.slice(0, max)}…` : clean;
 }
 
-/** One run of the reply, and whether the reviewer is the one who wrote it. */
-export interface DraftSegment {
-  text: string;
-  added: boolean;
-}
-
 /**
  * How much of a rewritten sentence is actually the rewrite.
  *
@@ -92,74 +86,6 @@ function narrow(raw: string, before: string | null): [number, number] {
 
   const end = raw.length - tail;
   return end > head ? [head, end] : [0, raw.length];
-}
-
-/**
- * The reply as one string again, with the reviewer's own sentences marked.
- *
- * The diff is computed over normalised sentences, so reassembling the text from
- * the ops would give back something *nearly* the same as the draft — different
- * line breaks, collapsed double spaces. Nearly is useless here: this is rendered
- * underneath the textarea, character for character, and one lost newline puts
- * every highlight after it on the wrong words.
- *
- * So the draft itself is what gets returned, cut into runs. Each added sentence
- * is located in it with its own whitespace allowed to differ, and everything
- * between the matches is passed through untouched.
- *
- * Only additions. A deleted sentence is not in this text to point at, and the
- * one question the mark answers — "which of these words are mine rather than the
- * model's" — is about what is there.
- */
-export function markAdded(after: string, preview: EditPreview): DraftSegment[] {
-  // Each addition alongside whatever it replaced, so the mark can be narrowed to
-  // the part that actually changed. `null` for a sentence that was purely added.
-  const pairs: { text: string; before: string | null }[] = [];
-  let pendingRemoval: string | null = null;
-  for (const op of preview.ops) {
-    if (op.kind === 'remove') {
-      pendingRemoval = op.text.trim();
-    } else if (op.kind === 'add') {
-      const text = op.text.trim();
-      if (text) pairs.push({ text, before: pendingRemoval });
-      pendingRemoval = null;
-    } else {
-      pendingRemoval = null;
-    }
-  }
-
-  if (pairs.length === 0) return [{ text: after, added: false }];
-
-  const out: DraftSegment[] = [];
-  let at = 0;
-
-  for (const { text: sentence, before } of pairs) {
-    // The sentence as it appears in the draft, where the whitespace inside it
-    // may be a newline rather than the single space `splitSentences` left.
-    const pattern = new RegExp(
-      sentence
-        .split(/\s+/)
-        .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        .join('\\s+'),
-    );
-    const rest = after.slice(at);
-    const found = pattern.exec(rest);
-    // Not found means the reviewer has edited since this diff was computed.
-    // Skipping the mark is the honest answer; guessing a position is not.
-    if (!found) continue;
-
-    const start = at + found.index;
-    const end = start + found[0].length;
-    // Only the part of it that is not also in the sentence it replaced.
-    const [from, to] = narrow(after.slice(start, end), before);
-
-    if (start + from > at) out.push({ text: after.slice(at, start + from), added: false });
-    out.push({ text: after.slice(start + from, start + to), added: true });
-    at = start + to;
-  }
-
-  if (at < after.length) out.push({ text: after.slice(at), added: false });
-  return out;
 }
 
 /** Whitespace-normalised on both sides, so a reflowed paragraph is not an edit. */

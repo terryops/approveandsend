@@ -122,6 +122,32 @@ export interface WorkspaceConfig {
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
+   * Whether a rule the learning pass writes goes straight into drafts.
+   *
+   * True — the default — is the desk teaching itself: an approved reply is
+   * read, a rule comes out of it, and the next draft is written knowing it.
+   * Nobody clicks anything. That is the loop this product is named after, and
+   * a queue of proposals nobody gets round to reading is the loop stopped: the
+   * same correction gets made by hand every week while the rule that would
+   * have fixed it waits on a page nobody opens.
+   *
+   * It is worth being straight about what the default gives up, because it is
+   * not nothing. Every rule on this path was written by a model with a
+   * customer's email in its context, and the prompt invites rewrites of rules
+   * that are already live. So a sufficiently well-written letter can propose
+   * the sentence that steers every later reply, and with this on there is no
+   * human between the two. `false` puts that human back — proposals are kept
+   * and injected nowhere until somebody agrees with them, which is what the
+   * `proposed` flag on a rule has always meant.
+   *
+   * What survives either way is the record. Every write here lands as a rule
+   * revision with `reason: 'learned'` and the task that taught it, so the
+   * question "why does the drafter believe this, and which email put it there"
+   * is answerable afterwards — which is the difference between a desk that
+   * learns quickly and one that has quietly drifted.
+   */
+  autoApproveRules: boolean;
+  /**
    * Where to look the sender up — billing, a CRM, an internal admin.
    *
    * Two forms. A string is a path to a module that default-exports a
@@ -151,6 +177,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
   ],
+  autoApproveRules: true,
   contextSources: [],
 };
 
@@ -289,6 +316,24 @@ function asString(value: unknown): string | undefined {
 }
 
 /**
+ * A yes or a no, from a file that can say it properly and an environment that
+ * cannot say anything but a string.
+ *
+ * Anything unrecognised is `undefined` rather than `false`, so it falls through
+ * to the next source and finally to the default. That is the safer direction
+ * for a setting whose two values are "the desk teaches itself" and "the desk
+ * waits" — a typo in a config file should not silently pick one.
+ */
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim().toLowerCase();
+  if (text === 'true' || text === '1' || text === 'yes' || text === 'on') return true;
+  if (text === 'false' || text === '0' || text === 'no' || text === 'off') return false;
+  return undefined;
+}
+
+/**
  * File first, then environment. The file is the readable place to keep a voice
  * and a list of facts; the environment is how a container overrides one field
  * without a rebuild.
@@ -333,6 +378,10 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       DEFAULT_WORKSPACE.language,
     topics: asTopicList(fromFile.topics) ?? DEFAULT_WORKSPACE.topics,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
+    autoApproveRules:
+      asBoolean(process.env.AAS_AUTO_APPROVE_RULES) ??
+      asBoolean(fromFile.autoApproveRules) ??
+      DEFAULT_WORKSPACE.autoApproveRules,
     contextSources: asSourceList(fromFile.contextSources) ?? DEFAULT_WORKSPACE.contextSources,
   };
 }

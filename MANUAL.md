@@ -514,7 +514,10 @@ and costs an afternoon to tell apart.
 Gmail, Google Workspace and Zoho can go through their own APIs instead
 (`MAIL_PROVIDER=gmail` or `zoho`), which gets you real threads and no app
 password — worth it for Zoho in particular, where IMAP is off until an admin
-turns it on. See [docs/mailboxes.md](docs/mailboxes.md).
+turns it on. Zoho's is on the same menu, under **Zoho Mail API**: picking it
+swaps the host and password boxes for the data centre and the OAuth client it
+actually needs. Google's service-account route ends in an admin console with a
+private key and is set by hand. See [docs/mailboxes.md](docs/mailboxes.md).
 
 ## Tell it who it is
 

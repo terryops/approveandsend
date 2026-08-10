@@ -6,7 +6,8 @@ import { clip, htmlToText } from '../thread-context';
 import { dedupeAndApplyRule, type DedupResult } from './dedup';
 import { diffSummary } from './diff';
 import { formatRulesForReview } from './prompt';
-import { listRules, proposeRuleUpdate } from './store';
+import { listRules, proposeRuleUpdate, updateRule } from './store';
+import { getWorkspaceConfig } from '../config/workspace';
 import { coerceCategory, type Rule } from './types';
 
 /**
@@ -57,9 +58,13 @@ export interface LearningOutcome {
   attempted: boolean;
   results: DedupResult[];
   /**
-   * Rewrites of existing rules, queued for approval rather than applied.
-   * `ruleId` is the rule the rewrite is aimed at; `proposalId` is the row
-   * holding the new text until somebody agrees to it.
+   * Rewrites of existing rules. `ruleId` is the rule the rewrite was aimed at.
+   *
+   * `proposalId` is the row that ended up holding the new text, and the two
+   * ids being equal is how a reader tells which mode this desk is in: under
+   * `autoApproveRules` the rewrite lands on the rule itself, so it is the same
+   * row; with approval on it is a separate row waiting for somebody to agree
+   * with it, and the rule named by `ruleId` is still the one being injected.
    */
   amended: { ruleId: string; proposalId: string; content: string }[];
   /** Rejected ids and malformed proposals, for logging. */
@@ -244,6 +249,10 @@ async function apply(
   // hallucinated-but-real id overwrote an unrelated rule with no record of
   // what it used to say.
   const known = new Map(rules.map(rule => [rule.id, rule]));
+  // Whether what comes out of this run is a rule or a suggestion. Read once
+  // per pass rather than per candidate, so a config file edited halfway
+  // through cannot leave one conversation's lessons half-approved.
+  const autoApprove = getWorkspaceConfig().autoApproveRules;
   for (const amendment of extraction.amendRules ?? []) {
     const target = amendment.ruleId ? known.get(amendment.ruleId) : undefined;
     const content = amendment.newContent?.trim();
@@ -251,22 +260,31 @@ async function apply(
       outcome.discarded.push(`amend:${amendment.ruleId ?? '(no id)'}`);
       continue;
     }
-    // Queued, not applied. The prompt that produced this had the customer's
-    // email in it and explicitly invites rewrites of existing rules, so an
-    // amendment is a stranger's sentence pointed at a rule that is already in
-    // every draft. That the target was approved says nothing about the text
-    // arriving now, and the revision it would leave is a record read
-    // afterwards, not a gate.
-    const queued = proposeRuleUpdate(
-      target.id,
-      {
-        content,
-        sourceTaskId: input.taskId,
-        rationale: amendment.rationale?.trim() || null,
-      },
-      { reason: 'learned', actor: input.taskId },
-      db,
-    );
+    // Applied, or queued — see `autoApproveRules`, which is the whole of the
+    // difference and is a real one. The prompt that produced this had the
+    // customer's email in it and explicitly invites rewrites of existing
+    // rules, so an amendment is a stranger's sentence pointed at a rule that
+    // is already in every draft; queueing it is what keeps a human between the
+    // two. Applying it is what makes the desk actually learn from the
+    // correction somebody just made, on the day they made it.
+    //
+    // Either way the write is the same shape underneath: `proposeRuleUpdate`
+    // hands the new text to a row nobody is being given yet, and this hands it
+    // to the rule itself. Both record a revision tagged `learned` against the
+    // task that taught it, so what changed and which email changed it is
+    // recoverable afterwards in exactly one place.
+    const queued = autoApprove
+      ? updateRule(target.id, { content }, { reason: 'learned', actor: input.taskId }, db)
+      : proposeRuleUpdate(
+          target.id,
+          {
+            content,
+            sourceTaskId: input.taskId,
+            rationale: amendment.rationale?.trim() || null,
+          },
+          { reason: 'learned', actor: input.taskId },
+          db,
+        );
     if (queued) outcome.amended.push({ ruleId: target.id, proposalId: queued.id, content });
   }
 
@@ -287,11 +305,17 @@ async function apply(
         category: coerceCategory(proposal.category),
         topics,
         // Everything on this path was written by a model that had a customer's
-        // email in its context, so it waits for somebody to agree with it.
-        // This flag also follows the candidate into the deduper, where it
-        // decides whether a merge or a replacement may touch an existing rule
-        // or has to queue behind the same approval.
-        proposed: true,
+        // email in its context. Under `autoApproveRules` it is trusted anyway
+        // — the loop this desk is named after is the one where an approved
+        // reply becomes a rule without anybody clicking twice — and with the
+        // setting off it waits for somebody to agree with it.
+        //
+        // The flag follows the candidate into the deduper, where it decides
+        // the same question one level down: whether a merge or a replacement
+        // may touch an existing rule outright, or has to queue behind the same
+        // approval. Passing it rather than branching here is what keeps those
+        // two answers from drifting apart.
+        proposed: !autoApprove,
         sourceTaskId: input.taskId,
         rationale: proposal.rationale?.trim() || null,
       },

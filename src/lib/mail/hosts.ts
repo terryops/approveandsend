@@ -34,6 +34,10 @@ import { type MessageKey } from '../i18n';
  * The list is short on purpose and cannot be complete, which is why the last
  * line is a way to type the hosts yourself and the Test button is what says
  * whether they were right.
+ *
+ * The menu has one more line than this table does — see `ZOHO_API_SERVICE`,
+ * which is a way of reaching a mailbox rather than a place to reach it, and so
+ * has none of the four facts every entry below carries.
  */
 
 export interface MailHost {
@@ -62,6 +66,24 @@ export interface MailHost {
 
 /** The menu's last line: not on the list, so type it. */
 export const OTHER_HOST = 'other';
+
+/**
+ * The one menu line that is not a host at all.
+ *
+ * Zoho is on this menu twice on purpose, and this is the line to pick. The
+ * entry below — `imap.zoho.com` and a password — is the route that costs an
+ * afternoon: IMAP is off until an admin turns it on (Mail Settings → Mail
+ * Accounts → IMAP) and the account password is refused in favour of an
+ * application-specific one. Both failures read as `Invalid credentials`, which
+ * is also what a typo reads as. The REST API needs neither, and it hands us
+ * real server-side threads instead of ones reconstructed from headers.
+ *
+ * It is deliberately not in `MAIL_HOSTS`: every line of that table is four
+ * facts about a host, and this one has no host, no port and no password. What
+ * it has is an OAuth client, which is why picking it swaps the form rather than
+ * filling it in. See `saveMailbox`, which branches on this value.
+ */
+export const ZOHO_API_SERVICE = 'zoho-api';
 
 export const MAIL_HOSTS: MailHost[] = [
   {
@@ -109,6 +131,9 @@ export const MAIL_HOSTS: MailHost[] = [
     // their own hostnames — `imap.zoho.eu`, `.in`, `.com.au`, `.jp` — and a
     // desk on one of those edits the two boxes. Same fact as `ZOHO_REGION` in
     // config.ts, arrived at for the same reason.
+    //
+    // Kept for a desk that already has an app password working, but the line
+    // above it in the menu is the better answer: see `ZOHO_API_SERVICE`.
     name: 'Zoho Mail',
     imapHost: 'imap.zoho.com',
     imapPort: 993,
@@ -220,6 +245,21 @@ function sameHost(a: string, b: string): boolean {
 export function hostFor(imapHost: string): string {
   if (!imapHost.trim()) return OTHER_HOST;
   return MAIL_HOSTS.find(entry => entry.imapHost && sameHost(entry.imapHost, imapHost))?.id ?? OTHER_HOST;
+}
+
+/**
+ * Which line the desk is on, from both halves of what decides it.
+ *
+ * `hostFor` alone is the right question for every line but one. A desk on the
+ * Zoho API has no `IMAP_HOST` to read it off, so it would open on "something
+ * else" above four empty boxes — the menu disowning a mailbox that is working.
+ * `MAIL_PROVIDER` is asked first because it is the more specific fact: hosts
+ * left behind by a desk that has since switched are history, not configuration,
+ * and they stay in the file exactly so that switching back costs nothing.
+ */
+export function serviceFor(provider: string, imapHost: string): string {
+  if (provider.trim().toLowerCase() === 'zoho') return ZOHO_API_SERVICE;
+  return hostFor(imapHost);
 }
 
 /**

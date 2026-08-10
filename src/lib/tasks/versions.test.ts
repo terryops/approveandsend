@@ -108,3 +108,25 @@ describe('getVersion', () => {
     expect(getVersion('nope', db)).toBeNull();
   });
 });
+
+describe('line endings', () => {
+  it('does not record a save that only changed the line breaks', () => {
+    // What a textarea submits, against what the model wrote. One reply.
+    const id = task();
+    recordDraft(id, 'We refund in 3 days.\n\nSorry for the wait.', { source: 'model', db });
+    const again = recordDraft(id, 'We refund in 3 days.\r\n\r\nSorry for the wait.', {
+      source: 'human',
+      db,
+    });
+
+    expect(again).toBeNull();
+    expect(listVersions(id, db)).toHaveLength(1);
+  });
+
+  it('stores one spelling, so later comparisons can be plain equality', () => {
+    const id = task();
+    recordDraft(id, 'Line one.\r\nLine two.', { source: 'human', db });
+
+    expect(listVersions(id, db)[0]!.body).toBe('Line one.\nLine two.');
+  });
+});

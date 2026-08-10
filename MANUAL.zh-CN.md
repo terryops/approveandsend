@@ -416,7 +416,9 @@ SMTP_HOST=smtp.yourcompany.com
 
 Gmail、Google Workspace 和 Zoho 也可以走它们自己的 API（`MAIL_PROVIDER=gmail` 或
 `zoho`），这样能拿到真正的会话，也不需要应用专用密码——对 Zoho 尤其值得，它的 IMAP
-在管理员打开之前是关着的。见 [docs/mailboxes.md](docs/mailboxes.md)。
+在管理员打开之前是关着的。Zoho 这条就在同一个菜单里，叫 **Zoho 邮件 API**：选中它，
+主机和密码那几个框会换成它真正需要的数据中心和 OAuth 客户端。Google 的服务账号那条路
+最后要在管理控制台里贴一段私钥，只能手工配。见 [docs/mailboxes.md](docs/mailboxes.md)。
 
 ## 告诉它，它是谁
 

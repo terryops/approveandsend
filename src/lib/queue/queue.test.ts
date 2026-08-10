@@ -489,7 +489,9 @@ describe('learn-from-sent', () => {
 
     expect(outcome?.status).toBe('completed');
 
-    const rules = listRules({ proposed: 'only' }, db);
+    // Live, not proposed: `autoApproveRules` is on by default, so what the
+    // job learned is already in the drafter by the time it reports.
+    const rules = listRules({}, db);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.content).toMatch(/refund date/);
     expect(rules[0]?.category).toBe('policy');

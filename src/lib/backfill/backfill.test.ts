@@ -290,7 +290,7 @@ describe('learning from one archived exchange', () => {
     expect(result.status).toBe('learned');
     expect(result.rulesLearned).toBe(1);
 
-    const rules = listRules({ proposed: 'only' }, db);
+    const rules = listRules({}, db);
     expect(rules).toHaveLength(1);
     expect(rules[0]!.content).toMatch(/refund date/i);
     // Provenance points at the archive, which is what the rules screen needs

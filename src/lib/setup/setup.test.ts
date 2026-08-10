@@ -33,6 +33,7 @@ const KEYS = [
   'IMAP_HOST',
   'MAIL_PROVIDER',
   'ZOHO_CLIENT_ID',
+  'ZOHO_CLIENT_SECRET',
   'ZOHO_REFRESH_TOKEN',
   'AAS_ORGANIZATION',
   'STRIPE_API_KEY',
@@ -223,11 +224,21 @@ describe('setupState', () => {
     expect(setupState(db).steps.filter(s => s.optional).map(s => s.step)).toEqual(['access', 'voice']);
   });
 
-  it('counts a hand-configured Zoho mailbox, which the wizard cannot set up', () => {
+  /**
+   * The same question asked of the other provider, and the answer is a
+   * different set of variables rather than a different rule: done means the
+   * loader for whichever provider is named would start. A Zoho desk missing its
+   * client secret is not three-quarters connected, it is a mailbox that throws
+   * on the first fetch.
+   */
+  it('counts a Zoho mailbox only once every credential its loader wants is there', () => {
     saveEnv({ MAIL_PROVIDER: 'zoho', MAIL_USER: 'support@example.com' });
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(false);
 
     saveEnv({ ZOHO_CLIENT_ID: 'id', ZOHO_REFRESH_TOKEN: 'refresh' });
+    expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(false);
+
+    saveEnv({ ZOHO_CLIENT_SECRET: 'secret' });
     expect(setupState(db).steps.find(s => s.step === 'mailbox')!.done).toBe(true);
   });
 

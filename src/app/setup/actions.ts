@@ -11,7 +11,8 @@ import { stripeKey } from '@/lib/billing/stripe';
 import { resetContextSources } from '@/lib/context/registry';
 import { setMeta } from '@/lib/db/meta';
 import { isLocale, t } from '@/lib/i18n';
-import { mailHost } from '@/lib/mail/hosts';
+import { mailHost, ZOHO_API_SERVICE } from '@/lib/mail/hosts';
+import { isZohoRegion, ZOHO_REGIONS } from '@/lib/mail/providers/zoho/auth';
 import { createOperator } from '@/lib/operators/store';
 import { checkAi, checkMailbox, checkStripe, type Checkable, type CheckResult } from '@/lib/setup/checks';
 import { resetCliDetection } from '@/lib/setup/cli-detect';
@@ -232,8 +233,76 @@ function chosenService(raw: string): {
   };
 }
 
+/**
+ * Zoho's API, which shares only the address box with the form above it.
+ *
+ * `MAIL_PROVIDER` is the switch, and writing it is most of the point: the
+ * variables below have been read since the provider was written, and the only
+ * reason they had to be typed into `.env` by hand was that no screen offered
+ * them. Nothing IMAP is cleared on the way past. Those hosts are ignored the
+ * moment the provider changes, and leaving them where they are is what makes
+ * switching back — or trying the API and thinking better of it — cost nothing.
+ *
+ * The two secrets follow the password's rule: blank means keep. Neither is ever
+ * sent back to the browser, so a form arriving with empty boxes is the ordinary
+ * case and cannot be read as an instruction to wipe them.
+ */
+async function saveZohoMailbox(form: FormData): Promise<void> {
+  const address = text(form, 'address');
+  const region = text(form, 'zohoRegion').toLowerCase() || 'com';
+  const clientId = text(form, 'zohoClientId');
+  const clientSecret = text(form, 'zohoClientSecret');
+  const refreshToken = text(form, 'zohoRefreshToken');
+
+  const stored = (name: string) => (process.env[name]?.trim() ?? '') !== '';
+
+  if (
+    !address ||
+    !clientId ||
+    (!clientSecret && !stored('ZOHO_CLIENT_SECRET')) ||
+    (!refreshToken && !stored('ZOHO_REFRESH_TOKEN'))
+  ) {
+    redirect(rejected('mailbox', t('setup.actions.zohoFieldsRequired')));
+  }
+
+  // The menu cannot produce anything else; a hand-posted form can, and a bad
+  // region is the one mistake here that fails later as "invalid credentials"
+  // rather than as itself.
+  if (!isZohoRegion(region)) {
+    redirect(
+      rejected(
+        'mailbox',
+        t('config.zohoRegion', {
+          options: Object.keys(ZOHO_REGIONS).join(', '),
+          value: JSON.stringify(region),
+        }),
+      ),
+    );
+  }
+
+  const result = saveEnv({
+    MAIL_PROVIDER: 'zoho',
+    MAIL_USER: address,
+    ZOHO_REGION: region,
+    ZOHO_CLIENT_ID: clientId,
+    ...(clientSecret ? { ZOHO_CLIENT_SECRET: clientSecret } : {}),
+    ...(refreshToken ? { ZOHO_REFRESH_TOKEN: refreshToken } : {}),
+  });
+
+  redirect(stepHref('mailbox', outcome(result)));
+}
+
 export async function saveMailbox(form: FormData): Promise<void> {
   await requireAdminApi();
+
+  // One line of the menu is a different set of questions rather than a different
+  // set of answers, and both sets are posted — the stylesheet hides the boxes
+  // for the route you did not pick, it does not remove them. So the menu is what
+  // decides which half of this form was meant.
+  if (text(form, 'service') === ZOHO_API_SERVICE) {
+    await saveZohoMailbox(form);
+    return;
+  }
 
   const address = text(form, 'address');
   const password = text(form, 'password');

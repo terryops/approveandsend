@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { getDb, type Db } from '../db';
+import { newlines } from '../text';
 
 /**
  * Every text that has ever been in the draft box.
@@ -71,19 +72,26 @@ export function recordDraft(
   options: { source: DraftSource; notes?: string | null; db?: Db },
 ): DraftVersion | null {
   const db = options.db ?? getDb();
-  const text = body.trim();
+  // Settled here as well as at the form, because this is the guard that the two
+  // spellings defeated: a save that changed nothing arrived as CRLF against the
+  // model's LF, the comparison below saw an edit, and the panel filled with
+  // copies of one reply. `field()` stops new ones; this stops any caller.
+  const normalised = newlines(body);
+  const text = normalised.trim();
   if (!text) return null;
 
   const latest = db
     .prepare(`SELECT body FROM draft_versions WHERE task_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`)
     .get(taskId) as { body: string } | undefined;
-  if (latest?.body.trim() === text) return null;
+  // And the stored side of the comparison too, for the rows written before any
+  // of this was normalised. They are the ones on real desks.
+  if (latest !== undefined && newlines(latest.body).trim() === text) return null;
 
   try {
     const row: VersionRow = {
       id: randomUUID(),
       task_id: taskId,
-      body,
+      body: normalised,
       source: options.source,
       notes: options.notes?.trim() || null,
       created_at: new Date().toISOString(),

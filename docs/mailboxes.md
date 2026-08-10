@@ -41,9 +41,15 @@ admin has to make and that both fail as `Invalid credentials` — IMAP access is
 off by default (Mail Settings → Mail Accounts → IMAP), and the account password
 is refused in favour of an application-specific one. The API needs neither.
 
+Pick **Zoho Mail API** from the service menu on the mailbox step of the setup
+wizard, or set the variables above by hand — they are the same six either way,
+and the wizard writes this `.env` rather than a table of its own.
+
 Get the refresh token from [Zoho's API console](https://api-console.zoho.com):
 create a Self Client, request the scopes exported as `ZOHO_SCOPES` from
-`src/lib/mail/providers/zoho/auth.ts`, and exchange the code once. The refresh
+`src/lib/mail/providers/zoho/auth.ts`, and exchange the code once. That last
+exchange is the one step no screen here can do for you — the code is valid for
+minutes and is issued to a browser session on Zoho's own console. The refresh
 token does not rotate, so it is never written back to disk.
 
 `ZOHO_REGION` matters. Zoho's data centres are separate installations that
@@ -61,9 +67,8 @@ send rather than letting the mail go out without its file. Inline images
 (`cid:` references) are refused: Zoho embeds those by rewriting the body around
 a URL of its own, so honouring them would mean delivering a broken image.
 
-One limit worth knowing before you switch: the setup wizard cannot configure
-this provider — it writes IMAP settings only, so these variables go in `.env`
-by hand.
+Inline images are the one limit worth knowing before you switch; everything
+else this provider does, it does the way the IMAP one does.
 
 ## Unread flags
 

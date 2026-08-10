@@ -20,6 +20,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
+import { diffShown, onDiffChange, setDiffShown } from './diff-pref';
+
 /**
  * Which element the keystroke was meant for.
  *
@@ -117,32 +119,28 @@ export function ReviewKeys({ next, previous }: { next: string | null; previous: 
 }
 
 /**
- * The marks under the draft box, switched on only once this has run.
+ * The diff in place of the draft box, switched on only once this has run.
  *
- * A textarea cannot colour part of its own text, so the highlight is a second
- * copy of the same string rendered behind it and the box on top is made
- * transparent. That trick has one failure mode and it is fatal: if the script
- * does not arrive, transparent text in an empty-looking box is an editor nobody
- * can use. So the transparency is added here rather than in the stylesheet —
- * no script, no overlay, and the box is the plain one it has always been.
+ * The class is added here and never by the stylesheet, and that is the whole of
+ * the progressive-enhancement bargain on this card. `.diffing` hides the
+ * textarea; a stylesheet-only version would hide it on a desk whose JavaScript
+ * never arrived, leaving a read-only diff where the editor should be and no
+ * control able to put it back. No script, no class, and the box is the plain
+ * editable one it has always been.
  *
- * The marks describe the draft as it was last saved. The moment somebody types,
- * they stop being true — so the first keystroke takes the overlay off and the
- * box goes back to being an ordinary opaque textarea until the next render puts
- * a fresh diff underneath. A highlight that is sometimes wrong is worse than one
- * that is sometimes absent; the whole job of this one is to say "these words are
- * yours, those are the model's".
+ * Nothing is written into the diff itself. Its children come from the server
+ * component, so React holds a fiber for every line in it — the predecessor of
+ * this function set `textContent` on a subtree React still believed in, and the
+ * next reconciliation (a Save redirect, or one of TaskPoller's refreshes) would
+ * either `removeChild` a node that was no longer a child, which throws, or
+ * quietly update orphans so the new content never appeared. Toggling one class
+ * on the wrapper has neither failure.
  *
- * Dropping the class rather than rewriting the mirror, and that is the whole of
- * the fix to a bug that was waiting to happen. The mirror's children are
- * rendered by the server component, which means React holds a fiber for each
- * `<mark>` and `<span>` in it. Setting `textContent` threw all of those nodes
- * away while React still believed in them, and the next reconciliation of this
- * subtree — a Save redirect, or one of TaskPoller's two-second refreshes — would
- * either `removeChild` a node that is no longer a child, which throws, or
- * quietly update orphans so the new highlights never appeared. This never writes
- * into the mirror at all; `.draft-mirror` is `display: none` without the class,
- * so taking the class off is enough.
+ * The staleness that used to need handling is gone with the overlay. The marks
+ * described the draft as it was last rendered and went wrong on the first
+ * keystroke, so they had to be torn down on `input`. This cannot go stale: while
+ * it is showing there is no editor to type into, and the moment there is one,
+ * this is not on screen.
  */
 export function DraftOverlay({ highlighted }: { highlighted: boolean }) {
   const marker = useRef<HTMLSpanElement>(null);
@@ -158,30 +156,32 @@ export function DraftOverlay({ highlighted }: { highlighted: boolean }) {
     if (!highlighted) return;
 
     const box = marker.current?.closest<HTMLElement>('.draft-box');
-    const mirror = box?.querySelector<HTMLElement>('.draft-mirror');
+    const diff = box?.querySelector<HTMLElement>('.reply-diff');
     const area = box?.querySelector<HTMLTextAreaElement>('textarea.draft');
-    if (!box || !mirror || !area) return;
+    if (!box || !diff || !area) return;
 
-    box.classList.add('overlay');
+    // …and only if the reviewer wants it. `DiffToggle` writes the same
+    // preference and there is no React tree between the two components, so the
+    // agreement between them is the store rather than a prop — see `diff-pref`.
+    const sync = () => box.classList.toggle('diffing', diffShown());
+    sync();
+    const stopWatching = onDiffChange(sync);
 
-    // A textarea scrolls its own content; the copy underneath has to follow, or
-    // the marks slide off the words the moment the reply runs past the box.
-    const onScroll = () => {
-      mirror.scrollTop = area.scrollTop;
+    // The diff stands where the editor does, so a reviewer who came to type has
+    // to get past it — and clicking the thing you want to edit is what everybody
+    // tries first. It sets the preference rather than peeking around it: the
+    // switch above says what state this card is in, and a view that quietly
+    // disagreed with its own control would be worse than the extra click.
+    const onClick = () => {
+      setDiffShown(false);
+      area.focus();
     };
 
-    const onInput = () => {
-      box.classList.remove('overlay');
-      area.removeEventListener('scroll', onScroll);
-      area.removeEventListener('input', onInput);
-    };
-
-    area.addEventListener('scroll', onScroll);
-    area.addEventListener('input', onInput);
+    diff.addEventListener('click', onClick);
     return () => {
-      area.removeEventListener('scroll', onScroll);
-      area.removeEventListener('input', onInput);
-      box.classList.remove('overlay');
+      stopWatching();
+      diff.removeEventListener('click', onClick);
+      box.classList.remove('diffing');
     };
   }, [highlighted]);
 

@@ -35,6 +35,11 @@ export interface MailboxLabels {
  * again — and then asked for `imap.qq.com` — is the form pretending not to have
  * heard.
  *
+ * One line of the menu asks different questions altogether — the Zoho API, which
+ * has an OAuth client where the others have a host and a password — so it swaps
+ * the boxes rather than filling them in. That swap is the stylesheet's, not this
+ * component's, for the reason given at the markup below.
+ *
  * The rule about what may be overwritten lives in `hosts.ts` next to the table
  * it is about, where it can be tested; this file is the four boxes and the two
  * events. Nothing is written by any of it. The menu is a starting point in
@@ -50,6 +55,7 @@ export function MailboxFields({
   address: savedAddress,
   fields: savedFields,
   labels,
+  api,
   children,
 }: {
   choices: ServiceChoice[];
@@ -59,6 +65,13 @@ export function MailboxFields({
   /** `IMAP_HOST` and the other three, exactly as the file has them. */
   fields: MailFields;
   labels: MailboxLabels;
+  /**
+   * The other set of boxes: an OAuth client, for the one line of the menu that
+   * is not a host. Rendered by the server for the same reason the password is —
+   * two of its four fields are secrets, and a secret that is sent to the browser
+   * so a component can hold it in state is a secret in the page source.
+   */
+  api?: ReactNode;
   /** The password field, which has no menu to follow and no state to keep. */
   children?: ReactNode;
 }) {
@@ -111,62 +124,72 @@ export function MailboxFields({
         </label>
       </div>
 
-      {children}
+      {/* The two sets of boxes, both always rendered and one of them hidden by
+          the stylesheet — see `.mailbox-api`. Which is showing is a question the
+          browser answers off the menu's own state, so the boxes for whichever
+          route you picked are in front of you before any script has run. Doing
+          it from React state instead would leave a browser that never loaded one
+          with no way to reach half of this form. */}
+      <div className="mailbox-imap stack">
+        {children}
 
-      {/* Host and port as one field between them, twice. `.fields` rather than
-          `.row`: the port was a 90px box pinned beside a growing one, with
-          `993` for a label and an `aria-label` nobody sees — and the pair
-          aligned on the first baseline, so naming them put the two boxes at
-          different heights. */}
-      <div className="fields">
-        <label>
-          {labels.imapHost}
-          <input
-            type="text"
-            name="imapHost"
-            value={fields.imapHost}
-            onChange={event => edit('imapHost')(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="narrow">
-          {labels.imapPort}
-          <input
-            type="text"
-            name="imapPort"
-            value={fields.imapPort}
-            onChange={event => edit('imapPort')(event.target.value)}
-            placeholder={labels.imapPortPlaceholder}
-            autoComplete="off"
-          />
-        </label>
+        {/* Host and port as one field between them, twice. `.fields` rather than
+            `.row`: the port was a 90px box pinned beside a growing one, with
+            `993` for a label and an `aria-label` nobody sees — and the pair
+            aligned on the first baseline, so naming them put the two boxes at
+            different heights. */}
+        <div className="fields">
+          <label>
+            {labels.imapHost}
+            <input
+              type="text"
+              name="imapHost"
+              value={fields.imapHost}
+              onChange={event => edit('imapHost')(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="narrow">
+            {labels.imapPort}
+            <input
+              type="text"
+              name="imapPort"
+              value={fields.imapPort}
+              onChange={event => edit('imapPort')(event.target.value)}
+              placeholder={labels.imapPortPlaceholder}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+
+        <div className="fields">
+          <label>
+            {labels.smtpHost}
+            <input
+              type="text"
+              name="smtpHost"
+              value={fields.smtpHost}
+              onChange={event => edit('smtpHost')(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className="narrow">
+            {labels.smtpPort}
+            <input
+              type="text"
+              name="smtpPort"
+              value={fields.smtpPort}
+              onChange={event => edit('smtpPort')(event.target.value)}
+              placeholder={labels.smtpPortPlaceholder}
+              autoComplete="off"
+            />
+          </label>
+        </div>
       </div>
 
-      <div className="fields">
-        <label>
-          {labels.smtpHost}
-          <input
-            type="text"
-            name="smtpHost"
-            value={fields.smtpHost}
-            onChange={event => edit('smtpHost')(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className="narrow">
-          {labels.smtpPort}
-          <input
-            type="text"
-            name="smtpPort"
-            value={fields.smtpPort}
-            onChange={event => edit('smtpPort')(event.target.value)}
-            placeholder={labels.smtpPortPlaceholder}
-            autoComplete="off"
-          />
-        </label>
-      </div>
+      <div className="mailbox-api stack">{api}</div>
     </>
   );
 }

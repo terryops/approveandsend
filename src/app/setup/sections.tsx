@@ -8,7 +8,8 @@ import { DEFAULT_APP_NAME } from '@/lib/brand';
 import { getWorkspaceConfig, describeWorkspace } from '@/lib/config/workspace';
 import { automation, type Scheduled, type ScheduledJob } from '@/lib/desk/automation';
 import { LOCALES, locale, t, type MessageKey } from '@/lib/i18n';
-import { MAIL_HOSTS, hostFor } from '@/lib/mail/hosts';
+import { MAIL_HOSTS, serviceFor, ZOHO_API_SERVICE } from '@/lib/mail/hosts';
+import { ZOHO_REGIONS, ZOHO_SCOPES } from '@/lib/mail/providers/zoho/auth';
 import { countActiveOperators } from '@/lib/operators/store';
 import { detectClis, type CliStatus } from '@/lib/setup/cli-detect';
 import { envFilePath } from '@/lib/setup/env-file';
@@ -398,14 +399,20 @@ export async function ModelSection({ query, settings = false }: SectionProps) {
 }
 
 /**
- * IMAP only, on purpose.
+ * A password on an IMAP host, or Zoho's API. Not Google's other route.
  *
- * Gmail's other route — a service account with domain-wide delegation — is
- * supported by the app and cannot honestly be walked through in a form: it
- * ends in a Google Workspace admin console, pasting a private key. Sending
- * someone there mid-wizard with no way back is worse than pointing at the
- * documentation, so this covers the case that fits (an app password on any
- * IMAP host, Gmail included) and says plainly where the other one lives.
+ * Two of the three ways this app can reach a mailbox fit in a form, and they are
+ * both here. The third — a Google service account with domain-wide delegation —
+ * is supported by the app and cannot honestly be walked through: it ends in a
+ * Workspace admin console, pasting a private key. Sending someone there
+ * mid-wizard with no way back is worse than pointing at the documentation, so
+ * this covers the two that fit and says plainly where the other one lives.
+ *
+ * Zoho earns its place rather than being a second name for the same form. Its
+ * IMAP route needs a setting an admin has to turn on and an app password to
+ * replace the real one, and both failures read as `Invalid credentials`; the API
+ * needs neither, and until now it was the one supported provider you could only
+ * reach by hand-editing `.env`.
  */
 export function MailboxSection({ query, settings = false }: SectionProps) {
   const H = settings ? 'h2' : 'h1';
@@ -414,15 +421,32 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
   const smtpHost = process.env.SMTP_HOST?.trim() ?? '';
   const hasPassword = (process.env.MAIL_PASSWORD?.trim() ?? '') !== '';
 
+  const provider = process.env.MAIL_PROVIDER?.trim().toLowerCase() ?? '';
+  const zoho = provider === 'zoho';
+  const zohoRegion = process.env.ZOHO_REGION?.trim().toLowerCase() || 'com';
+  const zohoClientId = process.env.ZOHO_CLIENT_ID?.trim() ?? '';
+  const hasZohoSecret = (process.env.ZOHO_CLIENT_SECRET?.trim() ?? '') !== '';
+  const hasZohoToken = (process.env.ZOHO_REFRESH_TOKEN?.trim() ?? '') !== '';
+
+  // What the Test button would have to talk to. Pressing it with nothing
+  // configured produces a connection error about a blank hostname, which is a
+  // worse answer than the button being plainly not ready yet.
+  const connectable = zoho ? Boolean(zohoClientId && hasZohoToken) : Boolean(imapHost);
+
   // `.env` stores four hostnames and ports; the menu is a list of services.
-  // `hostFor` reads one back off `IMAP_HOST`, so a file written by hand — or
-  // before this menu existed — still opens on the right line, and one we do not
-  // recognise opens on "other" with its own hosts still in the boxes. See
-  // `chosenService` in actions.ts for the way back.
-  const choices = MAIL_HOSTS.map(entry => ({
-    value: entry.id,
-    label: entry.label ? t(entry.label) : entry.name,
-  }));
+  // `serviceFor` reads the line back off `MAIL_PROVIDER` and `IMAP_HOST`, so a
+  // file written by hand — or before this menu existed — still opens on the
+  // right line, and one we do not recognise opens on "other" with its own hosts
+  // still in the boxes. See `chosenService` in actions.ts for the way back.
+  const choices = MAIL_HOSTS.flatMap(entry => {
+    const line = { value: entry.id, label: entry.label ? t(entry.label) : entry.name };
+    // Above the IMAP line rather than at the end of the menu: it is the route to
+    // prefer, and somebody scanning for the word "Zoho" stops at the first one
+    // they find rather than reading on to discover there were two.
+    return entry.id === 'zoho'
+      ? [{ value: ZOHO_API_SERVICE, label: t('setup.mailbox.serviceZohoApi') }, line]
+      : [line];
+  });
 
   return (
     <>
@@ -432,9 +456,11 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
         <H>{settings ? sectionTitle('mailbox') : t('setup.mailbox.title')}</H>
         <p className="meta">
           {settings
-            ? address && imapHost
-              ? t('settings.mailbox.status', { address, host: imapHost })
-              : t('settings.mailbox.statusNone')
+            ? zoho && address
+              ? t('settings.mailbox.statusZoho', { address, region: zohoRegion })
+              : address && imapHost
+                ? t('settings.mailbox.status', { address, host: imapHost })
+                : t('settings.mailbox.statusNone')
             : t('setup.mailbox.intro')}
         </p>
 
@@ -444,7 +470,7 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
             from nothing and is never sent back to the browser. */}
         <MailboxFields
           choices={choices}
-          service={hostFor(imapHost)}
+          service={serviceFor(provider, imapHost)}
           address={address}
           fields={{
             imapHost,
@@ -463,6 +489,59 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
             smtpPort: t('setup.mailbox.smtpPortLabel'),
             smtpPortPlaceholder: t('setup.mailbox.smtpPortPlaceholder'),
           }}
+          api={
+            <>
+              {/* The data centre first, because it is the answer that makes the
+                  other three work or fail as one. Zoho's regions are separate
+                  installations sharing no credentials, so a client minted in the
+                  US and pointed at the EU is refused in exactly the words a
+                  wrong secret is refused in — see `ZOHO_REGIONS`. */}
+              <div className="fields">
+                <label className="narrow">
+                  {t('setup.mailbox.zohoRegionLabel')}
+                  <select name="zohoRegion" defaultValue={zohoRegion}>
+                    {Object.entries(ZOHO_REGIONS).map(([id, urls]) => (
+                      <option key={id} value={id}>
+                        {urls.accounts.replace(/^https:\/\/accounts\./, '')}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t('setup.mailbox.zohoClientIdLabel')}
+                  <input
+                    type="text"
+                    name="zohoClientId"
+                    defaultValue={zohoClientId}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </label>
+              </div>
+
+              {/* Both empty on every visit, and both meaning "keep what is
+                  stored" when left that way — the same bargain the password
+                  above strikes, for the same reason: a stored secret is never
+                  sent back to the browser, so a blank box cannot be read as an
+                  instruction to wipe one. */}
+              <div className="fields">
+                <label>
+                  {t('setup.mailbox.zohoClientSecretLabel')}{' '}
+                  {hasZohoSecret && (
+                    <span className="hint">{t('setup.mailbox.zohoSavedPlaceholder')}</span>
+                  )}
+                  <input type="password" name="zohoClientSecret" autoComplete="off" />
+                </label>
+                <label>
+                  {t('setup.mailbox.zohoRefreshTokenLabel')}{' '}
+                  {hasZohoToken && (
+                    <span className="hint">{t('setup.mailbox.zohoSavedPlaceholder')}</span>
+                  )}
+                  <input type="password" name="zohoRefreshToken" autoComplete="off" />
+                </label>
+              </div>
+            </>
+          }
         >
           <label>
             {t('setup.mailbox.passwordPlaceholder')}{' '}
@@ -473,10 +552,18 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
           </label>
         </MailboxFields>
 
+        {/* One note per route, and the stylesheet shows whichever route the menu
+            is on. "Port 465 is implicit TLS" under a form that has no ports is
+            not merely useless — it is the screen answering a question nobody on
+            it asked. */}
         <div className="row">
-          <span className="grow meta">
+          <span className="grow meta mailbox-imap">
             {t('setup.mailbox.portsNoteBefore')} <code>.env.example</code>
             {t('setup.mailbox.portsNoteAfter')}
+          </span>
+          <span className="grow meta mailbox-api">
+            {t('setup.mailbox.zohoNoteBefore')} <code>{ZOHO_SCOPES.join(' ')}</code>
+            {t('setup.mailbox.zohoNoteAfter')}
           </span>
           <button type="submit">{t('setup.mailbox.save')}</button>
         </div>
@@ -484,7 +571,7 @@ export function MailboxSection({ query, settings = false }: SectionProps) {
 
       <div className="check">
         <form action={testMailbox}>
-          <button type="submit" disabled={!imapHost}>
+          <button type="submit" disabled={!connectable}>
             {t('setup.mailbox.test')}
           </button>
         </form>

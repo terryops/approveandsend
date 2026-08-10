@@ -4,11 +4,13 @@ import { loadImapSmtpConfig } from './config';
 import {
   MAIL_HOSTS,
   OTHER_HOST,
+  ZOHO_API_SERVICE,
   applyHost,
   hostFor,
   hostForAddress,
   mailHost,
   menuOwns,
+  serviceFor,
   type MailFields,
 } from './hosts';
 
@@ -141,6 +143,52 @@ describe('the mail service menu', () => {
 });
 
 const EMPTY: MailFields = { imapHost: '', imapPort: '', smtpHost: '', smtpPort: '' };
+
+/**
+ * The one line of the menu that is a way of reaching a mailbox rather than a
+ * place to reach it.
+ *
+ * Everything above reads the menu off `IMAP_HOST`, which is the right question
+ * for every line but this one — a desk on the Zoho API has no IMAP host, and
+ * would open on "something else" over four empty boxes while its mailbox worked
+ * perfectly. That failure is quiet and it is the one these are here for: the
+ * screen would be disowning a working configuration, and the obvious next move
+ * — filling the boxes back in — is what actually breaks it.
+ */
+describe('the line that is not a host', () => {
+  it('opens on the API whenever the provider says so, whatever the file kept', () => {
+    // All three are real files. The second is a desk that has never been on
+    // IMAP; the third has hosts left over from before it switched, which stay
+    // in the file precisely so that switching back costs nothing.
+    expect(serviceFor('zoho', '')).toBe(ZOHO_API_SERVICE);
+    expect(serviceFor('zoho', 'imap.zoho.com')).toBe(ZOHO_API_SERVICE);
+    expect(serviceFor('zoho', 'mail.acme.internal')).toBe(ZOHO_API_SERVICE);
+  });
+
+  it('reads the host for every other provider, including Zoho over IMAP', () => {
+    expect(serviceFor('imap-smtp', 'imap.zoho.com')).toBe('zoho');
+    // An empty `MAIL_PROVIDER` is the default, and the default is IMAP.
+    expect(serviceFor('', 'imap.gmail.com')).toBe('gmail');
+    expect(serviceFor('gmail', 'imap.gmail.com')).toBe('gmail');
+    expect(serviceFor('', '')).toBe(OTHER_HOST);
+  });
+
+  it('does not care about the case of the provider or stray whitespace', () => {
+    expect(serviceFor('  ZOHO ', '')).toBe(ZOHO_API_SERVICE);
+  });
+
+  /**
+   * It has no host, no port and no password, so it cannot be a row of a table
+   * whose every row is those four facts — and `mailHost` returning nothing for
+   * it is what makes `chosenService` contribute nothing and `applyHost` clear
+   * rather than fill.
+   */
+  it('is not in the host table, and so fills nothing in', () => {
+    expect(mailHost(ZOHO_API_SERVICE)).toBeUndefined();
+    expect(MAIL_HOSTS.map(entry => entry.id)).not.toContain(ZOHO_API_SERVICE);
+    expect(applyHost(applyHost(EMPTY, 'zoho'), ZOHO_API_SERVICE)).toEqual(EMPTY);
+  });
+});
 
 /**
  * What the menu may and may not overwrite.

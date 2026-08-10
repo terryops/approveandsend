@@ -33,6 +33,7 @@ import {
 } from '@/lib/operators/store';
 import { t, type Locale } from '@/lib/i18n';
 import { stepHref } from '@/lib/setup/state';
+import { newlines } from '@/lib/text';
 import { saveWorkspaceConfig } from '@/lib/setup/workspace-file';
 import { syncInbox } from '@/lib/ingest/sync';
 import { readUploads } from '@/lib/mail/uploads';
@@ -77,7 +78,11 @@ import { reviewLanguage, translateForReview } from '@/lib/translation/translate'
 
 function field(form: FormData, name: string): string {
   const value = form.get(name);
-  return typeof value === 'string' ? value.trim() : '';
+  // `newlines` because a textarea submits CRLF whatever it holds, and the model
+  // writes LF — two spellings of one reply that nothing downstream can tell
+  // apart from a real edit. The door is the only place to settle it; see
+  // `lib/text.ts` for what it cost when it was not settled anywhere.
+  return typeof value === 'string' ? newlines(value).trim() : '';
 }
 
 /**
@@ -686,7 +691,11 @@ export async function restoreDraft(form: FormData): Promise<void> {
   }
 
   revalidatePath(`/tasks/${id}`);
-  redirect(`/tasks/${id}?saved=1`);
+  // `restored`, not `saved`. Nothing was saved — a version was swapped into the
+  // box — and the two want different answers on screen: "Saved." belongs by the
+  // Save button, and this belongs on the box, whose entire contents just
+  // changed under somebody who is about to read them.
+  redirect(`/tasks/${id}?restored=1`);
 }
 
 /**

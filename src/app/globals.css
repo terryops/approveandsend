@@ -479,8 +479,7 @@ body,
  */
 .email-body,
 .draft-box,
-textarea.draft,
-.draft-box.overlay .draft-mirror {
+textarea.draft {
   font-family: var(--font-read);
 }
 
@@ -537,13 +536,42 @@ textarea.draft,
 
   /*
    * Two leadings, because the two families read differently. 1.6 is for text the
-   * eye lands on and leaves; 1.7 is for text it walks along, where the return
-   * sweep to the start of the next line is the thing that goes wrong, and where
-   * CJK — which has no ascender-descender rhythm to help find the line — needs
-   * the extra room most.
+   * eye lands on and leaves; the reading one is for text it walks along, where
+   * the return sweep to the start of the next line is the thing that goes wrong,
+   * and where CJK — which has no ascender-descender rhythm to help find the line
+   * — needs the extra room most.
+   *
+   * 1.6 rather than the 1.7 that argument first produced, because the argument
+   * was made against the size prose used to be set at. Leading is a ratio: the
+   * mail dropped from 16px to 14 when it moved into half-width panes, and 1.7 of
+   * the smaller size stopped being generous — six lines of a support email spread
+   * over the depth of nine, the eye picking up a line at a time instead of a
+   * sentence.
+   *
+   * And not lower than 1.6 either, which is the correction to the correction. 1.5
+   * is the floor CJK long-form asks for, and a floor is not a target: `--measure`
+   * for mail is 76ch, a long line by any standard, and a long line needs the extra
+   * help on the return sweep rather than less of it. The value wants to sit above
+   * the floor, not on it.
+   *
+   * It has been trimmed a long way past that, experimentally, and the finding is
+   * worth keeping even though the value came back: count the rows of pixels
+   * carrying ink in a hard-wrapped reply set in the reading serif, and at 1.05 two
+   * lines have merged into one band — a descender sitting on the ascender
+   * beneath it — with a third joining them at 1.0. Everything between there and
+   * here is legible and none of it is pleasant.
+   *
+   * Worth knowing where the airiness on the reply screen actually comes from,
+   * because it is not this number. A reply is paragraphs separated by a blank
+   * line, and in the box it is typed in that blank line is a *real* line — a
+   * textarea cannot render it as the 12px margin `.email-body` and the outgoing
+   * mail both use. So the gap between two sentences there is two whole line
+   * boxes, half again what the same reply measures once it has been sent.
+   * Tightening the leading shrinks both at once and never closes that gap; only
+   * giving up the textarea would.
    */
   --lh-ui: 1.6;
-  --lh-read: 1.7;
+  --lh-read: 1.6;
 
   /*
    * How wide a line of prose may get before the eye starts losing its place on
@@ -578,6 +606,26 @@ textarea.draft,
   box-sizing: border-box;
 }
 
+/*
+ * The other way the chrome moves, and the only one a stylesheet can answer.
+ *
+ * Every column in this app is `margin: 0 auto`, so all of them are centred in
+ * whatever width the document has — and on a machine with scrollbars set to
+ * always show, that width is fifteen pixels narrower on a page long enough to
+ * scroll than on one that is not. An empty queue and a full one are then two
+ * different pages, and the wordmark slides seven pixels sideways between them:
+ * "sometimes", which is the hardest kind of movement to catch, because the thing
+ * that triggers it is how much mail arrived.
+ *
+ * `stable` reserves the gutter whether or not there is a bar in it, so the
+ * document is one width all day. Nothing at all on the overlay scrollbars macOS
+ * and iOS use by default — there is no gutter to reserve — which is why this can
+ * be stated once here rather than measured per screen.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -602,6 +650,11 @@ body {
    * the stack has them, and a synthesised oblique or a faked small-cap would be
    * drawn from a face this file never chose. Ligatures and kerning stay on;
    * everything the browser would invent stays off.
+   *
+   * The preview panel takes this back, and has to — see `.reply-rendered`. This
+   * rule is about the desk's own typography, where inventing a face is a choice
+   * nobody made; that one is about a screen whose only promise is that it looks
+   * like somebody else's mail client, and mail clients invent freely.
    */
   font-synthesis: none;
   /*
@@ -694,9 +747,27 @@ input[type='file']:focus-visible {
  * translation, 1040 leaves the main column at ~700px — a comfortable
  * reading width for one column, and half of a sentence in each of two.
  * The wider ceiling only kicks in when the viewport can spend it.
+ *
+ * Asked for by the screen that wants it, rather than handed to every screen
+ * because one of them does. It was `.shell`, unqualified, and the six list
+ * screens took the extra 320px they had no use for: the rulebook and the
+ * catalogue are cards, the queue and the people page are tables, and a table
+ * does not read better for being wider — the columns hold their widths and
+ * every extra pixel lands in the gap between the first cell and the last.
+ *
+ * On the inbox it was worse than useless, because the queue had a cap of its
+ * own: 900px centred inside a 1320px header, so every edge below the rule sat
+ * 210px inside every edge above it. Both are gone. A list screen is 1040 at any
+ * width, its header is the width of its page, and the letter is the one thing
+ * that grows — which is the only screen that ever asked to.
+ *
+ * `:has` because the shell is in the root layout and a route underneath it
+ * cannot reach up to add a class. Written above the `.detail-railed` rule
+ * below, not after it: same specificity, so the later one wins, and the third
+ * column's 1628 has to be able to beat this.
  */
 @media (min-width: 1400px) {
-  .shell { max-width: 1360px; }
+  .shell:has(.detail) { max-width: 1360px; }
 }
 
 /*
@@ -726,43 +797,52 @@ input[type='file']:focus-visible {
 }
 
 /*
- * …and the header does not move when you open one.
+ * …and the header does not move, ever, on any screen.
  *
  * The shell above is the page's width, and the header is not the page — it is
  * the same wordmark, the same seven links and the same drawer on every screen in
  * the app, and a row of chrome that lands 130px further left on a task than it
  * did on the inbox you clicked the task from reads as the whole application
- * shifting under the click. The desk is what needed the extra width; the row
- * above it did not ask for any.
+ * shifting under the click.
  *
- * Padding rather than a narrower box, so the rule under the header still runs
- * the full width of the screen it belongs to. What is inset is the content, and
- * it is inset by exactly the amount that puts the wordmark back on the pixel it
- * occupies everywhere else: half the difference between this shell's content box
- * and the one every other page gets. The two tiers are the two the shell has.
+ * One rule and one number now. It was two blocks scoped to `.detail-railed`,
+ * holding the header at 1000 below 1400 and at 1320 above it — which kept the
+ * wordmark still only between the two shells that happened to exist when it was
+ * written. Every shell added since had to be remembered here, and the one that
+ * was not is how the inbox ended up 160px out of step with the screens either
+ * side of it. Keyed to the header's own width instead of to the shell's, the
+ * question stops being "which page is this" and becomes "is this shell wider
+ * than a header", which has one answer that is right on all of them.
  *
- * The banner under it takes the same inset as a margin instead: it is a box with
- * a border and its own padding, so what has to line up is the box, not the text
- * inside it.
+ * 1000 is the content box of the 1040 shell, so on every list screen this
+ * resolves to zero padding and changes nothing; only a shell that grew — 1360
+ * for a letter, 1628 for a letter with a queue beside it — pays it back. `max()`
+ * against a narrow window, where the difference goes negative and a negative
+ * padding is an invalid declaration, not a no-op: the whole line would be
+ * dropped and the header would inherit whatever came before it.
+ *
+ * A narrower box rather than the padding this used to be. Padding held the
+ * chrome still — the wordmark's pixel, the nav's pixel, the drawer's pixel — and
+ * let the rule under it run the full width of whatever page it was closing,
+ * which was the earlier reading of "the header belongs to the screen". But the
+ * rule is part of the header the way an underline is part of a word: it is what
+ * says where the chrome ends, so a 1588px rule under 1000px of chrome is the
+ * same band drawn at two sizes on two screens, which is the thing this is here
+ * to stop. Boxed, the whole band — wordmark, links, drawer, and the line that
+ * closes them — measures the same on every screen in the app at every width.
+ *
+ * What that costs is on the one screen wide enough to notice: at 1628 the rail
+ * and the letter reach past both ends of the rule, so the band no longer spans
+ * everything beneath it. A row of chrome that is the same object everywhere is
+ * worth more than a rule that reaches the edge of one page.
+ *
+ * The banner under it is held to the same box for the same reason: it is a
+ * bordered box with padding of its own, so what has to line up is the box.
  */
-@media (min-width: 1300px) {
-  .shell:has(.detail-railed) > header.top {
-    padding-inline: max(0px, calc((100% - 1000px) / 2));
-  }
-
-  .shell:has(.detail-railed) > .banner {
-    margin-inline: max(0px, calc((100% - 1000px) / 2));
-  }
-}
-
-@media (min-width: 1400px) {
-  .shell:has(.detail-railed) > header.top {
-    padding-inline: max(0px, calc((100% - 1320px) / 2));
-  }
-
-  .shell:has(.detail-railed) > .banner {
-    margin-inline: max(0px, calc((100% - 1320px) / 2));
-  }
+header.top,
+.shell > .banner {
+  max-width: 1000px;
+  margin-inline: auto;
 }
 
 header.top {
@@ -955,8 +1035,10 @@ header.top nav a.active:hover {
  * this column are `display: contents`, which dissolves their boxes and leaves
  * the form laying out in here — but they are still in the DOM, and still what
  * `>` would be asking about. In side by side the form is `display: contents`
- * itself and a margin on it does nothing, which is correct there: the grid rows
- * are spacing it.
+ * itself and a margin on it does nothing, so the pair's own margin does this job
+ * instead — see `.detail-compare .review-pair`. The grid rows space the form's
+ * children from each other and cannot space the last of them from what comes
+ * after the grid, which is the one gap this margin is here for.
  *
  * Above the block below it, not after: same selector, same specificity, so the
  * one that loses is whichever is written first — a media query does not outrank
@@ -1278,15 +1360,28 @@ header.top nav a.active:hover {
   max-height: 460px;
   overflow: auto;
   /*
-   * Read rather than scanned, so it takes the reading leading. The size comes
-   * from `body` — `--t5`, and this is one of the four places that inheritance is
-   * deliberate rather than incidental.
+   * Read rather than scanned, so it takes the reading leading.
+   *
+   * And a step down from `body`, which is the one place this file walks back the
+   * seam the type scale argues for. The argument there is that content should
+   * not inherit the size of the chrome around it, and it is right about which
+   * direction the mistake runs — but it was measured against a stacked column,
+   * and this text is now read in a half-width pane beside its own translation.
+   * Two 16px serif columns in one card is a page of mail with no room around it;
+   * at 14 the same letter fits the pane, and the reading leading and the serif
+   * are what keep it prose rather than chrome.
+   *
+   * Read-only mail only. `textarea.draft` stays at 16 and must — iOS Safari
+   * zooms the page when a field under 16px takes focus — so the box being typed
+   * in is the one thing on this desk still at the reading size, which is the
+   * right one to hold there.
    *
    * No `--measure` here. The cap belongs on the paragraph and not on the box:
    * this element is also the scroll container and the left half of a
    * side-by-side pair, and a `max-width` on it would leave the letter in a
    * column with the pane's remaining width blank beside it.
    */
+  font-size: var(--t4);
   line-height: var(--lh-read);
 }
 
@@ -1318,25 +1413,64 @@ header.top nav a.active:hover {
  * arrives.
  */
 /*
- * …and the one piece of prose on this desk that does not take the serif.
+ * …in the same type as everything else the reviewer reads, which took two goes
+ * to get right.
  *
- * Everything else the reviewer reads is being read *here*, so it is set in the
- * face this desk chose for reading. This panel is the exception because of what
- * it claims to be: it is titled "what they will get", it is built by the same
- * `previewHtml` the send path calls, and the rule two files over says the thing
- * on screen has to measure the same as the thing that arrives. It does not
- * arrive in Source Serif. Gmail will set it in Arial or Roboto and Apple Mail in
- * Helvetica or SF, and a sans here is the closest honest guess at all of them.
+ * This was the one piece of prose on the desk set in a sans, and the argument
+ * for it was decent: the panel is titled "what they will get", it is built by
+ * the same `previewHtml` the send path calls, and mail does not arrive in Source
+ * Serif — Gmail sets it in Arial or Roboto, Apple Mail in Helvetica or SF. A
+ * sans was the closest honest guess at all of them, and the mismatch beside the
+ * draft box was meant to say "this is their inbox, not your editor".
  *
- * It reads as an inconsistency beside the draft box, and it is the useful kind:
- * the box is where you write and this is their inbox, and the two not looking
- * alike is the most direct way to say so.
+ * What that missed is where the panel is actually seen. It is the right half of
+ * the confirmation, and the left half is `.email-body` — the customer's own
+ * letter, in the reading face at `--t4`. Two halves of one panel, one question
+ * ("is this the right answer to that?"), and they were set in different families
+ * at different sizes. That does not read as a distinction being drawn; it reads
+ * as two documents, and it makes the comparison the panel exists for harder than
+ * it needs to be. Whatever the sans was saying, nobody was receiving it.
+ *
+ * The typographic guess is not worth much either, since it was only ever a guess
+ * — the recipient's client picks the face, and it is as likely to be neither of
+ * the two named above. What the panel can honestly promise is the *words* and
+ * their shape, and that is what `previewHtml` and the 12px paragraph gap deliver.
  */
 .reply-rendered {
   max-height: 460px;
   overflow: auto;
   line-height: var(--lh-read);
-  font-family: var(--font-latin), var(--font-cjk), sans-serif, var(--font-emoji);
+  font-family: var(--font-read);
+  /* And the size, for the same reason: matching the family and not the scale
+     leaves the two halves of the confirmation still looking unrelated. */
+  font-size: var(--t4);
+  /*
+   * The one place the desk lets the browser invent a face, and it is the panel
+   * that would otherwise lie about the mail.
+   *
+   * `body` turns synthesis off on the argument that a faked oblique is drawn
+   * from a family this file never chose — right for the interface, and exactly
+   * backwards here. No Chinese face has an italic. Not PingFang, not Kaiti, not
+   * the Noto fallbacks; the style does not exist in the script. So `*一句*` in a
+   * reply produced a real `<em>` in the markup, the sanitiser kept it, and it
+   * painted at a measured 294px against 294px for the same words unmarked —
+   * identical glyphs, no slant, nothing on screen at all.
+   *
+   * Which would be a defensible way to set Chinese, except for what this panel
+   * is. It is titled "what they will get", and what they will get is Gmail and
+   * Apple Mail, neither of which has been told to hold back: they synthesise the
+   * oblique and the customer reads a slanted sentence. A reviewer who cannot see
+   * the emphasis they applied has been shown a preview that disagrees with the
+   * send — the one failure this screen exists to prevent.
+   *
+   * Weight for the same reason and against the same trap: Kaiti ships one
+   * weight, so `**bold**` in a reply set in it is invisible under `none` too.
+   *
+   * This is not an endorsement of slanted Chinese, which is poor typography and
+   * always was. It is the panel reporting what the recipient's client will do
+   * rather than what this one would prefer.
+   */
+  font-synthesis: weight style;
 }
 
 .reply-rendered p,
@@ -1587,6 +1721,49 @@ header.top nav a.active:hover {
   .compare-single {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /*
+   * Both texts start on the same line.
+   *
+   * The pair is read across, sentence against sentence, and it was starting a
+   * caption's worth of space out of step: the original began at the top of the
+   * card and the translation began below a dashed rule, a `▾ 译文 · zh-CN` and
+   * eight pixels of air — about forty pixels down. Forty pixels is a paragraph
+   * and a half of offset at the top of a letter, and it compounds, because
+   * nothing further down realigns it. The eye that has just left the third
+   * English paragraph has to hunt for the third Chinese one. That is the
+   * whole job of this layout and it was losing at it in the first inch.
+   *
+   * `subgrid` rather than a spacer of the same height on the pane opposite,
+   * because the height in question is a summary's line box plus its margin and
+   * nobody should be maintaining that as a `calc`. The pair becomes two rows —
+   * captions, then text — the translation spans both and hands its own two
+   * children to the parent's rows, and the original is placed straight into the
+   * second. So the caption band is as tall as whatever is in it, and the two
+   * bodies begin on the same pixel by construction.
+   *
+   * And the rule that set them apart turns ninety degrees with them. A line
+   * *above* the translation was the separator when the translation was below;
+   * in two columns the same line belongs between them, where it reads as the
+   * edge of a column rather than as the start of a new section.
+   */
+  .compare:has(> .translation) {
+    grid-template-rows: auto 1fr;
+  }
+
+  .compare:has(> .translation) > .translation {
+    display: grid;
+    grid-row: 1 / span 2;
+    grid-template-rows: subgrid;
+    border-top: 0;
+    padding-top: 0;
+    border-left: 1px dashed var(--line);
+    padding-left: var(--s3);
+  }
+
+  .compare:has(> .translation) > :first-child {
+    grid-row: 2;
+  }
 }
 
 .card {
@@ -1758,30 +1935,43 @@ header.top nav a.active:hover {
    what it found. They wrap rather than squeeze — six tabs, a field and three
    buttons come to more than this column is wide in most languages — so the row
    becomes two rows and nothing is crushed. */
+/* `space-between` rather than a `margin-left: auto` on the tabs, which is what
+   held them against the far edge before. The two are identical while the row
+   fits on one line and they part company the moment it does not: an auto margin
+   is a property of the tabs and follows them onto the second line, where it
+   pins a full-width run of pills to the right of a line with nothing else on it
+   — search on the left of one row, tabs on the right of the next, a staircase.
+   `space-between` is a property of the line, and a line with one item on it puts
+   that item at the start. So the tabs sit at the far edge when they are sharing
+   the row and under the search box when they are not. */
 .toolbar {
   align-items: center;
+  justify-content: space-between;
   margin-bottom: var(--s4);
 }
 
-/* Pushed right, against the far edge, so the tabs do not drift into the middle
-   when the search box is at its floor. */
 .toolbar .filters {
   margin-bottom: 0;
-  margin-left: auto;
 }
 
-/* Grows to fill whatever the tabs left, with a floor: below about this the box
-   stops looking like something that takes a sentence, and it should take the
-   next line instead.
-
-   `nowrap` because this is itself a flex row — a field and a button — and it is
-   inside another one. Left wrapping, it shrank to its basis and then wrapped its
-   own button onto a second line, which in German put "Suchen" alone under the
-   tabs looking like a control belonging to nothing. It has to wrap as a unit or
-   not at all. */
+/* Sized to a query rather than to whatever is left over.
+ *
+ * It grew to fill the row, which on a wide screen made the box the largest
+ * object on the page and pushed it flush against the tabs — so the two groups
+ * on this line, the one that searches everything and the one that narrows what
+ * it found, arrived as a single run of controls with no seam. Capped, they
+ * separate themselves: field and button on the left, tabs on the right, and the
+ * gap in the middle is what says they are two different questions. 340px is a
+ * comfortable sentence at `--t3`, which is what this box actually takes.
+ *
+ * `nowrap` because this is itself a flex row — a field and a button — and it is
+ * inside another one. Left wrapping, it shrank to its basis and then wrapped its
+ * own button onto a second line, which in German put "Suchen" alone under the
+ * tabs looking like a control belonging to nothing. It has to wrap as a unit or
+ * not at all. */
 .toolbar .searchbar {
-  flex: 1 1 260px;
-  min-width: 260px;
+  flex: 0 1 340px;
+  min-width: 240px;
   flex-wrap: nowrap;
   margin-bottom: 0;
 }
@@ -1802,10 +1992,6 @@ header.top nav a.active:hover {
   .toolbar .searchbar {
     flex: 1 1 100%;
     min-width: 0;
-  }
-
-  .toolbar .filters {
-    margin-left: 0;
   }
 }
 
@@ -1850,19 +2036,60 @@ header.top nav a.active:hover {
   margin-bottom: var(--s3);
 }
 
+/*
+ * Field and button, at the size of the row they stand in.
+ *
+ * Both were inheriting from the generic form styling — a 16px box with 8px of
+ * padding and, on the button, the 8px radius every form in the app uses. That
+ * is right for a form, where the field is the subject of the screen. It was
+ * wrong here, and the inbox header was where it showed: a 44px beige slab and a
+ * chunky white button, standing in a line of 33px pills, above a line of 29px
+ * pills. Three heights and two shapes across two rows of controls that are all
+ * doing the same kind of job, which is what "cluttered" turns out to mean when
+ * you measure it — not too many things, but too many kinds of thing.
+ *
+ * So they take the filter tab's metrics exactly: `--t3`, the same 5px/13px, the
+ * same pill. The whole toolbar becomes one family, and the eye stops sorting
+ * the row into shapes before it can read it.
+ *
+ * The button keeps its border and its fill, because it is still the one thing
+ * on the row you press rather than follow, and a pill of the same size is
+ * already as quiet as it can get without lying about being a control.
+ */
+.searchbar input[type='search'],
+.searchbar button {
+  padding: 5px 13px;
+  font-size: var(--t3);
+  border-radius: 999px;
+}
+
 .searchbar input[type='search'] {
   /* `width: auto` on purpose: the shared input rule is width 100%, which as a
      flex basis is the whole row, which pushed the button onto a line of its
      own. Growing from nothing is what makes it share the line. */
   flex: 1 1 0;
   width: auto;
-  padding: 8px 12px;
 }
 
 /* Stops the button being stretched to the field's height by align-items, and
    stops it shrinking under its own label when the query is long. */
 .searchbar button {
   flex: none;
+}
+
+/*
+ * …and the 16px floor comes back where it was doing a job.
+ *
+ * Same trade as the draft box — see the rule on `textarea.draft`. iOS Safari
+ * zooms the page when a field under 16px takes focus, and a search box is a
+ * field people tap. `pointer: coarse` asks the question the floor was standing
+ * in for, so a mouse gets the size the row was designed at and a finger gets
+ * the size that does not throw the layout across the screen.
+ */
+@media (pointer: coarse) {
+  .searchbar input[type='search'] {
+    font-size: var(--t5);
+  }
 }
 
 /* What you are looking at, said once above the results. `meta` already makes it
@@ -1919,19 +2146,29 @@ header.top nav a.active:hover {
  * 22-character slug in front of the status on some rows and nothing on others.
  */
 /*
- * The inbox does not get the whole shell.
+ * The inbox gets the whole shell, and the cap it used to have has gone.
  *
- * 1040 is the width the task page needs — a reading column and a sidebar — and
- * it is the wrong width for a list. Stretched to it, the six columns keep their
- * widths and the extra all lands in the gap between the subject and the badges,
- * so a row reads as two clumps at opposite ends of the screen with a hole in
- * the middle, and the eye crosses that hole on every line. Capped here, the
- * row is dense enough that who / what / when read as one thing.
+ * It was 900px centred, on the argument that 1040 is the task page's width — a
+ * reading column and a sidebar — and the wrong width for a list: stretched to
+ * it, the six columns keep their widths and the extra all lands between the
+ * subject and the badges, so a row reads as two clumps with a hole in the
+ * middle. That argument was about the inside of a row, and it was answered by
+ * moving the outside of the page, which cost more than it bought.
+ *
+ * What it cost: the shell is 1320 on a wide screen, so a 900px column centred in
+ * it sat 210px in from both edges — and the header does not. The wordmark, the
+ * nav and the rule under them ran the full width while every single thing below
+ * that rule started a fifth of the way across, lined up with nothing above it.
+ * The toolbar then broke on the same 900: search and tabs measure 917 together,
+ * flexbox breaks a line on base sizes before it shrinks anything, so the tabs
+ * wrapped and `margin-left: auto` pinned them to the far right — stats left,
+ * search left, tabs right, buttons right, a staircase down the top of the page.
+ *
+ * Full width, every edge on this screen agrees with the header above it and the
+ * toolbar is one line again. The hole inside a row is real and is the price; it
+ * is one gap in the middle of a line whose ends are both where the eye expects
+ * them, which is a better trade than four edges that agree with nothing.
  */
-.inbox {
-  max-width: 900px;
-  margin: 0 auto;
-}
 
 .inbox-row {
   display: grid;
@@ -2498,6 +2735,40 @@ header.top nav a.active:hover {
 }
 
 /*
+ * The mailbox form's two halves, one of which is showing.
+ *
+ * Every line of the service menu but one asks for a host, a port and a password.
+ * Zoho's API asks for a data centre and an OAuth client and has no use for any
+ * of the other four, so picking it swaps the boxes rather than filling them in —
+ * and the note above the Save button swaps with them, because "port 465 is
+ * implicit TLS" under a form with no ports is the screen answering a question
+ * nobody on it asked.
+ *
+ * Same mechanism as the two rules above, and it is the mechanism that matters
+ * here more than anywhere: this is the screen somebody reaches before the app
+ * works, sometimes over a connection that has not finished loading its scripts.
+ * Hiding half a form from React state would leave that person on a page with no
+ * way to reach the half they came for. `:has()` asks the browser which option is
+ * chosen, which is a fact the browser has had since it parsed the markup.
+ *
+ * The `.row` selectors are the note, which is a child of the row it shares with
+ * the Save button rather than a sibling of the menu.
+ */
+.mailbox-api {
+  display: none;
+}
+
+.fields:has(select[name='service'] option[value='zoho-api']:checked) ~ .mailbox-imap,
+.fields:has(select[name='service'] option[value='zoho-api']:checked) ~ .row .mailbox-imap {
+  display: none;
+}
+
+.fields:has(select[name='service'] option[value='zoho-api']:checked) ~ .mailbox-api,
+.fields:has(select[name='service'] option[value='zoho-api']:checked) ~ .row .mailbox-api {
+  display: block;
+}
+
+/*
  * The offer, as the thing you press.
  *
  * A ready row used to be a sentence with a 70px button parked at the end of it,
@@ -2738,7 +3009,13 @@ header.top nav a.active:hover {
 
 .confirm {
   width: 100%;
-  max-width: 860px;
+  /* Wider than the reading column the rest of the desk keeps to, because this
+     panel is two columns of mail rather than one of prose. At 860 each half was
+     420px, which is a paragraph broken every six or seven words and a reply that
+     needed scrolling to read a sentence of. The cap is still a cap — past about
+     this width the line gets too long to track back to — but it buys each half a
+     measure it can actually hold a paragraph in. */
+  max-width: 1120px;
   margin: 0;
   /* `.compare` splits into two columns on a container query, and the container
      it looks for is `.detail-main` — which this panel is not inside. Without
@@ -2764,17 +3041,28 @@ header.top nav a.active:hover {
   color: var(--text);
 }
 
-/* Both panes of a pair scroll rather than the panel growing to the length of
-   the longest mail. A confirmation you have to scroll past to reach the button
-   is one people learn to scroll past without reading. `min-height` is overridden
-   too: `.compare` asks for 240px each, which on a two-line acknowledgement is
-   most of a screen of empty box. */
+/* The boxes inside the panel do not crop their own contents.
+ *
+ * `.email-body` and `.reply-rendered` carry caps of their own — 460px, because
+ * on the review screen they sit in a page that scrolls. In here they were the
+ * thing doing the cutting: a scrollbar inside a scrollbar, a reply sliced off
+ * mid-sentence, and a translation the reviewer could not reach without finding
+ * the right one of three nested scrollports. What has to fit the screen is the
+ * panel, and the panel is what fits it now — see `.confirm-half` below, where a
+ * column scrolls as one, mail and translation together.
+ *
+ * Only the cap comes off. `overflow` stays as it was, and with no ceiling above
+ * it there is no height left for it to scroll in — but a table wider than the
+ * column, or a URL with no break in it, still scrolls inside the box it is in
+ * rather than dragging the whole column sideways under its own heading.
+ *
+ * `min-height` is overridden for the older reason: `.compare` asks for 240px per
+ * pane, which on a two-line acknowledgement is most of a screen of empty box. */
 .confirm .email,
 .confirm .email-body,
 .confirm .reply-rendered {
   min-height: 0;
-  max-height: 34vh;
-  overflow-y: auto;
+  max-height: none;
 }
 
 /* A link that has to stand next to a button without pretending to be one.
@@ -3385,37 +3673,59 @@ textarea.draft {
 }
 
 /*
- * The draft reads like the letter it answers, and the mirror reads like the
- * draft.
+ * The draft reads like the letter it answers.
  *
- * One declaration on two selectors, and they cannot be split. When the overlay
- * script is running there are two copies of this text stacked on the same
- * pixels — a transparent textarea over a `.draft-mirror` that carries the diff
- * marks — and the illusion is only as good as the agreement between their
- * metrics. A line-height set on one of them and not the other does not look like
- * a bug at the top of the box; it looks like the highlight drifting a little
- * further off the word with every line down the page.
- *
- * The wrapper would inherit to both, and it is not enough: `compose/page.tsx`
- * has a `textarea.draft` with no `.draft-box` around it, and the brief written
- * there is the same kind of text as the reply here.
+ * Both selectors, and they cannot be split. The wrapper alone would inherit to
+ * the box, and it is not enough: `compose/page.tsx` has a `textarea.draft` with
+ * no `.draft-box` around it, and the brief written there is the same kind of
+ * text as the reply here. The box alone is not enough either — `.reply-diff`
+ * takes its type from the wrapper, and a diff of a reply set at a different size
+ * from the reply is two documents.
  *
  * `1lh` picks this up for free — `textarea.draft[data-quoted]` caps itself in
  * lines rather than pixels, so the cap grows with the leading instead of holding
  * a count that stopped being true.
  *
- * `.draft-box` is in the list for a reason that is not obvious and is the whole
- * of why this works. The mirror's own rule further down sets `font: inherit`, and
- * the shorthand resets `line-height` along with everything else it did not
- * mention — at equal specificity and further down the file, so it would quietly
- * win over the selector two lines below this one. Naming the wrapper means the
- * value the mirror inherits is already the right one, and both routes to it
- * arrive at 1.7 whichever of the two rules ends up last.
  */
 textarea.draft,
-.draft-box,
-.draft-box.overlay .draft-mirror {
+.draft-box {
   line-height: var(--lh-read);
+  /*
+   * And the size, for the same three elements and the same reason.
+   *
+   * The letter came down to `--t4` when it moved into a half-width pane; the
+   * reply sat beside its own translation at 16 and looked like a different
+   * document from the one it is an answer to. Two panes of one card set at two
+   * sizes reads as a rendering fault before it reads as emphasis.
+   *
+   * This was held at 16 on purpose and the reason was real — see `body`, and
+   * the rule below, which is where it went.
+   */
+  font-size: var(--t4);
+}
+
+/*
+ * …except on the devices the 16px floor was protecting.
+ *
+ * iOS Safari zooms the page when a field under 16px takes focus, and the field
+ * this desk is built around is the one you tap into. That is not a subtle
+ * degradation: the layout jumps, the reply is suddenly wider than the screen,
+ * and getting back out is a pinch. The old rule bought that off by holding
+ * every form field at the reading size, which worked and cost the desk its
+ * typography everywhere else.
+ *
+ * `pointer: coarse` asks the question the floor was a proxy for. A mouse has no
+ * focus-zoom to trigger, so it gets the size the card was designed at; a finger
+ * gets the floor. And it is set on all three elements together, never one of
+ * them: the mirror underneath is the same text on the same pixels, and a size
+ * that applies to the box and not to its copy is the highlight drifting a word
+ * further off with every line.
+ */
+@media (pointer: coarse) {
+  textarea.draft,
+  .draft-box {
+    font-size: var(--t5);
+  }
 }
 
 /*
@@ -3931,17 +4241,6 @@ dl.facts dd {
   color: var(--muted);
 }
 
-/*
- * There is no `.diff` block in here, and that is the decision rather than an
- * omission.
- *
- * A sentence-by-sentence `ins`/`del` paragraph lived here, and the marks in the
- * draft box now say the same thing on the words themselves — see
- * `.draft-mirror mark`. Two renderings of one diff, both on screen at once in
- * columns mode, and the quieter one is read as decoration. What is left is the
- * line naming the change and the panel saying where it goes.
- */
-
 /* What happens to this after the send, said plainly and on its own ground. */
 .learns .proposed {
   margin: 0;
@@ -4017,6 +4316,18 @@ dl.facts dd {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
     column-gap: var(--s4);
+    /* And a gap under the whole grid, which nothing else was providing.
+     *
+     * In columns mode `.review-form` carries this — it is a box with a margin,
+     * and the buttons are the last thing in it. Here the form is `display:
+     * contents` so that margin is inert, and the buttons are the last row of
+     * this grid: `Approve & send` sat with its bottom edge on the top edge of
+     * "Earlier drafts", zero pixels between two bordered boxes, on the one
+     * screen where the lower box is what you consult after deciding not to press
+     * the button above it. The same `--s4` every other card down this column is
+     * separated by, so the rhythm does not break at the one row that changed
+     * layout modes. */
+    margin-bottom: var(--s4);
   }
 
   /*
@@ -4405,11 +4716,32 @@ header.top .desk-state {
  * 29px is what the queue light already was: a 13px line at the body's 1.6, plus
  * its padding and its border. Declared rather than arrived at, so the next
  * control added up here has a number to match instead of a pixel to nudge.
+ *
+ * The layout switch is the control that was added up here and did not match. It
+ * came to 34.8px off its own padding, which is 6px taller than everything beside
+ * it and — because it exists on the task screen and nowhere else — 3px taller
+ * than the whole header on the task screen and nowhere else. So opening a task
+ * moved the rule under the nav down three pixels and dropped the wordmark by
+ * one, on a row whose entire job is to be the one thing that does not move. A
+ * control this row did not have a number for is exactly what the paragraph
+ * above was written to prevent.
  */
 header.top .queue-light,
 header.top .desk-actions button,
-header.top .desk-menu > summary {
+header.top .desk-menu > summary,
+header.top .layout-switch {
   height: 29px;
+}
+
+/* And the two buttons inside it fill that height rather than setting it. Their
+   own `padding-block` is what added up to 34.8 — with the track's height
+   declared, vertical padding can only overflow it, so the space above and below
+   the word becomes the flexbox's job, the way it already is on the `⋯` beside
+   them. */
+header.top .layout-switch button {
+  display: inline-flex;
+  align-items: center;
+  padding-block: 0;
 }
 
 
@@ -4644,6 +4976,10 @@ header.top .desk-drawer .theme-switch button {
  */
 .desk-row {
   align-items: center;
+  /* For the reason the toolbar under it uses one — see the note there. Both rows
+     are a group that is read and a group that is pressed, and both have to break
+     to a second line in a long-worded language. */
+  justify-content: space-between;
   margin-bottom: var(--s4);
 }
 
@@ -4652,10 +4988,6 @@ header.top .desk-drawer .theme-switch button {
   flex: none;
   align-items: center;
   gap: var(--s3);
-}
-
-.desk-row .desk-actions {
-  margin-left: auto;
 }
 
 /* What is already done. Quiet — it is a fact about the day, not a control. */
@@ -5233,71 +5565,298 @@ kbd {
 }
 
 /*
- * The reply as prose, with the reviewer's own sentences marked in it.
+ * The reply, and in its place the diff of it when the reviewer asks for one.
  *
- * A textarea cannot colour part of its own contents, so the marks are a second
- * copy of the same string rendered underneath, and the box on top goes
- * transparent. Everything that decides where a character lands has to match
- * exactly between the two — font, size, line height, padding, wrapping, and the
- * border, which is why the mirror carries a transparent one.
+ * Two children, exactly one of them on screen. `.diffing` is added by the script
+ * and never by this file (see `DraftOverlay`), because the class hides the
+ * editor: a stylesheet-only version would hide it on a desk whose JavaScript
+ * never arrived and leave a read-only diff with nothing able to put the box
+ * back.
  *
- * `.overlay` is added by the script (see DraftOverlay) and never by this file.
- * Transparent text in a box with no copy behind it is an editor nobody can use,
- * and that is exactly what a stylesheet-only version would leave on a desk whose
- * JavaScript never arrived.
+ * `position: relative` outlives the overlay that needed it — the restore flash
+ * paints on this element, and `.compare` sizes the pair from it.
  */
 .draft-box {
   position: relative;
 }
 
-.draft-mirror {
+/*
+ * The formatting buttons, which are only there while the reply is being written.
+ *
+ * A row of controls parked above the draft is the thing this card already
+ * decided against once — the format tabs and the subject line were folded into a
+ * disclosure precisely because two settings nobody changes were standing between
+ * the reviewer and the only thing they came to read. A toolbar would have been
+ * the same mistake in a louder font: forty tasks in an afternoon, and on most of
+ * them the reply is approved without a character being typed.
+ *
+ * So it is spent only on the reviewers who are editing, and the trigger is the
+ * one that says so — the caret being in the box. `:has()` rather than
+ * `:focus-within` on the card, because the card also contains the subject line,
+ * the attachment picker and four buttons, and a toolbar that appeared when
+ * somebody tabbed to Approve would be arriving to answer a question nobody
+ * asked. The second selector keeps it up while a button in it holds focus, or
+ * tabbing from the draft into the toolbar would close the toolbar.
+ *
+ * `display` and not `visibility`, and it lives in the heading row rather than on
+ * a line of its own. Those two are one decision. The first version reserved a
+ * line above the box and only faded the buttons into it, on the reasoning that
+ * collapsing the line would shove the reply down at the moment somebody clicked
+ * into it — true, and the wrong trade: it charged every reader thirty pixels of
+ * permanent whitespace for a row most of them never see. In this row there is
+ * nothing to reserve. The heading beside it is three words with a `grow` on it,
+ * so the buttons appear into space that was already empty and give it back when
+ * they go, and no vertical measurement on the card changes either way.
+ */
+.draft-tools {
+  display: none;
+  gap: 2px;
+  align-items: center;
+  /*
+   * Left margin only, and the `auto` that used to be on the right is a bug
+   * rather than a style.
+   *
+   * These buttons appear when the box takes focus and vanish when it loses it,
+   * which means their width arrives and leaves under a row of other controls.
+   * With `margin-right: auto` the free space was split between this and the
+   * heading, so everything to the right of it moved each time — and the press
+   * that moves it is a press *on* one of those controls: mousedown on the diff
+   * switch blurs the box, the toolbar goes, the switch slides left, and the
+   * mouseup lands on whatever took its place. The switch did nothing and the
+   * format panel opened instead.
+   *
+   * Anchored right, the heading's `grow` absorbs the whole change on its own and
+   * nothing else on the row moves at all.
+   */
+  margin-left: var(--s2);
+}
+
+/*
+ * The switch for the marks, which is on whenever the marks are.
+ *
+ * Unlike the toolbar it does not wait for focus. The toolbar is for somebody
+ * mid-edit; this is for somebody who has just opened the task, found the reply
+ * under a green wash and wants it off before they read a word — which is the
+ * moment it has to be reachable, and the moment the caret is nowhere near the
+ * box.
+ *
+ * Lit when the marks are showing rather than when they are not, so the button
+ * agrees with the screen: something is on, and this is the thing that is on. Its
+ * `aria-pressed` says the same, which is where a screen reader reads it from.
+ */
+.diff-toggle {
+  margin-left: var(--s2);
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: var(--t2);
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.diff-toggle:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.diff-toggle.active {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  color: var(--text);
+}
+
+.reply-card:has(textarea.draft:focus) .draft-tools,
+.reply-card:has(.draft-tools:focus-visible) .draft-tools {
+  display: flex;
+}
+
+/*
+ * Sized like the marks they insert rather than like the buttons at the bottom of
+ * the card. Those commit a reply; these type two characters, and one of them is
+ * pressed four times in a row. Quiet until the pointer is on it.
+ */
+.draft-tools button {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: var(--t3);
+  /* The `B` and the `I` have to look like what they do, and the rest must not
+     inherit it — `1.` in italic is a different mark. */
+  font-family: var(--font-latin), sans-serif;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.draft-tools button:hover {
+  background: var(--tint);
+  color: var(--text);
+}
+
+.draft-tools button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.draft-tools button[data-mark='bold'] {
+  font-weight: 700;
+}
+
+.draft-tools button[data-mark='italic'] {
+  font-style: italic;
+  font-family: var(--font-read-latin), serif;
+}
+
+/*
+ * An old draft against the one in the box, in the notation everybody already
+ * knows.
+ *
+ * A gutter of one character and a tint per side. The tints are the desk's own
+ * `--good` and `--bad` rather than GitHub's greens and reds, because those two
+ * already mean "this went well" and "this did not" everywhere else here, and a
+ * diff is exactly that question asked about a sentence.
+ *
+ * 16% and 18%, under the 22% the reply box uses for the reviewer's own words.
+ * That mark sits beneath a handful of sentences in a screen of prose; these can
+ * cover every line in the panel, and a wash that strong across a whole block
+ * stops reading as emphasis and starts reading as a background the text is
+ * trapped behind — worst in Chinese, whose block glyphs have no ascenders to
+ * break the band.
+ *
+ * It went the other way first, at 10% and 12%, and that was too far: `--good` is
+ * a muted olive and a tenth of it over the page tint is a grey. A diff whose two
+ * sides are told apart only by the sign in the gutter has given up the one thing
+ * colour is doing here. These read as green and red at a glance and still let
+ * the sentence through.
+ *
+ * The sign column is the one monospaced thing in the panel, so `+` and `−` line
+ * up down the left edge whatever the sentence beside them is set in.
+ */
+.diff {
+  margin: 0;
+  font-family: var(--font-read);
+  font-size: var(--t3);
+  line-height: var(--lh-read);
+}
+
+.diff .diff-line {
+  display: flex;
+  gap: var(--s2);
+  margin: 0;
+  padding: 2px var(--s2);
+  border-radius: 4px;
+  /* The sender's own breaks are content, the same as everywhere else mail is
+     shown on this desk. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.diff .sign {
+  flex: none;
+  width: 1ch;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  /* Loud enough to scan down, quiet enough not to be read as punctuation
+     belonging to the sentence. */
+  opacity: 0.75;
+}
+
+.diff .diff-line.keep {
+  color: var(--muted);
+}
+
+.diff .diff-line.add {
+  background: color-mix(in srgb, var(--good) 16%, transparent);
+  color: var(--text);
+}
+
+.diff .diff-line.add .sign {
+  color: var(--good);
+  opacity: 1;
+}
+
+.diff .diff-line.remove {
+  background: color-mix(in srgb, var(--bad) 18%, transparent);
+  color: var(--text);
+}
+
+.diff .diff-line.remove .sign {
+  color: var(--bad);
+  opacity: 1;
+}
+
+/*
+ * The reply's own diff, which stands where the editor stands.
+ *
+ * Not absolutely positioned over anything, unlike the mirror it replaces. That
+ * one had to land on the same pixels as the text underneath it and paid for the
+ * privilege in font, size, leading, padding and border, every one of which had
+ * to be restated in two places and kept equal forever. This is the only thing in
+ * the box while it is on, so it can simply be laid out.
+ *
+ * `min-height` matching the textarea's floor, so switching the view does not
+ * change the height of the card. The pointer says the obvious thing: clicking
+ * the reply is how you get back to editing it.
+ */
+.reply-diff {
+  display: none;
+  min-height: 260px;
+  cursor: text;
+}
+
+.draft-box.diffing .reply-diff {
+  display: block;
+}
+
+/*
+ * And the editor goes, rather than being hidden behind the diff.
+ *
+ * `display: none` and not `visibility` or an opacity: a control that is only
+ * invisible still takes its space, still takes focus, and would still be
+ * reachable by Tab from a card whose whole state says it is not being edited.
+ * A hidden form control is submitted exactly like a visible one, so the reply
+ * still posts — which it must, because this is the only copy of it.
+ */
+.draft-box.diffing textarea.draft {
   display: none;
 }
 
-.draft-box.overlay {
-  background: var(--panel-2);
+/*
+ * The box, once a restore has replaced everything in it.
+ *
+ * The control that did this is in a collapsed panel near the bottom of the page;
+ * the thing that changed is a screen above it. One pass of the accent and out
+ * again — long enough to catch the eye on the way back up, short enough that it
+ * is over before anybody starts reading.
+ *
+ * `prefers-reduced-motion` gets the same information without the movement: the
+ * tint arrives and stays for the life of the render, which is what somebody who
+ * has asked for no animation should get rather than nothing at all.
+ */
+@keyframes draft-restored {
+  from {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.draft-box.restored {
   border-radius: 8px;
+  animation: draft-restored 1100ms ease-out;
 }
 
-.draft-box.overlay .draft-mirror {
-  display: block;
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  padding: 10px 12px;
-  /* Matches the textarea's own border so the first line starts on the same
-     pixel. Transparent, because the textarea's real border is drawn on top. */
-  border: 1px solid transparent;
-  font: inherit;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  color: var(--text);
-  pointer-events: none;
-}
-
-.draft-box.overlay textarea.draft {
-  position: relative;
-  z-index: 1;
-  background: transparent;
-  color: transparent;
-  /* The one thing that must stay visible. Without it the box has no cursor. */
-  caret-color: var(--text);
-}
-
-.draft-box.overlay textarea.draft::selection {
-  /* The selection is drawn over transparent glyphs, so it needs to carry them:
-     a wash rather than a fill, and the text under it is the mirror's. */
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-}
-
-/* What the reviewer wrote rather than the model. Green, because green already
-   means "what this desk has learned" everywhere else here — and this is the
-   text the learning job is about to read. */
-.draft-mirror mark {
-  background: color-mix(in srgb, var(--good) 22%, transparent);
-  color: inherit;
-  border-radius: 3px;
+@media (prefers-reduced-motion: reduce) {
+  .draft-box.restored {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
 }
 
 /* Side by side sizes the pair on the box, and the box is now a wrapper. */
@@ -5423,13 +5982,6 @@ kbd {
   box-shadow: none;
 }
 
-/* The translation, named where the letter starts rather than only inside it. */
-.card-head .translation-label {
-  flex: none;
-  font-size: var(--t3);
-  color: var(--accent);
-}
-
 /*
  * Inside the reply card, the card is the field.
  *
@@ -5437,19 +5989,11 @@ kbd {
  * paragraph, and the paragraph is the only thing on this screen anybody came to
  * read. The card already says where the reply begins — it is titled, it is the
  * one card in the accent — so the box inside it has nothing left to say.
- *
- * The mirror is stripped in exactly the same places, or the copy underneath
- * stops landing on the same pixels as the copy on top.
  */
-.reply-card textarea.draft,
-.reply-card .draft-box.overlay .draft-mirror {
+.reply-card textarea.draft {
   background: transparent;
   border-color: transparent;
   padding: 0;
-}
-
-.reply-card .draft-box.overlay {
-  background: none;
 }
 
 /*
@@ -5495,6 +6039,43 @@ kbd {
 .confirm.card.banded {
   padding: 0;
   overflow: hidden;
+  /*
+   * The panel is what the screen has to hold, and the mail is what it spends the
+   * room on.
+   *
+   * Every section here is short and fixed — a head, a risk band, a note, a
+   * checkbox, two buttons — except the two halves, which are a letter and a
+   * reply of no known length. So the column takes the height the viewport has,
+   * hands the fixed sections what they ask for, and gives the rest to the pair.
+   * On a short exchange nothing grows: `max-height` is a ceiling, not a height,
+   * and a three-line mail still gets a three-line panel rather than a screen of
+   * empty box under it.
+   *
+   * 100% is of the scrim's content box, which is the viewport less its padding,
+   * so the shadow keeps its room and the panel never runs under the edge of the
+   * screen.
+   */
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+}
+
+/* Nothing here gives way except the mail. Without this the head and the button
+   row shrink first — they are flex items like everything else — and the reviewer
+   loses the recipient's address and half of "Yes, send it" to make room for a
+   paragraph that was going to scroll anyway.
+
+   Both selectors carry the panel's three classes on purpose. `> *` beats a bare
+   `.confirm-pair` on specificity, so the pair's own `flex` further down lost to
+   this rule and the section that was supposed to give was the one that could
+   not — the panel grew past the screen and `overflow: hidden` took the buttons
+   off the bottom of it. */
+.confirm.card.banded > * {
+  flex: none;
+}
+
+.confirm.card.banded > .confirm-pair {
+  flex: 1 1 auto;
 }
 
 .confirm-head {
@@ -5555,13 +6136,41 @@ kbd {
 .confirm-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  /* The one row is allowed to be shorter than what is in it — which is what lets
+     the halves scroll instead of pushing the button row off the bottom. `auto`
+     sizes the row to the longest letter and the panel clips whatever will not
+     fit, buttons included. The `minmax(0, ...)` is the floor; `1fr` still takes
+     the height the pair was given, and on a short exchange that is the height of
+     the mail. */
+  grid-template-rows: minmax(0, 1fr);
+  /* And the pair is the section that gives, when something has to. See
+     `.confirm.card.banded`, where every other child is pinned. */
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 1px;
   background: var(--line);
 }
 
+/*
+ * A column scrolls as one thing: heading, mail, and the translation under it.
+ *
+ * Three scrollports used to live in this space — the pane, the mail inside it,
+ * the translation inside that — each capped at a third of the screen. A reader
+ * looking for the rest of a sentence had to find which of them owned the wheel,
+ * and a translation could sit entirely below the fold of a box inside a box with
+ * nothing on screen to say it was there. One scrollport per half, holding
+ * everything that half has to say, is the whole fix.
+ */
 .confirm-half {
   min-width: 0;
-  padding: var(--s4) 20px;
+  min-height: 0;
+  overflow-y: auto;
+  /* No padding at the top: the heading below carries it. A scroll container's
+     top padding is a band the text scrolls up through, and a sticky heading pins
+     under it rather than over it — so the padding has to belong to the thing
+     doing the covering, or the first line of the mail passes through it in the
+     clear. */
+  padding: 0 20px var(--s4);
   background: var(--panel-2);
 }
 
@@ -5571,21 +6180,36 @@ kbd {
   background: var(--panel);
 }
 
+/* The label stays with the column it labels. Now that a half can be scrolled
+   through several screens of mail, a heading that scrolls away leaves two
+   unlabelled columns of English and no way to tell, at a glance, which one is
+   about to be sent. It carries its half's own fill rather than a colour of its
+   own, so the mail passing underneath disappears into the ground it was already
+   standing on. */
 .confirm-half .confirm-heading {
-  margin: 0 0 var(--s3);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* The half's top padding, moved inside the heading — see `.confirm-half`. At
+     rest it is the spacing the column always had; stuck, it is what keeps the
+     words off the panel's edge, and the whole band is opaque, so the mail
+     passes under it rather than through it. */
+  margin: 0;
+  padding: var(--s4) 0 var(--s3);
+  /* Opaque down to its last twelve pixels and then out, so a line of mail going
+     under the label fades rather than being guillotined by an edge. The fade
+     lives inside the heading's own bottom padding: at rest the first paragraph
+     starts below it and there is nothing under it to soften. */
+  background: linear-gradient(
+    to bottom,
+    var(--panel-2) calc(100% - var(--s3)),
+    transparent
+  );
 }
 
 .confirm-half.outgoing .confirm-heading {
   color: var(--accent);
-}
-
-/* Each half scrolls on its own, so the panel does not grow to the length of the
-   longest letter. A confirmation you have to scroll past to reach the buttons is
-   one people learn to scroll past without reading. */
-.confirm-half .email-body,
-.confirm-half .reply-rendered {
-  max-height: 34vh;
-  overflow-y: auto;
+  background: linear-gradient(to bottom, var(--panel) calc(100% - var(--s3)), transparent);
 }
 
 /* A translation lives inside its own half, under its original — not as a third
@@ -5684,6 +6308,23 @@ kbd {
 @media (max-width: 720px) {
   .confirm-pair {
     grid-template-columns: minmax(0, 1fr);
+    /* Stacked, the two halves are one document read top to bottom, so the pair
+       is the scrollport and each half is as tall as what is in it. Two scrolling
+       boxes one above the other on a phone is a thumb hunting for the one that
+       moves — and it would cut each half to half of what is left after the head
+       and the buttons, which is a few lines each. */
+    grid-template-rows: auto;
+    overflow-y: auto;
+  }
+
+  .confirm-half {
+    overflow: visible;
+  }
+
+  /* Two of them, one per half, and the second would pin under nothing — the
+     halves no longer own the scroll. */
+  .confirm-half .confirm-heading {
+    position: static;
   }
 }
 

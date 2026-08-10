@@ -13,6 +13,8 @@ import { TaskPoller } from '../../task-poller';
 import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
 import { QueueRail, railTasks } from './queue-rail';
+import { DiffToggle } from './diff-toggle';
+import { DraftTools } from './draft-tools';
 import { DraftOverlay, ReviewKeys } from './review-keys';
 import { listContext } from '@/lib/context/store';
 import { t } from '@/lib/i18n';
@@ -22,13 +24,16 @@ import { listPending } from '@/lib/tasks/outgoing';
 import { listAlternatives } from '@/lib/tasks/alternatives';
 import { listEvents } from '@/lib/tasks/events';
 import { listMessages } from '@/lib/tasks/messages';
-import { markAdded, previewEdit } from '@/lib/tasks/edit-preview';
+import { previewEdit } from '@/lib/tasks/edit-preview';
+import { paragraphs } from '@/lib/tasks/paragraphs';
+import { newlines } from '@/lib/text';
 import { reviewLayout } from '@/lib/tasks/layout';
 import { replyBox } from '@/lib/tasks/reply-box';
 import { getTask, markOpened } from '@/lib/tasks/store';
 import { deskedAt } from '@/lib/tasks/types';
 import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
+import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { getTranslation } from '@/lib/translation/store';
 import { reviewLanguage } from '@/lib/translation/translate';
 
@@ -77,6 +82,9 @@ const RULES_SHOWN = 6;
  * `pre-wrap` is kept inside each paragraph: a single newline in the middle of
  * one is a line the sender chose to break, and `<br>` is what it becomes in the
  * mail too. Only the gap between blocks is ours to decide.
+ *
+ * Which blocks there are is `paragraphs`, and it is not the one-liner it looks
+ * like it should be — see it for the blank lines that are not blank.
  */
 function EmailBody({
   text,
@@ -87,10 +95,9 @@ function EmailBody({
   className?: string;
   language?: string;
 }) {
-  const blocks = text.replace(/\r\n/g, '\n').trim().split(/\n{2,}/);
   return (
     <div className={`email-body ${className}`.trim()} lang={languageTag(language)}>
-      {blocks.map((block, i) => (
+      {paragraphs(text).map((block, i) => (
         <p key={i}>{block}</p>
       ))}
     </div>
@@ -303,6 +310,10 @@ export default async function TaskPage({
   // Only ever the translation of exactly what is rendered below it. A draft
   // regenerated since its translation was written shows none, because a
   // reviewer who cannot read the reply cannot notice the two have drifted.
+  // Whether a rule learned from this edit goes live or waits — read here
+  // because the panel at the foot of the page promises one or the other.
+  const autoApproveRules = getWorkspaceConfig().autoApproveRules;
+
   const language = reviewLanguage();
   const bodyText = task.body || '';
   const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
@@ -311,7 +322,17 @@ export default async function TaskPage({
   // Newest first, and never including what is in the box right now — the
   // point of the panel is what the box used to say.
   const drafts = listVersions(task.id);
-  const versions = drafts.filter(v => v.body.trim() !== body.trim());
+  // Compared with one spelling of a line break on both sides. Rows written
+  // before `newlines` existed hold the CRLF a textarea submits, and against a
+  // draft holding the model's LF that is a difference of two invisible bytes —
+  // enough for this filter to list the current reply as an earlier draft, and
+  // for Put this back to restore a text the box could not show had changed.
+  const current = newlines(body).trim();
+  const versions = drafts.filter(v => newlines(v.body).trim() !== current);
+
+  // Set by `restoreDraft` alone, and read in two places: the flash on the box
+  // and the line by the buttons.
+  const restored = typeof query.restored === 'string';
 
   // What the model wrote, against what is in the box now.
   //
@@ -322,9 +343,6 @@ export default async function TaskPage({
   // picking one of the alternatives — and that is the text this edit departed
   // from. A pure call, computed here and thrown away with the render.
   const edit = previewEdit(drafts.find(v => v.source === 'model')?.body ?? null, body);
-  // The same text the box holds, cut into runs so the reviewer's own sentences
-  // can be marked underneath it. One run and no marks when nothing was edited.
-  const marked = markAdded(body, edit);
 
   // How tall to open the box: the length of the reply, unless the reply drags a
   // quoted thread along behind it. `narrow` because a translation beside it
@@ -888,12 +906,13 @@ export default async function TaskPage({
             <span className="card-label grow">
               {task.origin === 'composed' ? t('task.brief') : t('task.theirLetter')}
             </span>
-            {/* Named at the top of the letter rather than only inside it, and in
-                the accent because it is the one thing on this card a reviewer
-                looks *for*. The pane itself is below, beside the original. */}
-            {incoming && (
-              <span className="translation-label">{t('task.translation')}</span>
-            )}
+            {/* The translation used to be named up here too, in the accent, on
+                the grounds that it is the one thing on this card a reviewer
+                looks for. It was right about that and wrong about where: the
+                pane below now opens with its own caption, level with the first
+                line of the original — see `.compare` — so a head label put the
+                word "译文" on the card twice, an inch apart, and the second one
+                was the one that said which language. */}
           </div>
           {task.error && <p className="error">{task.error}</p>}
           {/* Original on the left, translation on the right — see `.compare`
@@ -1061,6 +1080,43 @@ export default async function TaskPage({
             <span className="card-label grow accent">
               {sent ? t('task.whatWentOut') : t('task.theReply')}
             </span>
+            {/* The marks the format already understands, on buttons, for the
+                reviewers who do not type them.
+
+                In this row and not above the box, which is the second attempt.
+                The first put them on a line of their own between the label and
+                the reply, and a line of their own is a line that exists on every
+                task — reserved whether anybody is editing or not, because
+                collapsing it would have made the card flinch downward at the
+                moment you clicked into it. That is a toolbar charging every
+                reader for a writer's convenience. This row is already here, the
+                buttons sit in space the heading was not using, and nothing moves
+                vertically when they appear.
+
+                Only on Markdown, and that is the whole of the condition. On
+                plain text a `**` is two asterisks in the customer's mailbox, so
+                a bold button there would be a button that inserts a typo; on
+                HTML the reviewer is writing tags and does not want `- ` in front
+                of them. The one format that reads these marks offers them.
+
+                Sent tasks lose it too. The box is still there, read-only, and a
+                toolbar over a reply that has already gone is offering to edit
+                something no longer editable. */}
+            {!sent && !sending && task.replyFormat === 'markdown' && (
+              <DraftTools
+                group={t('task.mark.group')}
+                labels={{
+                  bold: t('task.mark.bold'),
+                  italic: t('task.mark.italic'),
+                  code: t('task.mark.code'),
+                  link: t('task.mark.link'),
+                  ul: t('task.mark.ul'),
+                  ol: t('task.mark.ol'),
+                  quote: t('task.mark.quote'),
+                  heading: t('task.mark.heading'),
+                }}
+              />
+            )}
             {/* How this becomes mail, and what it will be called — two facts
                 stated in one quiet line rather than two rows of controls.
 
@@ -1151,6 +1207,22 @@ export default async function TaskPage({
                 <input type="hidden" name="subject" value={task.replySubject ?? ''} />
               </span>
             )}
+            {/* And the switch between the reply and its diff, after the toolbar
+                rather than before it — an order the layout depends on.
+
+                The toolbar comes and goes with the box's focus, and the heading
+                to its left has the `grow`, so the heading absorbs its width.
+                Anything sitting between the two moves by that width every time
+                it appears. This switch was there, which made it a button that
+                slid 230px sideways on its own mousedown: the press blurred the
+                box, the toolbar vanished, the heading grew, and the mouseup
+                landed on the format pill that had taken its place. Everything
+                after the toolbar is flush right and never moves.
+
+                Behind `edit.meaningful` for the same reason the learning panel
+                is: on a draft nobody has touched there is no diff, and a switch
+                offering to show nothing is one more thing to read. */}
+            {!sent && !sending && edit.meaningful && <DiffToggle label={t('task.diff.label')} />}
           </div>
           {/* The reply, and beside it a translation if the reviewer needs one.
 
@@ -1176,32 +1248,75 @@ export default async function TaskPage({
                 and leaves everybody else with no label at all the moment they
                 start typing — the point at which knowing which box this is
                 matters. */}
-            {/* The reply, with the reviewer's own sentences marked in it.
+            {/* The reply, and what the reviewer did to it, in the same notation
+                the versions panel uses.
 
-                A textarea cannot colour half its own contents, so the marks are
-                a second copy of the same text rendered underneath it, and the
-                box on top is made transparent — see `DraftOverlay`, which turns
-                this on only once its script has actually run. Without it the
-                textarea is the plain box it has always been, which is the whole
-                point: the highlight is worth having and worth nothing at the
-                cost of an unusable editor.
+                This was a wash of green under the sentences the reviewer had
+                written: a second copy of the draft rendered behind a transparent
+                textarea, aligned character for character. It was the only shape
+                a highlight *can* take inside a textarea, and it could only ever
+                say half of the thing worth saying. A diff has two sides, and the
+                sentence somebody deleted is not in the text to be coloured — so
+                the mark answered "which of these words are mine" and never
+                "what did I take out", which on a reply that got shorter is the
+                whole edit.
 
-                `aria-hidden`, because the text under the box is the same text
-                that is in it, and a screen reader should meet it once. */}
-            <div className="draft-box">
-              <div className="draft-mirror" aria-hidden="true">
-                {marked.map((run, i) =>
-                  run.added ? <mark key={i}>{run.text}</mark> : <span key={i}>{run.text}</span>,
-                )}
-              </div>
+                A diff proper says both, and it does not have to fit inside the
+                box to do it. It stands in the box's place while it is on: the
+                textarea goes `display: none` and keeps posting, because it is
+                still the one copy of the reply and the form still has to carry
+                it. Turning the switch off is what puts the editor back.
+
+                Only ever on top of an edit — `edit.meaningful` gates the switch
+                too, so an untouched draft is an ordinary editable box with no
+                control near it and no way into this state. */}
+            {/* `restored` puts one animation on the box, and it is doing a job
+                rather than decorating. A restore replaces every word in the
+                reply at once, from a control in a collapsed panel near the
+                bottom of the page — the reviewer's eye is on the button they
+                pressed, and the thing that changed is a screen away. The flash
+                is the only thing saying which of the two moved. */}
+            <div className={`draft-box${restored ? ' restored' : ''}`}>
+              {edit.meaningful && (
+                <div className="reply-diff diff" lang={languageTag(task.analysis?.language)}>
+                  {edit.ops.map((op, i) => (
+                    <p key={i} className={`diff-line ${op.kind}`}>
+                      <span className="sign">
+                        {op.kind === 'add' ? '+' : op.kind === 'remove' ? '−' : ' '}
+                      </span>
+                      <span className="text">{op.text}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
               {/* Opened at the length of the reply rather than at a height
                   somebody picked once. `rows` is the estimate every browser
                   understands; `--reply-rows` is the same number in a form the
-                  stylesheet can cap a quoted thread with. See reply-box.ts. */}
+                  stylesheet can cap a quoted thread with. See reply-box.ts.
+
+                  `key` is the prop without which Put this back does nothing.
+                  `defaultValue` is the DOM property of the same name, and the
+                  DOM reads it once, when the element is created. Every server
+                  action here ends in a redirect to this same route, which React
+                  renders by reconciling — same element in the same place, so the
+                  node is kept and the new `defaultValue` is written to a
+                  textarea that stopped caring about it at mount. The row had
+                  been rewritten and the page re-rendered from it, and the box
+                  still showed the old reply until somebody pressed refresh.
+                  Measured on the restore: the row went 38 → 130 characters and
+                  the box stayed at 36.
+
+                  Keying on the text remounts the box exactly when the server's
+                  idea of the draft changes, and never otherwise. Safe here
+                  because an idle review screen has no re-render to lose typing
+                  to: `TaskPoller` is mounted only inside the working dialog, and
+                  every other re-render follows a server action that has just
+                  saved this box's contents. */}
               <textarea
                 className="draft"
                 name="draft"
                 aria-label={t('task.draftLabel')}
+                key={body}
                 defaultValue={body}
                 readOnly={sent || sending}
                 placeholder={t('task.draftPlaceholder')}
@@ -1382,6 +1497,7 @@ export default async function TaskPage({
               {typeof query.saved === 'string' && (
                 <span className="meta said">{t('task.saved')}</span>
               )}
+              {restored && <span className="meta said">{t('task.restored')}</span>}
               {/* The one path that sets this is a compose, and it used to say
                   "Redraft queued. Run the queue to pick it up." — which was
                   wrong three times over on a letter nobody had drafted yet, and
@@ -1440,21 +1556,80 @@ export default async function TaskPage({
         {versions.length > 0 && (
           <details className="card versions">
             <summary>{t('task.versions', { n: versions.length })}</summary>
-            {versions.map(version => (
-              <form action={restoreDraft} key={version.id} className="version">
-                <input type="hidden" name="taskId" value={task.id} />
-                <input type="hidden" name="versionId" value={version.id} />
-                <div className="row version-head">
-                  <span className="meta grow">
-                    {version.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
-                    {t(`task.versionBy.${version.source}`)}
-                    {version.notes ? ` · ${version.notes}` : ''}
-                  </span>
-                  {!sent && !sending && <button type="submit">{t('task.restore')}</button>}
-                </div>
-                <pre className="email" lang={languageTag(task.analysis?.language)}>{version.body}</pre>
-              </form>
-            ))}
+            {versions.map(version => {
+              /* Each old draft against the one in the box, rather than on its
+                 own.
+
+                 Seven drafts of one reply are seven texts that differ by a
+                 sentence, and the panel used to print all seven in full and
+                 leave the comparing to the reader — which is the only thing
+                 anybody opens it to do. The question being asked here is never
+                 "what did this version say", it is "what would change if I
+                 pressed the button", so that is what it now answers: the
+                 sentences this version has that the box does not, marked, and
+                 above them the size of the swap in both directions.
+
+                 `previewEdit` reads from the box towards the version, which is
+                 the direction the button moves. So its `added` is what putting
+                 this back would bring and its `removed` is what it would drop —
+                 the reverse of the reading in the reply card, where the same
+                 function measures the reviewer's departure from the model.
+
+                 Rendered the way everyone already reads a diff: `−` for the
+                 sentences the swap would take out, `+` for the ones it would
+                 bring, and the untouched ones between them as context. The marks
+                 used in the reply box are the wrong tool here — they can only
+                 colour text that is present, so a version whose whole point is
+                 the paragraph it *lacks* showed up as a plain block with nothing
+                 marked on it at all.
+
+                 Sentences and not lines, which is where this parts company with
+                 git and is better for it. A reply is paragraphs; a line diff of
+                 one would report a whole paragraph replaced because a date
+                 inside it changed. `diffSentences` is an LCS over sentences, so
+                 the unit on screen is the unit somebody actually edited. */
+              const against = previewEdit(current, newlines(version.body));
+              // No ops when there is nothing to compare against — an empty box.
+              // The version is then all context rather than all addition, which
+              // is the truthful reading: nothing is being taken out.
+              const lines =
+                against.ops.length > 0
+                  ? against.ops
+                  : [{ kind: 'keep' as const, text: newlines(version.body) }];
+              return (
+                <form action={restoreDraft} key={version.id} className="version">
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <input type="hidden" name="versionId" value={version.id} />
+                  <div className="row version-head">
+                    <span className="meta grow">
+                      {version.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
+                      {t(`task.versionBy.${version.source}`)}
+                      {version.notes ? ` · ${version.notes}` : ''}
+                    </span>
+                    {!sent && !sending && <button type="submit">{t('task.restore')}</button>}
+                  </div>
+                  {/* No count above it. It said "brings 1 sentence and drops 1"
+                      over a diff with one `+` and one `−` already in it —
+                      arithmetic about something the reader can see, in the one
+                      place where seeing it is the entire point. */}
+                  <div className="version-diff diff" lang={languageTag(task.analysis?.language)}>
+                    {lines.map((op, i) => (
+                      <p key={i} className={`diff-line ${op.kind}`}>
+                        {/* The sign is read out, not hidden. "minus, we refund
+                            in three days" is the sentence a screen reader needs;
+                            an `aria-hidden` gutter would leave it announcing two
+                            contradictory sentences with nothing to tell them
+                            apart. */}
+                        <span className="sign">
+                          {op.kind === 'add' ? '+' : op.kind === 'remove' ? '−' : ' '}
+                        </span>
+                        <span className="text">{op.text}</span>
+                      </p>
+                    ))}
+                  </div>
+                </form>
+              );
+            })}
           </details>
         )}
 
@@ -1633,9 +1808,20 @@ export default async function TaskPage({
                   {t('task.learns.scale', { added: edit.added, removed: edit.removed })}
                 </p>
               )}
-              <p className="proposed">{t('task.learns.willLearn')}</p>
+              {/* Two sentences that have to match what the desk actually does.
+                  Under `autoApproveRules` the learning pass writes the rule
+                  rather than proposing it, and there is no click between the
+                  two — a panel still promising "no proposal steers a draft
+                  until you approve it" would be describing a gate that is not
+                  there, on the one screen whose whole subject is what this
+                  edit is about to change. See the setting. */}
+              <p className="proposed">
+                {t(autoApproveRules ? 'task.learns.willLearnAuto' : 'task.learns.willLearn')}
+              </p>
               <p className="foot">
-                <span>{t('task.learns.notYet')}</span>
+                <span>
+                  {t(autoApproveRules ? 'task.learns.notYetAuto' : 'task.learns.notYet')}
+                </span>
                 <Link href="/rules">{t('task.learns.openRulebook')}</Link>
               </p>
             </section>
