@@ -1,6 +1,6 @@
 import { hasContext, listContext } from '../../context/store';
 import { getDb, type Db } from '../../db';
-import { operatorLanguage } from '../../i18n';
+import { deskLanguage } from '../../i18n';
 import { getTask } from '../../tasks/store';
 import { cardsSource, translateCards } from '../../translation/cards';
 import { hasTranslation, saveTranslation, type TranslationKind } from '../../translation/store';
@@ -69,6 +69,24 @@ export function enqueueForTranslation(taskId: string, options: { db?: Db } = {})
   enqueueTranslateTask(taskId, { ...options, db });
 }
 
+/**
+ * Whether this task's cards are missing a rendering the desk could read.
+ *
+ * Two database reads and no model call, so that a screen can ask it on the way
+ * past. Cards only, and not the mail beside them, because the two halves store
+ * a no-op differently: a letter already in the reviewer's language stores
+ * nothing at all — `translateForReview` returns null and there is nothing to
+ * save — so "no row" means "nothing needed" as often as it means "not done",
+ * and a caller acting on that would queue a job per view forever. A card's
+ * no-op is a stored rendering identical to the card, which makes the absence of
+ * a row here mean exactly one thing.
+ */
+export function cardsAwaitingRendering(taskId: string, db: Db = getDb()): boolean {
+  const cards = listContext(taskId, db);
+  if (cards.length === 0) return false;
+  return !hasTranslation(taskId, 'context', cardsSource(cards), deskLanguage(), db);
+}
+
 export const translateTaskHandler: JobHandler = async (payload, context) => {
   const value = (payload ?? {}) as Record<string, unknown>;
   const taskId = typeof value.taskId === 'string' ? value.taskId.trim() : '';
@@ -118,7 +136,12 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
   // The cards, into the language the desk is read in rather than the one the
   // mail is read in. One call for all of them — see `translateCards` — so a
   // task with three sources costs one cheap request, not three.
-  const desk = operatorLanguage();
+  //
+  // `deskLanguage` rather than `operatorLanguage`, and the difference is the
+  // browser. There is no request here to read `Accept-Language` from, so the
+  // language the page will later *look this up* under has to be one a job can
+  // arrive at on its own; see the note on `deskLanguage`.
+  const desk = deskLanguage();
   const source = cardsSource(cards);
   if (cards.length > 0 && !hasTranslation(taskId, 'context', source, desk, context.db)) {
     try {
@@ -139,15 +162,26 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
     }
   }
 
-  if (failed.length > 0 && translated.length === 0) {
+  // Anything that failed fails the job, even where something else succeeded.
+  //
+  // The old condition — throw only when *nothing* got through — was reasoning
+  // about the wrong thing. What it protected was the work already done, and
+  // that work is already safe: each part is saved as it lands and every part
+  // starts with a `hasTranslation` check, so a retry re-does exactly what
+  // failed and nothing else. What the condition actually bought was silence.
+  // A translator that 500s on the cards after rendering the mail returned a
+  // job marked done, so nothing ever tried again and the reviewer's cards sat
+  // in the source's language for the life of the task, with the queue's own
+  // log saying the task had been translated.
+  if (failed.length > 0) {
     throw new Error(failed.join('; '));
   }
 
+  // No `failed` here: reaching this line means there was none.
   return {
     ...(language ? { language } : {}),
     ...(cards.length > 0 ? { deskLanguage: desk } : {}),
     translated,
     ...(sameLanguage.length > 0 ? { alreadyInLanguage: sameLanguage } : {}),
-    ...(failed.length > 0 ? { failed } : {}),
   };
 };

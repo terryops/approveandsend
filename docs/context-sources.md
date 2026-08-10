@@ -423,13 +423,22 @@ prompt exactly as your source wrote it; only the reviewer's copy is rendered.
 It costs one extra translator call per task with cards on it — one call for all
 of them, however many sources you run — and it is not paid twice: the rendering
 is stored against a hash of the card, so it is bought again only when a lookup
-comes back with something different. Values that are not words never leave the
-building: `200`, `100%` and `2026-05-10` are not sent to be translated, and the
-model is told to leave names, plan names, ids and language tags exactly as they
-are.
+comes back with something different. That includes the case where there is
+nothing to do: a card already in the desk's language comes back as a single
+`SAME`, and the identity rendering is stored so the question is asked once per
+task rather than once per draft. An English desk with English sources still pays
+that one call per email — see [Review language](review-language.md#what-it-costs).
+
+Values that are not words never leave the building: `200`, `100%` and
+`2026-05-10` are not sent to be translated, and the model is told to leave names,
+plan names, ids and language tags exactly as they are.
 
 If the rendering fails or comes back malformed, the card appears in its source's
-own words. Nothing is lost but the translation.
+own words and the job fails, so the queue retries it — what succeeded is on the
+row and is not paid for again. A card that is still unrendered when somebody
+opens the task queues itself then, which is what covers a lookup posted back
+after the job had already run, a language changed since, and a translator that
+was down at the wrong moment.
 
 ## Learning from the archive ignores all of this
 

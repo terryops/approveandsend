@@ -79,6 +79,35 @@ export function operatorLanguage(): string {
 }
 
 /**
+ * The same language, decided without asking the browser.
+ *
+ * `locale()` consults `Accept-Language` as a last resort, which is right for a
+ * screen — a fresh install should not greet a Chinese-speaking room in English
+ * — and wrong for anything *stored*, because the worker has no browser to ask.
+ * A rendering saved by a job under `English` and looked up by a page under
+ * `Simplified Chinese` is a rendering that can never be found and, because the
+ * job's own `hasTranslation` check finds it perfectly well, is never made
+ * again. That is not a stale card; it is a card that is invisible for good, on
+ * every install that has not picked a language yet.
+ *
+ * So anything that crosses between a request and a job asks this instead: the
+ * environment, then the workspace file, then English. Deterministic everywhere,
+ * which is the only property that matters for a lookup key.
+ *
+ * The cost is that a desk which has never chosen a language gets its cards in
+ * the words their source wrote them in, while the buttons around them follow the
+ * browser. That is the honest answer to a question nobody has answered — and it
+ * is what the wizard exists to end; `setInterfaceLanguage` re-queues the
+ * renderings the moment somebody does.
+ */
+export function deskLanguage(): string {
+  const fromEnv = process.env.AAS_LANGUAGE?.trim();
+  return LOCALE_NAMES[
+    (fromEnv ? normalise(fromEnv) : null) ?? normalise(getWorkspaceConfig().language) ?? 'en'
+  ];
+}
+
+/**
  * English is the source; every other locale must answer every key it does.
  *
  * Keys from `en`, values widened to `string` — `typeof en` alone would carry

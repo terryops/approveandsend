@@ -930,6 +930,46 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 31,
+    name: 'incoming-html',
+    up: db => {
+      // The letter as it was written, alongside the letter as a regex left it.
+      //
+      // `body` is the output of `htmlToText`, which exists to trim a thread down
+      // to something a model can read in a prompt: tags deleted, entities
+      // half-decoded, `<a href>` reduced to its anchor text with the address
+      // thrown away. That is the right shape for the drafter and it was also,
+      // because there was nothing else, the only thing a human ever saw of an
+      // email. A reviewer judging a reply about an invoice was reading the
+      // invoice table as a column of loose words with no figures beside them.
+      //
+      // So the original is kept as well. Not instead: `body` is still what every
+      // prompt is built from, what the search index reads, and what the review
+      // screen falls back to when a mail has no HTML part or its HTML is too
+      // large to be worth walking. Two columns rather than one column and a
+      // flag, because the two are read by different callers on every task and a
+      // conversion at read time would be `htmlToText` running inside the page.
+      //
+      // NULL means this row predates the column or arrived as plain text, and
+      // both of those render exactly as they did before. Nothing backfills:
+      // the HTML was never stored, so for mail already on the desk there is
+      // nothing to recover, and re-fetching every message from the mailbox to
+      // find out is a lot of provider traffic to improve the display of email
+      // somebody has already answered.
+      //
+      // `content_id` is the other half of rendering a letter. An HTML mail
+      // carries its pictures as attachments and points at them with `cid:`
+      // references, which are meaningless to a browser; the providers have been
+      // reporting the id since the interface was written and `addAttachment`
+      // dropped it on the floor, because until now nothing could have used it.
+      db.exec(`
+        ALTER TABLE tasks          ADD COLUMN body_html TEXT;
+        ALTER TABLE task_messages  ADD COLUMN body_html TEXT;
+        ALTER TABLE task_attachments ADD COLUMN content_id TEXT;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

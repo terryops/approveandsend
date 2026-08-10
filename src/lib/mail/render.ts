@@ -12,6 +12,7 @@
  * by the rest. Sending both parts costs nothing and lets each client pick.
  */
 
+import { escapeHtml, sanitise } from './sanitise';
 import { htmlToText } from '../thread-context';
 
 /**
@@ -38,18 +39,6 @@ export const REPLY_FORMATS: readonly ReplyFormat[] = ['markdown', 'text', 'html'
 /** Narrows whatever came off a form or out of the database. */
 export function isReplyFormat(value: unknown): value is ReplyFormat {
   return value === 'text' || value === 'markdown' || value === 'html';
-}
-
-const ESCAPES: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, char => ESCAPES[char] ?? char);
 }
 
 /**
@@ -401,186 +390,15 @@ export function replyHtml(text: string, format: ReplyFormat = 'markdown'): strin
  * `dangerouslySetInnerHTML` on the review screen and again on the confirmation
  * panel.
  *
- * The three regexes this replaces were a blacklist, and blacklists lose. All of
- * `<svg/onload=…>`, `<img/onerror=… src=x>` — no whitespace before the handler,
- * so the `\son` pattern never saw them — plus `&#106;avascript:`,
- * `java&Tab;script:` and `formaction="javascript:…"` walked straight through.
- * What replaces them names what may stay: unknown tag, tag goes; unknown
- * attribute, attribute goes; a URL that is not visibly `http`, `https`,
- * `mailto`, `tel` or `cid` from its first character, attribute goes. Nothing has
- * to be recognised as dangerous to be removed, which is the property the old one
- * lacked.
+ * The sanitiser itself lives in `sanitise.ts`, because the customer's own letter
+ * is now rendered through it too and two sanitisers written to the same
+ * intentions drift. The policy is the empty one: a reply preview may show a
+ * remote image, since whoever put it there is on this side of the desk, and its
+ * links are ones a reviewer approved.
  *
  * What is sent is still untouched by any of this — `replyHtml` is what goes on
  * the wire, and mail clients do their own sanitising. This is about the screen.
  */
-
-/**
- * Gone with everything inside them: none of these has content worth showing.
- *
- * Two patterns, because a closed pair and a stray tag are not the same thing.
- * There used to be one, ending in `(?:<\/\1\s*>|$)` — "or the rest of the
- * string" — and that `$` is a trapdoor: one inline `<svg …/>` icon, or a
- * `<style` nobody closed, deleted everything after it *from the preview only*.
- * `replyHtml` is what goes on the wire and it kept the lot, so the panel showed
- * a two-line mail and the send was five paragraphs. The one promise this screen
- * makes is that what is on it is what leaves, and that inverted it.
- *
- * A pair still loses its content — the inside of an `<svg>` is path data. A tag
- * with no partner loses only itself, and what followed stays: it is text with no
- * tag around it, which is the rule the allowlist below already applies to every
- * other unknown tag, and it keeps the reviewer reading the whole reply.
- */
-const REMOVED = 'script|style|iframe|object|embed|noscript|template|svg|math';
-/** The attribute run, so a quoted `>` inside the opening tag does not end it. */
-const ATTRS = String.raw`(?:"[^"]*"|'[^']*'|[^"'>])*`;
-const REMOVED_PAIR = new RegExp(String.raw`<(${REMOVED})\b${ATTRS}>[\s\S]*?<\/\1\s*>`, 'gi');
-const REMOVED_TAG = new RegExp(String.raw`<\/?(?:${REMOVED})\b${ATTRS}>`, 'gi');
-const COMMENTS = /<!--[\s\S]*?(?:-->|$)/g;
-/** A tag, with quoted attribute values allowed to contain `>`. */
-const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'>])*)>/g;
-const ATTR = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-
-/**
- * The tags a mail actually renders. Everything else loses its tag and keeps its
- * text — dropping the content too would hide part of a reply from the one person
- * whose job is to read all of it.
- */
-const ALLOWED_TAGS = new Set([
-  'p', 'br', 'hr', 'div', 'span', 'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'small',
-  'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'blockquote', 'pre', 'code',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'a', 'img',
-  'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
-]);
-
-/** And the attributes they may keep. Every `on*` handler fails this by not being in it. */
-const ALLOWED_ATTRS = new Set([
-  'href', 'src', 'alt', 'title', 'style', 'align', 'valign',
-  'width', 'height', 'colspan', 'rowspan', 'start', 'dir', 'lang',
-]);
-
-/**
- * `style` is the one attribute whose *contents* need the same treatment as the
- * attribute list itself, and it used to be the one place this file kept a
- * blacklist: three tokens — `expression(`, `url(`, `javascript:` — screening for
- * ways to run script.
- *
- * Script was never the interesting attack on this screen. `position:fixed;
- * top:0;left:0;width:100%;height:100%` runs nothing and walks through all three,
- * and what it does is paint an element of the model's choosing over the reply,
- * the risk banner and the Send button — on the one panel in the app whose entire
- * job is to be worth trusting, rendered from markup a stranger's email can
- * reach. A blacklist has to have heard of the trick; this does not.
- *
- * The attribute cannot simply be dropped: `replyHtml` writes the block gaps
- * inline — see `BLOCK_STYLE` — so a preview with no styles is a preview of a
- * differently spaced mail, which is the same divergence one file over. So it is
- * named the other way round, and the line is where the box *is* against how it
- * looks: colour, type, spacing, borders and wrapping stay; anything that takes
- * an element out of its place in the flow or decides its size is not on the list
- * and therefore goes — `position`, `top`, `z-index`, `width`, `transform`,
- * `opacity`, `display`, `float`, `overflow`, and whatever is invented next.
- */
-const ALLOWED_STYLES = new Set([
-  'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
-  'border-color', 'border-style', 'border-width', 'border-radius', 'border-collapse',
-  'color', 'background-color',
-  'font-family', 'font-size', 'font-style', 'font-weight', 'font-variant',
-  'line-height', 'letter-spacing', 'text-align', 'text-decoration', 'text-indent',
-  'text-transform', 'vertical-align', 'white-space', 'word-break', 'overflow-wrap',
-  'list-style-type',
-]);
-
-/**
- * And the shape a value may take, which is what keeps `url(…)` out without
- * naming it: no parentheses, so no function of any kind — not `url`, not
- * `expression`, not `calc`, not `attr`, not `var`. No colon either, so nothing
- * smuggles a second declaration past the split below.
- */
-const SAFE_STYLE_VALUE = /^[-#%.,\/!'"\s\w]+$/;
-
-/** The declarations that survive both, `;`-joined, or `''` if none do. */
-function declarations(value: string): string {
-  return value
-    .split(';')
-    .map(part => part.trim())
-    .filter(part => {
-      const colon = part.indexOf(':');
-      if (colon < 1) return false;
-      const property = part.slice(0, colon).trim().toLowerCase();
-      const setting = part.slice(colon + 1).trim();
-      return ALLOWED_STYLES.has(property) && setting !== '' && SAFE_STYLE_VALUE.test(setting);
-    })
-    .join(';');
-}
-
-/**
- * A URL this preview will follow, recognised rather than screened.
- *
- * Allowlisted from the first character, which is what makes the entity tricks
- * irrelevant: `&#106;avascript:` and `java&Tab;script:` are not rejected for
- * looking like `javascript:` — they are rejected for not looking like `https://`.
- * A decoder that misses one entity therefore costs a broken link, not a script.
- *
- * `&amp;` is decoded first because it is the one entity that belongs in a real
- * URL, and a query string of two parameters would otherwise fail the shape.
- */
-const SAFE_URL = /^(?:https?:\/\/|mailto:|tel:|cid:)[^\s"'<>`]*$/i;
-const SAFE_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]*$/i;
-
-function safeUrl(raw: string, isImage: boolean): string | null {
-  const value = raw.trim().replace(/&amp;/gi, '&');
-  if (SAFE_URL.test(value)) return value;
-  if (isImage && SAFE_IMAGE.test(value)) return value;
-  return null;
-}
-
-function attributes(source: string): string {
-  const kept: string[] = [];
-  for (const match of source.matchAll(ATTR)) {
-    const name = match[1]!.toLowerCase();
-    if (!ALLOWED_ATTRS.has(name)) continue;
-    const value = match[2] ?? match[3] ?? match[4] ?? '';
-
-    if (name === 'href' || name === 'src') {
-      const url = safeUrl(value, name === 'src');
-      if (url) kept.push(`${name}="${escapeHtml(url)}"`);
-      continue;
-    }
-    // Kept declaration by declaration rather than screened as a string — see
-    // `ALLOWED_STYLES` for why the string version was the wrong shape.
-    if (name === 'style') {
-      const style = declarations(value);
-      if (style) kept.push(`style="${escapeHtml(style)}"`);
-      continue;
-    }
-    kept.push(`${name}="${escapeHtml(value)}"`);
-  }
-  return kept.length ? ` ${kept.join(' ')}` : '';
-}
-
-function sanitise(html: string): string {
-  const stripped = html.replace(COMMENTS, '').replace(REMOVED_PAIR, '').replace(REMOVED_TAG, '');
-  let out = '';
-  let at = 0;
-
-  // Text between the tags keeps its entities — it has already been escaped by
-  // `replyHtml` on every format but `html` — and loses any bare `<`, which is
-  // either an unterminated tag or a character the browser would guess at.
-  for (const match of stripped.matchAll(TAG)) {
-    out += stripped.slice(at, match.index).replace(/</g, '&lt;');
-    at = match.index + match[0].length;
-
-    const name = match[2]!.toLowerCase();
-    if (!ALLOWED_TAGS.has(name)) continue;
-    out += match[1] ? `</${name}>` : `<${name}${attributes(match[3] ?? '')}>`;
-  }
-
-  return out + stripped.slice(at).replace(/</g, '&lt;');
-}
 
 export function previewHtml(text: string, format: ReplyFormat = 'markdown'): string {
   return sanitise(replyHtml(text, format));

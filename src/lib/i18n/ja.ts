@@ -94,6 +94,7 @@ export const ja: Dictionary = {
   "task.status.dismissed": "見送り",
   "task.status.failed": "失敗",
   "task.emptyBody": "（本文なし）",
+  "task.remoteImages": "リモート画像 {n} 件を読み込んでいません。読み込むと開封したことが送信者に伝わります。",
   "task.attachments": "添付ファイル",
   "task.superseded": "このメールは同じ人からの後続メールに取って代わられました。",
   "task.supersededOpen": "新しい方を開く →",

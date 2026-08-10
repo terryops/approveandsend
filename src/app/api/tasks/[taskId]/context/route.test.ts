@@ -7,6 +7,8 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined })
 
 import { listContext } from '@/lib/context/store';
 import { openDb, setDb, type Db } from '@/lib/db';
+import { TRANSLATE_TASK } from '@/lib/queue/handlers';
+import { listJobs } from '@/lib/queue/store';
 import { createTask } from '@/lib/tasks/store';
 
 import { POST } from './route';
@@ -78,6 +80,27 @@ describe('POST /api/tasks/[taskId]/context', () => {
     // hardcoded default. This one goes through the same timing-safe check as
     // every other machine endpoint.
     expect((await post(taskId, BLOCK, 'nearly-the-right-token')).status).toBe(401);
+  });
+
+  it('queues the card to be rendered in the language the desk reads', async () => {
+    await post(taskId, BLOCK);
+
+    // The card this endpoint delivers is by definition a late one — the whole
+    // reason it exists is lookups that cannot finish while a mail is waiting.
+    // The task's translation job has therefore already run, against a set of
+    // cards this one is not in, and nothing else was ever going to ask again:
+    // the card appeared on an otherwise translated screen in whatever language
+    // the scraper happened to write it in, permanently.
+    expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
+  });
+
+  it('queues one job for three lookups landing together', async () => {
+    await post(taskId, BLOCK);
+    await post(taskId, { ...BLOCK, sourceId: 'billing' });
+    await post(taskId, { ...BLOCK, sourceId: 'subeasy' });
+
+    // Deduped by task, because the job reads every card on it.
+    expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
   });
 
   it('replaces the previous answer from the same source rather than stacking', async () => {

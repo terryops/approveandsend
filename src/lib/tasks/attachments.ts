@@ -18,6 +18,13 @@ export interface TaskAttachment {
   contentType: string;
   size: number;
   inline: boolean;
+  /**
+   * The Content-ID the HTML body points at it by, when it has one.
+   *
+   * Dropped on the floor until the letter could be rendered, which is the only
+   * reader a `cid:` reference has ever had — see `letterHtml`.
+   */
+  contentId: string | null;
   createdAt: string;
 }
 
@@ -28,6 +35,7 @@ export interface NewTaskAttachment {
   contentType?: string;
   size?: number;
   inline?: boolean;
+  contentId?: string | undefined;
 }
 
 interface Row {
@@ -39,6 +47,7 @@ interface Row {
   content_type: string;
   size: number;
   inline: number;
+  content_id: string | null;
   created_at: string;
 }
 
@@ -52,6 +61,7 @@ function map(row: Row): TaskAttachment {
     contentType: row.content_type,
     size: row.size,
     inline: row.inline === 1,
+    contentId: row.content_id,
     createdAt: row.created_at,
   };
 }
@@ -76,6 +86,7 @@ export function addAttachment(
     contentType: input.contentType || 'application/octet-stream',
     size: input.size ?? 0,
     inline: input.inline ? 1 : 0,
+    contentId: input.contentId || null,
   };
 
   const existing = db
@@ -90,7 +101,7 @@ export function addAttachment(
       .prepare(
         `UPDATE task_attachments
             SET filename = :filename, content_type = :contentType,
-                size = :size, inline = :inline
+                size = :size, inline = :inline, content_id = :contentId
           WHERE id = :id RETURNING *`,
       )
       .get({ ...values, id: existing.id }) as Row;
@@ -100,9 +111,9 @@ export function addAttachment(
   const row = db
     .prepare(
       `INSERT INTO task_attachments (id, task_id, message_id, attachment_id, filename,
-                                     content_type, size, inline, created_at)
+                                     content_type, size, inline, content_id, created_at)
        VALUES (:id, :task, :message, :attachment, :filename, :contentType, :size,
-               :inline, :createdAt) RETURNING *`,
+               :inline, :contentId, :createdAt) RETURNING *`,
     )
     .get({ ...values, id: randomUUID(), createdAt: new Date().toISOString() }) as Row;
 

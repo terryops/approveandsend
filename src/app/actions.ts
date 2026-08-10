@@ -16,6 +16,7 @@ import {
   updateCatalogItem,
 } from '@/lib/catalog/store';
 import { syncCatalogFromStripe } from '@/lib/catalog/sync';
+import { taskIdsWithContext } from '@/lib/context/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setThemeCookie, type Theme } from '@/lib/desk/theme';
 import { setSessionCookie } from '@/lib/auth/cookie';
@@ -39,6 +40,7 @@ import { syncInbox } from '@/lib/ingest/sync';
 import { readUploads } from '@/lib/mail/uploads';
 import {
   DEFAULT_HANDLERS,
+  cardsAwaitingRendering,
   createWorker,
   enqueueBackfillScan,
   enqueueCompose,
@@ -200,27 +202,38 @@ function formatFrom(form: FormData): { replyFormat: ReplyFormat } | Record<strin
 /**
  * Back to the reply, rather than back to the top of the page.
  *
- * Every control on the review screen is a submit button that ends in a
- * `redirect()` to this same route, and a redirect is a navigation: the browser
- * lands at the top of the document. On a task with a thread and three context
- * cards, pressing an option tab therefore scrolled the option tabs off the
- * screen — the answer to "what did that do" was somewhere below the fold, and
- * getting back to the control you had just used was a scroll every time. It
- * reads as the page reloading rather than as a tab switching, which is the one
- * thing a row of tabs must never look like.
+ * A redirect is a navigation, so a tab press that ends in one lands the browser
+ * at the top of the document — on a task with a thread and three context cards,
+ * that scrolls the tabs you just pressed off the screen. A fragment fixes it in
+ * both of the directions this still takes: Next's router scrolls to the hash on
+ * the URL it navigates to, and a browser with no JavaScript does the same with
+ * the `Location` it is handed. `id="reply"` on the task page is what it points
+ * at.
  *
- * A fragment rather than a script, because it is the only fix that holds in
- * both directions: Next's router scrolls to the hash on the URL it navigates
- * to, and a browser with no JavaScript posting the same form does the same
- * thing with the `Location` it is handed. See `id="reply"` on the task page for
- * what it points at, and why it is the strip rather than the box.
- *
- * Not on every action here. The ones that redirect to the top still do, and
- * deliberately: a refusal, an error or a dismissal is a sentence about the
- * whole task, and the top of the page is where it is read.
+ * Not on every action here. A refusal, an error or a dismissal is a sentence
+ * about the whole task, and the top of the page is where that is read.
  */
 function replyHref(id: string, query = ''): string {
   return `/tasks/${id}${query}#reply`;
+}
+
+/**
+ * A banner on screen that this press has just made untrue.
+ *
+ * The two switches below answer the router without navigating, which is the
+ * point of them — but the URL is where this screen keeps its one-shot messages,
+ * and a URL that never moves is a message that never clears. An attachment
+ * rejected as too large redirects to `?error=…`; press a format tab afterwards
+ * and the tab works, the page re-renders, and the reviewer is still being told
+ * their file was refused, with nothing on the page able to take it back.
+ *
+ * So the form says whether it is carrying one, and a press that is carrying one
+ * navigates after all — once, to a clean URL, at the cost of the round trip
+ * this otherwise saves. `saved` and `queued` are not in the list on the page:
+ * pressing a tab does save, so those stay true and buy nothing by moving.
+ */
+function clearsNotice(form: FormData): boolean {
+  return field(form, 'notice') !== '';
 }
 
 /**
@@ -302,7 +315,14 @@ export async function saveDraft(form: FormData): Promise<void> {
   //
   // Skipped when only the notes changed: the same words do not need rendering
   // twice, and saving is what people do while thinking.
-  if (draft.trim() !== (before?.draft ?? '').trim()) {
+  //
+  // Both sides in one spelling first, exactly as `keepEdits` does it. `draft`
+  // came through `field`, which normalises what a textarea submits; the row did
+  // not, and on any task last written before that fix it still holds CRLF. Two
+  // invisible bytes were enough to make Save on an untouched reply log an
+  // "edited" nobody did, write a duplicate version, and queue a re-translation
+  // of the same words.
+  if (draft.trim() !== newlines(before?.draft ?? '').trim()) {
     enqueueForTranslation(id);
     // Only a real change to the text. Saving is what people do while
     // thinking, and a history of six identical "edited" lines says less than
@@ -335,10 +355,23 @@ export async function saveDraft(form: FormData): Promise<void> {
  * `markOpened` writes only where the column is still null, so the duplicate this
  * gets on a hard load — where the page has already marked it server-side, for
  * the sake of browsers with no scripting — costs a statement and no write.
+ *
+ * It also queues the cards, and this is the right place for that precisely
+ * because of everything above: it fires when a *person* opens a task, and not
+ * when the pointer crosses its row. A card rendering can go missing for reasons
+ * no writer of the card knows about — the desk changed language, a callback
+ * added a source after the job had run, a translator was down for an hour — and
+ * every one of them leaves a screen that would have been rendered and was not.
+ * Asked before it is queued, so this stays two reads on a path that is supposed
+ * to cost nothing: the answer on a task whose cards are already rendered — every
+ * task, nearly always — is no job and no work. What it buys is that no task can
+ * be stuck untranslated for good, whatever put it there. The card is still in
+ * the source's words on this view, and right on the next one.
  */
 export async function noteOpened(taskId: string): Promise<void> {
   await requireApi();
   markOpened(taskId);
+  if (cardsAwaitingRendering(taskId)) enqueueForTranslation(taskId);
 }
 
 /**
@@ -932,8 +965,9 @@ export async function setReplyFormat(format: ReplyFormat, form: FormData): Promi
   // whole answer: the page comes back patched in place, at the scroll position
   // and with the disclosure still open. Only a form post with no script behind
   // it needs sending anywhere, and then straight back to the tabs it pressed —
-  // see `routerDriven` and `replyHref`.
-  if (!(await routerDriven())) redirect(replyHref(id, '?saved=1'));
+  // see `routerDriven` and `replyHref`. The exception is a stale banner, which
+  // lives in the URL and can only be cleared by moving it; see `clearsNotice`.
+  if (!(await routerDriven()) || clearsNotice(form)) redirect(replyHref(id, '?saved=1'));
 }
 
 /**
@@ -1023,6 +1057,23 @@ export async function setInterfaceLanguage(language: Locale, form: FormData): Pr
   await requireApi();
   const result = saveWorkspaceConfig({ language });
 
+  // Every context card on the desk was rendered into the language that was
+  // current a moment ago, and a rendering is looked up by the language it is
+  // for — so as of this line the whole backlog reads in whatever words its
+  // source wrote, and nothing was going to change that. The job that made them
+  // is queued once per email, and those emails have already been through it.
+  //
+  // After the write, so the jobs are queued for the language that was actually
+  // saved rather than the one this action was asked for. Only the tasks still
+  // on the desk; see `taskIdsWithContext` for what happens to the archive, and
+  // note that switching back is free — a rendering for a language is still
+  // there when that language comes round again.
+  if (result.saved) {
+    after(() => {
+      for (const taskId of taskIdsWithContext()) enqueueForTranslation(taskId);
+    });
+  }
+
   revalidatePath('/', 'layout');
   if (!result.saved) {
     redirect(stepHref('voice', `unwritable=${encodeURIComponent(result.error ?? 'unknown')}`));
@@ -1052,8 +1103,9 @@ export async function useAlternative(alternativeId: string, form: FormData): Pro
   // press that most needs to cost nothing: with the router listening the page is
   // patched where it stands and the tab that was clicked is still under the
   // cursor, because nothing navigated. A form post with no script still gets
-  // sent back to the strip — see `routerDriven` and `replyHref`.
-  if (!(await routerDriven())) redirect(replyHref(id, '?saved=1'));
+  // sent back to the strip, and so does the first press under a stale banner —
+  // see `routerDriven`, `clearsNotice` and `replyHref`.
+  if (!(await routerDriven()) || clearsNotice(form)) redirect(replyHref(id, '?saved=1'));
 }
 
 /**

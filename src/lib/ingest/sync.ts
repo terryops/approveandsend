@@ -6,7 +6,7 @@ import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { addAttachment } from '../tasks/attachments';
 import { addMessage } from '../tasks/messages';
 import { createTask, supersedeThread, updateTask } from '../tasks/store';
-import { htmlToText, trimEmailBody } from '../thread-context';
+import { trimEmailBody } from '../thread-context';
 import { answeredMessageIds } from './answered';
 import { junkVerdict } from './junk';
 
@@ -77,16 +77,47 @@ export interface SyncResult {
   failures: { messageId: string; error: string }[];
 }
 
+/**
+ * How much of a letter's own markup is worth keeping.
+ *
+ * Mail HTML is not written by hand and is not sized like prose: a two-sentence
+ * reply from a phone arrives as forty kilobytes of nested tables, and a thread
+ * quoted ten deep multiplies that. The largest real one this desk has seen was
+ * 193 KB inside a 1.4 MB thread — see `thread-context.ts`, which exists because
+ * of it. Half a megabyte clears every letter anybody actually writes and stops
+ * a mail bomb from becoming a row that has to be walked on every page render.
+ *
+ * Past the cap nothing is stored and the reviewer reads the text, which is what
+ * every letter looked like before this column existed.
+ */
+const MAX_HTML_BYTES = 512_000;
+
+function htmlOf(detail: { html?: string | undefined }): string | null {
+  const html = detail.html?.trim();
+  if (!html || html.length > MAX_HTML_BYTES) return null;
+  return html;
+}
+
+/**
+ * The letter as text, for the drafter, the search index and the fallback.
+ *
+ * `trimEmailBody` already runs `htmlToText`, and this used to hand it text that
+ * had been through `htmlToText` once already. Twice is not idempotent: the
+ * second pass decodes the entities the first one produced, so a customer who
+ * wrote `&amp;lt;` — the way you quote a literal `&lt;` — had it read as a tag
+ * and deleted, and any `<` that survived the first pass took the rest of its
+ * line with it. Once, now.
+ */
 function bodyOf(detail: { text?: string | undefined; html?: string | undefined }): string {
   const text = detail.text?.trim();
   if (text) return trimEmailBody(text);
-  return detail.html ? trimEmailBody(htmlToText(detail.html)) : '';
+  return detail.html ? trimEmailBody(detail.html) : '';
 }
 
 function detailBody(detail: MailMessageDetail): string {
   const text = detail.text?.trim();
   if (text) return trimEmailBody(text);
-  return detail.html ? trimEmailBody(htmlToText(detail.html)) : (detail.snippet ?? '');
+  return detail.html ? trimEmailBody(detail.html) : (detail.snippet ?? '');
 }
 
 /**
@@ -112,6 +143,7 @@ function captureAttachments(
           contentType: attachment.contentType,
           size: attachment.size,
           inline: attachment.inline,
+          contentId: attachment.contentId,
         },
         db,
       );
@@ -160,6 +192,7 @@ async function captureThread(
         ...(item.from?.name ? { fromName: item.from.name } : {}),
         subject: item.subject ?? '',
         body: detailBody(item),
+        bodyHtml: htmlOf(item),
         receivedAt: item.receivedAt,
       },
       db,
@@ -223,7 +256,7 @@ async function ingest(
   // skips dismissed tasks — never spends the call.
   if (message.threadId) supersedeThread(message.threadId, task.id, db);
 
-  updateTask(task.id, { body: bodyOf(detail) }, db);
+  updateTask(task.id, { body: bodyOf(detail), bodyHtml: htmlOf(detail) }, db);
   captureAttachments(task.id, detail, db);
 
   // Before drafting is queued, not after: the drafting job reads the thread,

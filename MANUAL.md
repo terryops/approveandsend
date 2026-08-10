@@ -246,12 +246,38 @@ tells the model "we have replied to them 3 times before"; this is for the
 reviewer who has read that and now needs to know *what we said*, which is usually
 the moment before they catch a reply about to contradict one.
 
+**The letter as it was written.** A mail with an HTML part is rendered as one:
+its tables, its lists, its bold, and its links with the addresses still on them.
+Before this the desk stored only a flattened transcript — the same one the model
+reads — so an invoice arrived as a column of loose words and "click here" arrived
+with nowhere to click. The markup is rebuilt from an allowlist before it reaches
+the page: known tags, known attributes, known style properties, and nothing that
+could take an element out of its place in the flow. Plain-text mail, and anything
+whose HTML is bigger than half a megabyte, reads exactly as it always did.
+
+**Remote images load, but the desk fetches them.** A picture pulled straight
+from a stranger's server is a read receipt: it tells them the address is live,
+that a person opened the mail, when, from which IP and in which browser. So the
+server retrieves it once and serves it to you from your own origin — what the
+sender learns is that something fetched an image, with no referrer and no
+fingerprint, which is the version every serious mail client has shipped for a
+decade. `MAIL_REMOTE_IMAGES=false` turns it off; then nothing is fetched and the
+letter says how many pictures it asked for.
+
+The proxy only fetches addresses that came out of a letter this desk rendered —
+they are signed — and it refuses private ones. `<img src="http://169.254.169.254/">`
+in an email is a request that the desk read its own cloud credentials aloud, and
+the name is resolved before the check so that `internal.example.com` cannot point
+at 10.0.0.1 and be believed.
+
 **Screenshots, shown.** "Here is what I'm seeing" is a whole genre of support
-email and it arrives as an inline image. Pictures are rendered on the page — PNG,
-JPEG, GIF and WebP, the formats that decode to pixels and nothing else.
-Everything else, SVG very much included, stays a download: an SVG is a document
-that can carry script, and displaying one a stranger sent inside your own origin
-hands them the reviewer's session.
+email and it arrives as an inline image. Those are not remote — they come
+attached to the mail, in your own mailbox — so they render where the sender put
+them in the letter, as well as in the row of thumbnails under it. PNG, JPEG, GIF
+and WebP, the formats that decode to pixels and nothing else. Everything else,
+SVG very much included, stays a download: an SVG is a document that can carry
+script, and displaying one a stranger sent inside your own origin hands them the
+reviewer's session.
 
 **A file picker**, in the same form as the draft and the Send button, so what
 goes out is what is on screen. Nothing is stored on our side — the Sent folder is
@@ -568,7 +594,9 @@ screen. [docs/review-language.md](docs/review-language.md).
 The context cards above the draft are rendered too, and into the *interface*
 language rather than this one — a card is furniture on that screen, not mail, so
 a desk that reads its own post still gets its lookups in its own words. What the
-model was told stays in the words the source wrote it in.
+model was told stays in the words the source wrote it in. Changing the interface
+language re-renders them; a desk that has never picked one gets its cards as
+their sources wrote them, because a job has no browser to ask.
 
 ## Three languages, and they are all different
 

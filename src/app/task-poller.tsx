@@ -22,6 +22,7 @@ import { useEffect } from 'react';
 export function TaskPoller({
   intervalMs = 2000,
   slowTo,
+  restartOn,
 }: {
   intervalMs?: number;
   /**
@@ -44,6 +45,22 @@ export function TaskPoller({
    * cadence and would slow down with it.
    */
   slowTo?: number;
+  /**
+   * What the wait is about, so that the backoff can tell it moved.
+   *
+   * `slowTo` on its own only ever gets slower, which is wrong the moment
+   * something happens: a task that sat at `pending` for eight minutes because
+   * nothing was turning the queue is at a minute between refreshes by the time
+   * the cron finally fires, so the three states it then moves through in twenty
+   * seconds arrive on a screen that has stopped looking. The reviewer waits out
+   * a full minute for a draft that has already been written.
+   *
+   * Passing the thing being waited on — the status, normally — puts that right
+   * for free: it is in the effect's dependencies, so a change tears the chain
+   * down and starts a new one at the original interval. Patience is spent on
+   * silence and refunded by news.
+   */
+  restartOn?: string;
 }) {
   const router = useRouter();
 
@@ -64,7 +81,7 @@ export function TaskPoller({
 
     timer = setTimeout(tick, wait);
     return () => clearTimeout(timer);
-  }, [router, intervalMs, slowTo]);
+  }, [router, intervalMs, slowTo, restartOn]);
 
   return null;
 }

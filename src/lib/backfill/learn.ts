@@ -5,7 +5,7 @@ import { mailProvider } from '../mail/config';
 import type { MailMessageDetail, MailProvider } from '../mail/types';
 import { learnFromSentReply, type LearningOutcome } from '../rules/learn';
 import type { Task } from '../tasks/types';
-import { htmlToText, trimEmailBody } from '../thread-context';
+import { trimEmailBody } from '../thread-context';
 import { getBackfillItem, updateBackfillItem } from './store';
 import type { BackfillItem } from './types';
 
@@ -42,7 +42,10 @@ const MAX_BODY_CHARS = 12_000;
 function bodyOf(detail: MailMessageDetail): string {
   const text = detail.text?.trim();
   if (text) return trimEmailBody(text);
-  return detail.html ? trimEmailBody(htmlToText(detail.html)) : '';
+  // Once, not twice. `trimEmailBody` runs `htmlToText` itself, and a second
+  // pass decodes the entities the first one produced — see `bodyOf` in
+  // `ingest/sync.ts`, which had the same line and the same bug.
+  return detail.html ? trimEmailBody(detail.html) : '';
 }
 
 /**
@@ -75,6 +78,10 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     fromName: incoming.from.name ?? null,
     receivedAt: incoming.receivedAt,
     body,
+    // Null, and not because it is unknown. Nothing downstream of a synthetic
+    // task renders anything: this row exists to be read by the drafter, which
+    // reads `body`, and it is never stored and never put on a screen.
+    bodyHtml: null,
     analysis: null,
     draft: null,
     finalReply: null,

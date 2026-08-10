@@ -69,12 +69,14 @@ export function Opening() {
  * pointer to read intent from, so waiting for one would mean never prefetching
  * the rows that most need it.
  *
- * Without it, nothing is fetched until the pointer arrives, and then the whole
- * page is. That is the documented answer for a long list, and it costs almost
- * nothing while buying almost everything: the distance from noticing a row to
- * clicking it is a few hundred milliseconds of hand movement, and the render it
- * is racing is a read of a local file. Focus counts as intent too, so tabbing
- * through the inbox warms the same rows a mouse would.
+ * Without it, nothing is fetched until the pointer has *stayed* — see the pause
+ * below, which is the difference between a row somebody is looking at and the
+ * thirty-nine they crossed to get there. That is the documented answer for a
+ * long list, and it costs almost nothing while buying almost everything: the
+ * distance from noticing a row to clicking it is a few hundred milliseconds of
+ * hand movement, and the render it is racing is a read of a local file. Focus
+ * counts as intent too, so tabbing through the inbox warms the same rows a mouse
+ * would.
  *
  * What a warm click cannot fix is a screen that has moved on since it was
  * fetched. Every mutation in `actions.ts` calls `revalidatePath`, which drops
@@ -99,10 +101,39 @@ export function TaskLink({
   eager?: boolean;
   children: ReactNode;
 }) {
-  // Armed by the pointer, and never disarmed: a row you have hovered once is a
-  // row you may come back to, and the fetch has already been paid for.
+  // Armed by the pointer, and never disarmed once armed: a row you have hovered
+  // deliberately is a row you may come back to, and the fetch has already been
+  // paid for.
   const [wanted, setWanted] = useState(false);
-  const warm = () => setWanted(true);
+  const intent = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hovering is not the same as meaning to. The pointer cannot reach row 40 of
+  // the inbox without entering the thirty-nine rows above it, and each of those
+  // is a full render of a review screen on the server — eight queries against
+  // SQLite for a page nobody is going to open. A pause is what separates the two
+  // and it is the only signal available: 120ms is below the threshold at which a
+  // wait is felt, and far above the few milliseconds a row crossed on the way
+  // somewhere else is under the cursor.
+  const warm = () => {
+    if (wanted || intent.current) return;
+    intent.current = setTimeout(() => setWanted(true), 120);
+  };
+
+  // Focus and touch are already intent — a keyboard has no way to pass over a
+  // row, and a finger that has landed on one is not on its way past.
+  const warmNow = () => {
+    cool();
+    setWanted(true);
+  };
+
+  const cool = () => {
+    if (intent.current) clearTimeout(intent.current);
+    intent.current = null;
+  };
+
+  // A row unmounted mid-pause — the inbox refreshing under the pointer, a
+  // filter changing — must not come back to set state on nothing.
+  useEffect(() => cool, []);
 
   return (
     <Link
@@ -111,8 +142,9 @@ export function TaskLink({
       prefetch={eager || wanted}
       aria-current={current ? 'page' : undefined}
       onMouseEnter={warm}
-      onFocus={warm}
-      onTouchStart={warm}
+      onMouseLeave={cool}
+      onFocus={warmNow}
+      onTouchStart={warmNow}
     >
       {/* Every one of these gets the bar, because a warm click is not a
           guaranteed one: the entry may have expired, or the pointer may have

@@ -112,6 +112,7 @@ export const en = {
   "task.status.dismissed": "dismissed",
   "task.status.failed": "failed",
   "task.emptyBody": "(empty body)",
+  "task.remoteImages": "{n} remote images were not loaded. Fetching one tells the sender you opened this.",
   "task.attachments": "Attachments",
   "task.superseded": "This message was overtaken by a later one from the same person.",
   "task.supersededOpen": "Open the newer one →",

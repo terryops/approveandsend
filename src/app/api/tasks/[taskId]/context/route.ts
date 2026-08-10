@@ -2,6 +2,7 @@ import { requireMachine } from '@/lib/auth/guard';
 import { getDb } from '@/lib/db';
 import { saveContext } from '@/lib/context/store';
 import { coerceBlock } from '@/lib/context/types';
+import { enqueueForTranslation } from '@/lib/queue/handlers';
 import { getTask } from '@/lib/tasks/store';
 
 export const dynamic = 'force-dynamic';
@@ -75,6 +76,15 @@ export async function POST(
 
   const label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : block.title;
   saveContext(taskId, sourceId, label, block, db);
+
+  // A card that arrives after the translation job has already run, which is the
+  // only kind this endpoint delivers — the whole reason it exists is lookups
+  // that finish too late for `enrich-context`. By then the task's rendering was
+  // made from a set of cards this one is not in, so it no longer matches and
+  // nothing was going to make another: the card showed up on a translated
+  // screen in whatever language the scraper wrote it in, permanently. Deduped
+  // by task, so three callbacks landing together are one job.
+  enqueueForTranslation(taskId, { db });
 
   return Response.json({ stored: sourceId });
 }

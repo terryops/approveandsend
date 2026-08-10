@@ -94,6 +94,7 @@ export const de: Dictionary = {
   "task.status.dismissed": "verworfen",
   "task.status.failed": "fehlgeschlagen",
   "task.emptyBody": "(kein Text)",
+  "task.remoteImages": "{n} externe Bilder wurden nicht geladen. Sie zu laden würde dem Absender verraten, dass Sie die Mail geöffnet haben.",
   "task.attachments": "Anhänge",
   "task.superseded": "Diese Nachricht wurde von einer späteren derselben Person überholt.",
   "task.supersededOpen": "Die neuere öffnen →",

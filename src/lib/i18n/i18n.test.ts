@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetWorkspaceConfig } from '../config/workspace';
-import { LOCALES, isLocale, locale, t, type Dictionary, type Locale } from './index';
+import {
+  LOCALES,
+  deskLanguage,
+  isLocale,
+  locale,
+  operatorLanguage,
+  t,
+  type Dictionary,
+  type Locale,
+} from './index';
 import { de } from './de';
 import { en } from './en';
 import { es } from './es';
@@ -65,6 +74,27 @@ describe('choosing a language', () => {
   it('falls back to English rather than failing on a language it does not have', () => {
     speak('sv');
     expect(locale()).toBe('en');
+  });
+
+  it('names the language for a model, and names it the same way in a job', () => {
+    speak('zh-CN');
+    // The name a prompt uses, rather than the name the language calls itself:
+    // "write in 简体中文" is an instruction half in the answer.
+    expect(operatorLanguage()).toBe('Simplified Chinese');
+    // And the settled one, which has to agree wherever it is asked. A card
+    // rendering is stored by a worker under this name and looked up by a page
+    // under it; two answers to the same question is a row that can never be
+    // found and, because the job's own check finds it perfectly well, is never
+    // made again.
+    expect(deskLanguage()).toBe(operatorLanguage());
+  });
+
+  it('settles on English for a job when nobody has chosen a language', () => {
+    speak(undefined);
+    // `locale()` would ask the browser at this point, which is right for a
+    // screen and impossible for a worker — there is no request to ask. So this
+    // stops one step earlier, and stops in the same place every time.
+    expect(deskLanguage()).toBe('English');
   });
 
   it('knows which tags it can honour', () => {

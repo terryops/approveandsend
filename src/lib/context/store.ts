@@ -101,6 +101,35 @@ export function hasContext(taskId: string, db: Db = getDb()): boolean {
   return db.prepare('SELECT 1 FROM task_context WHERE task_id = ? LIMIT 1').get(taskId) !== undefined;
 }
 
+/**
+ * The tasks still on the desk that have cards on them.
+ *
+ * Asked by `setInterfaceLanguage`, which invalidates every stored rendering at
+ * once: a card is looked up in the language of the screen, and the screen just
+ * changed language. Without this the whole backlog stayed in the source's words
+ * for good, healing one task at a time and only for the ones somebody happened
+ * to edit afterwards — which is to say, not the ones they were reading.
+ *
+ * Deliberately not every task that ever had a card. Sent and dismissed mail is
+ * an archive: it is opened rarely, one at a time, and re-rendering all of it on
+ * a language switch would buy a model call per archived task to answer a
+ * question nobody has asked. Those are rendered when somebody opens one — see
+ * `noteOpened` — which is the same trade `enqueueForTranslation` makes about
+ * mail, and bounded by what is actually read.
+ */
+export function taskIdsWithContext(db: Db = getDb()): string[] {
+  const rows = db
+    .prepare(
+      `SELECT c.task_id FROM task_context c
+         JOIN tasks t ON t.id = c.task_id
+        WHERE t.status NOT IN ('sent', 'dismissed')
+        GROUP BY c.task_id
+        ORDER BY MAX(c.created_at) DESC`,
+    )
+    .all() as { task_id: string }[];
+  return rows.map(row => row.task_id);
+}
+
 export function clearContext(taskId: string, db: Db = getDb()): number {
   return db.prepare('DELETE FROM task_context WHERE task_id = ?').run(taskId).changes;
 }

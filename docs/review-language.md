@@ -44,6 +44,15 @@ somewhere else, and a desk that reads its own mail unaided still wants its own
 furniture in its own words. So a desk with no `reviewLanguage` and a billing
 lookup does queue the job, for the cards alone.
 
+Which language that is comes from `language` in the workspace file, or
+`AAS_LANGUAGE` — settings, and never the browser's `Accept-Language`. The job
+that renders a card has no browser to ask, so a rendering made under one name
+and looked up under another is a card that stays English on a Chinese screen for
+good. An install that has never picked a language therefore gets its cards as
+their sources wrote them; picking one in the header renders them, and re-renders
+them for every task still on the desk. Mail that has already been sent is
+rendered when somebody opens it.
+
 What the model was told is untouched — see
 [Context sources](context-sources.md#in-the-language-the-desk-is-read-in).
 
@@ -60,6 +69,16 @@ AI_MODEL_TRANSLATOR=gpt-5.6-luna
 ```
 
 A message already in your review language costs one call and stores nothing.
+
+Cards are the case worth reading twice, because it applies to installs that
+thought they had this feature switched off: **an all-English desk with a context
+source pays one translator call per email**, to be told its English cards are
+already English. There is no way to know that without asking — the same argument
+that stops this guessing at the language of a letter — but the answer is a single
+`SAME` for the whole card rather than every label echoed back, and it is stored,
+so a task is asked about once and never again. If you run context sources on an
+English desk and want none of this, point `AI_MODEL_TRANSLATOR` at your cheapest
+model.
 
 ## A stale translation is worse than none
 

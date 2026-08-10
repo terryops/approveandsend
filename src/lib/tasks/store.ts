@@ -20,6 +20,7 @@ interface TaskRow {
   from_name: string | null;
   received_at: string | null;
   body: string;
+  body_html: string | null;
   analysis: string | null;
   draft: string | null;
   reply_subject: string | null;
@@ -113,6 +114,7 @@ function mapTask(row: TaskRow): Task {
     fromName: row.from_name,
     receivedAt: row.received_at,
     body: row.body,
+    bodyHtml: row.body_html,
     analysis: parseAnalysis(row.analysis),
     draft: row.draft,
     replySubject: row.reply_subject,
@@ -158,9 +160,9 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
   const row = db
     .prepare(
       `INSERT INTO tasks (id, status, origin, priority, message_id, thread_id, message_id_header,
-                          subject, from_address, from_name, received_at, body,
+                          subject, from_address, from_name, received_at, body, body_html,
                           created_at, updated_at)
-       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .get(
@@ -175,6 +177,7 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
       input.fromName ?? null,
       input.receivedAt ?? null,
       input.body ?? '',
+      input.bodyHtml || null,
       now,
       now,
     ) as TaskRow;
@@ -407,6 +410,8 @@ export interface TaskUpdate {
   /** Ingestion writes the summary first and fills the real body in after the
    * detail fetch, so this is updatable even though nothing else rewrites it. */
   body?: string;
+  /** The same fetch, and the same reason. Null for a mail with no HTML part. */
+  bodyHtml?: string | null;
   /** Only a composed mail rewrites this, and only where nobody typed one. */
   subject?: string;
   analysis?: Analysis | null;
@@ -430,6 +435,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   scope: 'scope',
   priority: 'priority',
   body: 'body',
+  bodyHtml: 'body_html',
   subject: 'subject',
   analysis: 'analysis',
   draft: 'draft',

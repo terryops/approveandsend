@@ -1,6 +1,7 @@
 import { callAI } from '../ai';
 import type { ContextField } from '../context/types';
 import { extractJson } from '../json-repair';
+import { ALREADY, preservationRules } from './translate';
 
 /**
  * The context cards, in the language the desk reads.
@@ -81,18 +82,18 @@ function prompt(texts: string[], language: string): string {
     'sent to anyone.',
     '',
     'Rules:',
-    '- Reply with the same number of strings, in the same order. One in, one out.',
+    // The whole-batch answer, and on an English desk with English sources it is
+    // the only answer there ever is. Without it the cheapest possible outcome
+    // was still every string echoed back a token at a time — a card's worth of
+    // output bought per email to learn that nothing needed doing. See the note
+    // on `translateCards`.
+    `- If every string below is already written in ${language}, ignore the format`,
+    `  and reply with exactly: ${ALREADY}`,
+    '- Otherwise reply with the same number of strings, in the same order. One',
+    '  in, one out.',
     `- A string already written in ${language} comes back unchanged.`,
-    // The same rule `translate.ts` carries, and for the same reason: a card
-    // looked up for a customer in Taipei must not have their own name and plan
-    // converted to Simplified on the way to a Simplified-reading desk.
-    '- A different regional variant or script of the same language counts as',
-    `  already being ${language}. Traditional and Simplified Chinese are one`,
-    '  language here: never convert between them, and never transliterate one',
-    '  script into another.',
-    "- Leave people's names, account ids, order numbers, error codes, language",
-    '  tags, plan names, product names, URLs and email addresses exactly as they',
-    '  are. A value like "Pro" or "191566" is not a word to translate.',
+    ...preservationRules(language),
+    '- A value like "Pro" or "191566" is not a word to translate.',
     '- No preamble, no notes, no quotation marks around anything.',
     '',
     'JSON only, no prose around it:',
@@ -114,6 +115,15 @@ function prompt(texts: string[], language: string): string {
  * A mismatch returns null and the caller stores nothing, which shows the
  * reviewer the card as its source wrote it: the behaviour of yesterday, rather
  * than a card with a word from somewhere else in it.
+ *
+ * `SAME` for the whole batch is the other answer, and it is the one an English
+ * desk with English sources gets every time. It has to be *some* answer — a
+ * card cannot be classified without asking, for the reason `translateForReview`
+ * gives at length — but there is a large difference between a call that answers
+ * in one token and a call that echoes back a card's worth of labels to say the
+ * same thing. It is stored exactly like a rendering, because "these words are
+ * already right" is a rendering, and a row saying so is what stops the next job
+ * asking again.
  */
 export async function translateCards(cards: Card[], language: string): Promise<RenderedCards | null> {
   if (cards.length === 0 || !language.trim()) return null;
@@ -132,14 +142,24 @@ export async function translateCards(cards: Card[], language: string): Promise<R
   const into = new Map(texts.map(text => [text, text]));
 
   if (texts.length > 0) {
-    const answer = extractJson<Record<string, unknown>>(await callAI(prompt(texts, language), { role: 'translator' }));
-    const rendered = Array.isArray(answer?.text) ? answer.text : null;
-    if (!rendered || rendered.length !== texts.length) return null;
+    const reply = (await callAI(prompt(texts, language), { role: 'translator' })).trim();
 
-    texts.forEach((text, i) => {
-      const answered = rendered[i];
-      if (typeof answered === 'string' && answered.trim() !== '') into.set(text, answered.trim());
-    });
+    // Every string was already right. `into` is the identity map it was built
+    // as, so the rendering below is the card itself — which is the correct
+    // thing to show, and the row that stores it is what buys the silence.
+    // Models like to be helpful about it: "SAME — these are already English."
+    const same = reply === ALREADY || (reply.startsWith(ALREADY) && reply.length < ALREADY.length + 80);
+
+    if (!same) {
+      const answer = extractJson<Record<string, unknown>>(reply);
+      const rendered = Array.isArray(answer?.text) ? answer.text : null;
+      if (!rendered || rendered.length !== texts.length) return null;
+
+      texts.forEach((text, i) => {
+        const answered = rendered[i];
+        if (typeof answered === 'string' && answered.trim() !== '') into.set(text, answered.trim());
+      });
+    }
   }
 
   return Object.fromEntries(

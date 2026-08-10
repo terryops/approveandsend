@@ -137,6 +137,19 @@ export interface Task {
   fromName: string | null;
   receivedAt: string | null;
   body: string;
+  /**
+   * The letter as it was written, when it was written in HTML.
+   *
+   * `body` is this run through `htmlToText`, and that is what every prompt, the
+   * search index and the learning loop read — a flattened transcript is the
+   * right input for all three. This is for the one reader that was being badly
+   * served by it, which is the human: see `letterHtml` in `mail/incoming.ts`.
+   *
+   * Null for plain-text mail, for a composed brief, for anything ingested
+   * before migration 31, and for an HTML part too large to be worth rendering.
+   * All four fall back to `body`, which is what every letter did before this.
+   */
+  bodyHtml: string | null;
 
   analysis: Analysis | null;
   /** What the model wrote. Kept after sending — the learning loop diffs it. */
@@ -203,6 +216,7 @@ export interface NewTask {
   fromName?: string;
   receivedAt?: string;
   body?: string;
+  bodyHtml?: string | null;
   priority?: number;
 }
 

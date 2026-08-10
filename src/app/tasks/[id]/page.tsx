@@ -6,6 +6,8 @@ import { after } from 'next/server';
 import { nudgeQueue } from '@/lib/queue';
 
 import { isAdmin, requirePage } from '@/lib/auth/guard';
+import { letterHtml, type InlineImage, type Letter } from '@/lib/mail/incoming';
+import { remoteImageUrl, remoteImagesAllowed } from '@/lib/mail/remote-images';
 import { REPLY_FORMATS, previewHtml, type ReplyFormat } from '@/lib/mail/render';
 import { MAX_UPLOAD_BYTES } from '@/lib/mail/uploads';
 
@@ -17,12 +19,13 @@ import { FileTile, sizeKb } from './file-tile';
 import { MarkOpened } from './opened';
 import { QueueRail, railTasks } from './queue-rail';
 import { DiffToggle } from './diff-toggle';
+import { LetterFrame } from './letter-frame';
 import { DraftTools } from './draft-tools';
 import { DraftOverlay, ReviewKeys } from './review-keys';
 import { listContext } from '@/lib/context/store';
-import { operatorLanguage, t } from '@/lib/i18n';
+import { deskLanguage, t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
-import { listAttachments } from '@/lib/tasks/attachments';
+import { listAttachments, type TaskAttachment } from '@/lib/tasks/attachments';
 import { listPending } from '@/lib/tasks/outgoing';
 import { listAlternatives } from '@/lib/tasks/alternatives';
 import { listEvents } from '@/lib/tasks/events';
@@ -92,13 +95,41 @@ const RULES_SHOWN = 6;
  */
 function EmailBody({
   text,
+  letter,
+  subject,
   className = '',
   language,
 }: {
   text: string;
+  /** Names the frame for a screen reader. Only used where there is a frame. */
+  subject?: string;
+  /**
+   * The same message as its sender wrote it, when it was written in HTML and
+   * there is anything left of it after `letterHtml`. Absent everywhere the text
+   * is the original: a translation, a composed brief, a plain-text mail.
+   */
+  letter?: Letter | null;
   className?: string;
   language?: string;
 }) {
+  if (letter?.document) {
+    return (
+      <div className={`email-body rich ${className}`.trim()}>
+        {/* Above the letter rather than under it, because it is a fact about
+            what is missing from the next screenful, and a note at the bottom of
+            a scrollport is a note nobody reaches. Outside the frame, because it
+            is the desk speaking and everything inside the frame is the sender. */}
+        {letter.remoteImages > 0 && (
+          <p className="remote-images">{t('task.remoteImages', { n: letter.remoteImages })}</p>
+        )}
+        {/* No `lang` on the wrapper: the letter has its own document now, so the
+            CJK face is chosen by the frame's own stylesheet rather than by this
+            page's `:lang()` rules, which cannot see inside it. */}
+        <LetterFrame document={letter.document} title={subject || t('task.theirLetter')} />
+      </div>
+    );
+  }
+
   return (
     <div className={`email-body ${className}`.trim()} lang={languageTag(language)}>
       {paragraphs(text).map((block, i) => (
@@ -106,6 +137,26 @@ function EmailBody({
       ))}
     </div>
   );
+}
+
+/**
+ * The pictures a letter is allowed to point at, and where they are served from.
+ *
+ * Scoped to the message the letter *is*, not to the task: a thread has one
+ * attachment table across every message in it, and two mails in one conversation
+ * can easily both call their screenshot `image001.png` with the Content-ID
+ * Outlook generates from the filename. Unscoped, the reply's own logo would
+ * render inside the customer's question.
+ */
+function inlineImages(
+  attachments: TaskAttachment[],
+  taskId: string,
+  messageId: string | null,
+): InlineImage[] {
+  if (!messageId) return [];
+  return attachments
+    .filter(file => file.contentId && file.messageId === messageId)
+    .map(file => ({ contentId: file.contentId!, href: `/api/attachments/${taskId}/${file.id}` }));
 }
 
 /**
@@ -381,6 +432,26 @@ export default async function TaskPage({
   // it to go. Names and sizes only — see `listPending`.
   const carrying = listPending(task.id);
 
+  // The letter as its sender wrote it, where there is one. Built once here
+  // rather than inside `EmailBody`, because the message appears twice on this
+  // page — the review screen and the confirmation panel — and sanitising the
+  // same markup twice per render is work with no reader.
+  // A picture the letter keeps elsewhere is fetched by the desk and served
+  // from here, rather than by this browser from the sender's server — see
+  // `remote-images.ts`. Off, and every one of them is counted and refused.
+  const letterOptions = remoteImagesAllowed() ? { proxy: remoteImageUrl } : {};
+  const letter = letterHtml(
+    task.bodyHtml,
+    inlineImages(attachments, task.id, task.messageId),
+    letterOptions,
+  );
+  const threadLetters = new Map(
+    thread.map(m => [
+      m.id,
+      letterHtml(m.bodyHtml, inlineImages(attachments, task.id, m.messageId), letterOptions),
+    ]),
+  );
+
   // Only ever the translation of exactly what is rendered below it. A draft
   // regenerated since its translation was written shows none, because a
   // reviewer who cannot read the reply cannot notice the two have drifted.
@@ -396,10 +467,14 @@ export default async function TaskPage({
   // — English, for the built-in ones and for most config files. Rendered into
   // the interface language instead of the review language, because a card is
   // part of this screen rather than part of the mail; see translation/cards.ts.
-  // Absent until the job has run, and absent for good if it could not: the
-  // fallback is the card as its source wrote it, which is what was there
-  // before.
-  const cards = parseCards(getTranslation(task.id, 'context', cardsSource(context), operatorLanguage())?.content);
+  // Absent until the job has run: the fallback is the card as its source wrote
+  // it, which is what was there before.
+  //
+  // `deskLanguage` and not `operatorLanguage`, because this has to name the
+  // language the same way the worker that stored the row did, and the worker has
+  // no browser to ask. Not absent for good any more either: `noteOpened` queues
+  // a rendering for a card that has none, so opening this page is what fixes it.
+  const cards = parseCards(getTranslation(task.id, 'context', cardsSource(context), deskLanguage())?.content);
 
   // Newest first, and never including what is in the box right now — the
   // point of the panel is what the box used to say.
@@ -415,6 +490,12 @@ export default async function TaskPage({
   // Set by `restoreDraft` alone, and read in two places: the flash on the box
   // and the line by the buttons.
   const restored = typeof query.restored === 'string';
+
+  // The one-shot messages this screen is currently showing, for the form to
+  // carry. Only the ones a tab press falsifies: `saved` and `queued` stay true
+  // across one, and moving the URL to say so again would spend a navigation on
+  // nothing. See `clearsNotice` in actions.ts.
+  const notice = ['error', 'restored'].filter(key => typeof query[key] === 'string').join(' ');
 
   // What the model wrote, against what is in the box now.
   //
@@ -445,7 +526,13 @@ export default async function TaskPage({
   // more, so no option tab is active and the leftmost tab — their own draft —
   // takes it. Storing a `selected` column would leave a tab claiming credit for
   // a paragraph the reviewer wrote themselves.
-  const selected = alternatives.find(option => option.body.trim() === body.trim());
+  //
+  // Against `current` rather than `body`, for the reason the version filter just
+  // above uses it: an option is model output and holds LF, and a row written
+  // before `newlines` existed holds the CRLF a textarea submits. Comparing the
+  // two spellings put no tab in the lit state and told the reviewer, in the line
+  // under the strip, that they had edited a reply they had not touched.
+  const selected = alternatives.find(option => newlines(option.body).trim() === current);
 
   const history = listEvents(task.id);
   const names = new Map<string, string>();
@@ -536,7 +623,12 @@ export default async function TaskPage({
             <div className="confirm-pair">
               <div className="confirm-half">
                 <h3 className="confirm-heading">{t('task.confirm.theyWrote')}</h3>
-                <EmailBody text={task.body || t('task.emptyBody')} language={task.analysis?.language} />
+                <EmailBody
+                  text={task.body || t('task.emptyBody')}
+                  letter={letter}
+                  subject={task.subject}
+                  language={task.analysis?.language}
+                />
                 {incoming && (
                   <div className="translation">
                     <p className="meta">
@@ -939,8 +1031,16 @@ export default async function TaskPage({
             that was really going to end — are as quick as they ever were. A
             minute rather than longer because the ceiling is also how stale this
             screen is allowed to get once somebody has walked away from it and
-            come back. See the poller. */}
-        {inFlight && !working && <TaskPoller intervalMs={5000} slowTo={60_000} />}
+            come back.
+
+            `restartOn` is the other half of giving up gradually: the status is
+            what this is waiting on, so a queue that finally turns collapses the
+            gap back to five seconds instead of leaving a written draft sitting
+            behind a minute of patience earned while nothing was happening. See
+            the poller. */}
+        {inFlight && !working && (
+          <TaskPoller intervalMs={5000} slowTo={60_000} restartOn={task.status} />
+        )}
 
         {/* The subject, at the size of the thing it names.
 
@@ -1011,7 +1111,12 @@ export default async function TaskPage({
                 {/* The whole thread is in the customer's language, both directions: a
                     reply is written in the language the letter arrived in, which
                     is why there is a translation of the draft at all. */}
-                <EmailBody text={m.body || t('task.emptyBody')} language={task.analysis?.language} />
+                <EmailBody
+                  text={m.body || t('task.emptyBody')}
+                  letter={threadLetters.get(m.id)}
+                  subject={m.subject || task.subject}
+                  language={task.analysis?.language}
+                />
               </div>
             ))}
           </details>
@@ -1039,7 +1144,12 @@ export default async function TaskPage({
               in globals.css for why. The `details` is still `open` by default,
               so a reviewer who wants their old stacked view can just close it. */}
           <div className={`compare${incoming ? '' : ' compare-single'}`}>
-            <EmailBody text={task.body || t('task.emptyBody')} language={task.analysis?.language} />
+            <EmailBody
+              text={task.body || t('task.emptyBody')}
+              letter={letter}
+              subject={task.subject}
+              language={task.analysis?.language}
+            />
             {incoming && (
               <details className="translation" open>
                 <summary>
@@ -1131,6 +1241,13 @@ export default async function TaskPage({
             send itself is posted from that panel. */}
         <form className="stack review-form" action={confirmSend}>
           <input type="hidden" name="taskId" value={task.id} />
+          {/* Whether there is a message on screen that a tab press would make
+              untrue. The two switches answer without navigating, which is what
+              makes them quick and also what leaves the URL — and so the banner
+              it drives — exactly where it was; carrying this is how they know to
+              navigate once and clear it. See `clearsNotice`. Empty in the
+              ordinary case, which is every press after the first. */}
+          <input type="hidden" name="notice" value={notice} />
           {/* How the box below becomes mail.
 
               Submit buttons rather than radios, and bound rather than valued —

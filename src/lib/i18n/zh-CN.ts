@@ -94,6 +94,7 @@ export const zhCN: Dictionary = {
   "task.status.dismissed": "已忽略",
   "task.status.failed": "失败",
   "task.emptyBody": "（正文为空）",
+  "task.remoteImages": "{n} 张远程图片未加载。加载会告诉发件人你打开了这封信。",
   "task.attachments": "附件",
   "task.superseded": "这封邮件已被同一个人后来的邮件取代。",
   "task.supersededOpen": "打开新的那封 →",

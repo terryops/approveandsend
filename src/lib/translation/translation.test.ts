@@ -4,9 +4,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetAiConfig } from '../ai';
 import { resetWorkspaceConfig } from '../config/workspace';
-import { listContext, saveContext } from '../context/store';
+import { listContext, saveContext, taskIdsWithContext } from '../context/store';
 import { openDb, type Db } from '../db';
-import { TRANSLATE_TASK, enqueueForTranslation, translateTaskHandler } from '../queue/handlers';
+import {
+  TRANSLATE_TASK,
+  cardsAwaitingRendering,
+  enqueueForTranslation,
+  translateTaskHandler,
+} from '../queue/handlers';
 import { completeJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
 import { cardsSource, parseCards, renderCard } from './cards';
@@ -305,21 +310,36 @@ describe('the translation job', () => {
     expect(hasTranslation(id, 'body', '您好，我需要帮助', 'Chinese', db)).toBe(false);
   });
 
-  it('keeps the half that worked when the other half fails', async () => {
+  it('keeps the half that worked, and still fails so the other half is retried', async () => {
     const id = task('Bonjour', 'Merci');
     queued.push('你好');
     answerLimit = 1; // the body is answered, the draft is not
 
-    const result = (await translateTaskHandler({ taskId: id }, context())) as {
-      translated: string[];
-      failed: string[];
-    };
-
     // A reviewer with the incoming mail translated and the draft not is better
-    // served than one with neither.
-    expect(result.translated).toEqual(['body']);
-    expect(result.failed[0]).toContain('draft');
+    // served than one with neither — so the body's translation is kept. But the
+    // job did not do what it was asked, and reporting success is how the draft
+    // stayed untranslated for the life of the task: nothing re-queues a job that
+    // says it worked.
+    await expect(translateTaskHandler({ taskId: id }, context())).rejects.toThrow(/draft/);
     expect(getTranslation(id, 'body', 'Bonjour', 'Chinese', db)?.content).toBe('你好');
+  });
+
+  it('does not pay twice for the half that already landed', async () => {
+    const id = task('Bonjour', 'Merci');
+    queued.push('你好');
+    answerLimit = 1;
+    await expect(translateTaskHandler({ taskId: id }, context())).rejects.toThrow();
+
+    // The retry the throw above buys. What succeeded is on the row and is
+    // skipped by its own `hasTranslation` check, so the second attempt asks
+    // about the draft and nothing else — which is what makes failing the whole
+    // job cheap enough to be the right answer.
+    answerLimit = 10;
+    queued.push('谢谢');
+    const result = (await translateTaskHandler({ taskId: id }, context())) as { translated: string[] };
+
+    expect(result.translated).toEqual(['draft']);
+    expect(getTranslation(id, 'draft', 'Merci', 'Chinese', db)?.content).toBe('谢谢');
   });
 
   it('fails loudly when nothing at all could be translated', async () => {
@@ -512,6 +532,56 @@ describe('rendering the context cards', () => {
     expect(rendered.prompt).toBe('They have 200 credits left.');
   });
 
+  it('answers a card already in the desk language in one word, and stores it', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+    // The whole batch at once. An English desk with English sources gets this
+    // answer to every card it ever looks up, and the alternative was six
+    // strings echoed back to say the same thing.
+    queued.push('SAME');
+
+    await translateTaskHandler({ taskId: id }, context());
+
+    const rendered = parseCards(
+      getTranslation(id, 'context', cardsSource(listContext(id, db)), 'Simplified Chinese', db)?.content,
+    );
+    // Stored, and stored as the card itself: "these words are already right" is
+    // a rendering, and the row saying so is what stops the next job asking.
+    expect(rendered?.subeasy?.title).toBe('Subeasy Account');
+    expect(rendered?.subeasy?.fields[0]).toEqual({ label: 'Plan', value: 'Pro' });
+
+    await translateTaskHandler({ taskId: id }, context());
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('re-renders a card the desk has no rendering for', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+
+    // Nothing has run yet, which is the state a task is in after a lookup posts
+    // a card late, and the state every task is in the moment somebody changes
+    // the desk's language.
+    expect(cardsAwaitingRendering(id, db)).toBe(true);
+
+    queued.push(JSON.stringify({ text: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }));
+    await translateTaskHandler({ taskId: id }, context());
+    expect(cardsAwaitingRendering(id, db)).toBe(false);
+
+    // A second source arriving on a task that had already been through the job.
+    saveContext(id, 'crm', 'CRM', { title: 'CRM', fields: [], prompt: 'Two open tickets.' }, db);
+    expect(cardsAwaitingRendering(id, db)).toBe(true);
+  });
+
+  it('has nothing to await on a task with no cards', () => {
+    // The ordinary task on the ordinary desk, and the reason this is asked
+    // before a job is queued rather than by queueing one.
+    expect(cardsAwaitingRendering(task('Bonjour'), db)).toBe(false);
+  });
+
   it('shows the card as its source wrote it when there is no rendering', () => {
     const block = { sourceId: 'subeasy', title: 'Subeasy Account', fields: [], prompt: 'Pro since April.' };
 
@@ -546,6 +616,23 @@ describe('queueing it', () => {
     // deciding that from `reviewLanguage` alone would leave it in English for
     // good.
     expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
+  });
+
+  it('names the tasks a language switch has to render again', () => {
+    const open = task('Bonjour');
+    const sent = task('Bonjour');
+    const bare = task('Bonjour');
+    for (const id of [open, sent]) {
+      saveContext(id, 'subeasy', 'Subeasy', { title: 'Account', fields: [], prompt: 'Pro.' }, db);
+    }
+    updateTask(sent, { status: 'sent' }, db);
+
+    // Every stored rendering was made for the language that was current a
+    // moment ago, so the desk in front of the reviewer is the thing to put
+    // right. The archive is not: it is opened one task at a time, and
+    // `noteOpened` renders those when somebody actually does.
+    expect(taskIdsWithContext(db)).toEqual([open]);
+    expect(taskIdsWithContext(db)).not.toContain(bare);
   });
 
   it('enqueues once a review language is set', () => {

@@ -54,11 +54,21 @@ class FakeMailbox implements MailProvider {
   /** What a test wants hanging off a message, keyed by message id. */
   attachments = new Map<string, MailAttachmentRef[]>();
 
+  /**
+   * The parts of a body a test cares about, keyed by message id.
+   *
+   * Empty for almost every test here, which is the point: the default detail is
+   * plain text, because that is what most support mail is and what every test
+   * written before letters could be rendered assumed.
+   */
+  bodies = new Map<string, { text?: string; html?: string }>();
+
   async getMessage(id: string): Promise<MailMessageDetail> {
     this.detailFetches.push(id);
     const message = this.inbox.find(m => m.id === id);
     if (!message) throw new Error(`no such message: ${id}`);
-    return { ...message, text: `full body of ${id}`, attachments: this.attachments.get(id) ?? [] };
+    const body = this.bodies.get(id) ?? { text: `full body of ${id}` };
+    return { ...message, ...body, attachments: this.attachments.get(id) ?? [] };
   }
 
   /** Whatever a test wants the thread to be, keyed by the message asked about. */
@@ -251,6 +261,66 @@ describe('syncInbox', () => {
     ]);
     // The provider ids are kept: without them there is nothing to fetch with.
     expect(files[0]).toMatchObject({ messageId: 'a', attachmentId: 'att-1', size: 4096 });
+    // And the Content-ID, which is the only way the letter's own `<img src>`
+    // can be pointed at the bytes. It was reported by every provider and
+    // dropped here for as long as nothing could render a letter.
+    expect(files[1]).toMatchObject({ contentId: 'cid:1' });
+  });
+
+  it('keeps the letter as it was written as well as flattened', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    provider.bodies.set('a', {
+      text: 'Seats 12\nSee invoice 3391.',
+      html: '<p>Seats <b>12</b></p><p>See <a href="https://acme.test/i/3391">invoice 3391</a>.</p>',
+    });
+
+    await syncInbox({ provider, db });
+
+    const task = getTask((db.prepare('SELECT id FROM tasks').get() as { id: string }).id, db)!;
+
+    // The text is unchanged, because everything that reads it — every prompt,
+    // the search index, the learning loop — wants a flat transcript.
+    expect(task.body).toBe('Seats 12\nSee invoice 3391.');
+    // And the original, for the one reader that was being badly served by the
+    // transcript: the human, who could not see where "invoice 3391" pointed.
+    expect(task.bodyHtml).toContain('href="https://acme.test/i/3391"');
+  });
+
+  it('leaves plain-text mail with nothing to render', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    await syncInbox({ provider, db });
+
+    const task = getTask((db.prepare('SELECT id FROM tasks').get() as { id: string }).id, db)!;
+    expect(task.bodyHtml).toBeNull();
+  });
+
+  it('does not store a letter too large to be worth rendering', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    provider.bodies.set('a', { text: 'short', html: `<p>${'x'.repeat(600_000)}</p>` });
+
+    await syncInbox({ provider, db });
+
+    const task = getTask((db.prepare('SELECT id FROM tasks').get() as { id: string }).id, db)!;
+    // Nothing stored, and the text is untouched — which is what every letter
+    // looked like before the column existed.
+    expect(task.bodyHtml).toBeNull();
+    expect(task.body).toBe('short');
+  });
+
+  /*
+   * `trimEmailBody` runs `htmlToText` itself, and this line used to run it
+   * first as well. Twice is not idempotent: the second pass decodes what the
+   * first one produced, so a customer quoting a literal `&lt;` at us had it read
+   * as the start of a tag and deleted, taking the rest of the line with it.
+   */
+  it('reads an HTML body once, not twice', async () => {
+    const provider = new FakeMailbox([message('a')]);
+    provider.bodies.set('a', { html: '<p>Config has &amp;lt;br&amp;gt; in it and it breaks.</p>' });
+
+    await syncInbox({ provider, db });
+
+    const task = getTask((db.prepare('SELECT id FROM tasks').get() as { id: string }).id, db)!;
+    expect(task.body).toBe('Config has &lt;br&gt; in it and it breaks.');
   });
 
   it('retires the unanswered task a follow-up overtook', async () => {

@@ -1451,10 +1451,13 @@ header.top nav a.active:hover {
   cursor: progress;
 }
 
-.alt-tabs .pressable.pressing > button .alt-label {
-  background: var(--accent);
-  color: var(--on-accent);
-}
+/* The letter is left alone in both of these, and that is deliberate. `.alt-label`
+   is a circle badge everywhere else, and the option strip takes the circle off
+   on purpose — at that size the badge was most of the button. Painting it again
+   for the length of a round trip put the shape back on the press and took it off
+   on the answer, which is a flash of a decision the design already made. The
+   letter inherits its colour from the button, so it follows the two rules around
+   it without being named by either. */
 
 /* And the one that was chosen a moment ago steps back, so that for the length of
    a round trip there is one lit tab rather than two. Only while something is
@@ -1464,11 +1467,6 @@ header.top nav a.active:hover {
   color: var(--muted);
   border-color: transparent;
   background: none;
-}
-
-.alt-tabs:has(.pressable.pressing) .pressable:not(.pressing) > button.active .alt-label {
-  background: var(--tint);
-  color: var(--muted);
 }
 
 .format-tabs:has(.pressable.pressing) .pressable:not(.pressing) > button.active {
@@ -1532,6 +1530,69 @@ header.top nav a.active:hover {
 
 .email-body p:last-child {
   margin-bottom: 0;
+}
+
+/*
+ * The letter as its sender laid it out — in a frame, which is the whole design.
+ *
+ * Everything above this styles a letter we flattened to text ourselves. A letter
+ * that arrived as HTML is not styled here at all, and that is the point: it is
+ * inside an <iframe> with a document of its own, so this stylesheet cannot reach
+ * it and its stylesheet cannot reach this. See `LetterFrame` for why that
+ * boundary is worth an element, and `letterDocument` for what the letter gets
+ * on the other side of it.
+ *
+ * What is left out here is the height, which is set inline by the component from
+ * a measurement of the content. The rule below is the floor and the ceiling
+ * around that number.
+ */
+.email-body.rich {
+  /* The frame carries its own padding, its own background and its own scrolling,
+     so the reading-face and scroll-cap rules that `.email-body` sets for text
+     would all be measuring the wrong thing. */
+  max-height: none;
+  overflow: visible;
+}
+
+.letter-frame {
+  /*
+   * Dragged taller, for the letter that is longer than the cap.
+   *
+   * The component stops growing the frame at 560px because the reply has to stay
+   * on screen beside it. That is right for the ninety percent and wrong for the
+   * refund thread with a receipt in the middle of it, and the cheapest correct
+   * answer to "I need to see more of this one" is the corner every textarea on
+   * this desk already has.
+   */
+  resize: vertical;
+  overflow: hidden;
+  min-height: 120px;
+  border: 1px solid light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.28));
+  border-radius: var(--radius);
+  /* Behind the frame as well as inside it. A letter still parsing is a white
+     sheet rather than a hole in the card. */
+  background: #fff;
+}
+
+.letter-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/*
+ * What the letter asked for and did not get.
+ *
+ * Stated in the desk's own voice rather than the sender's — it is the one thing
+ * on this card that is not their words — so it sits outside the frame, in the
+ * interface face at the interface size.
+ */
+.email-body.rich .remote-images {
+  margin: 0 0 8px;
+  font-family: var(--font-latin), var(--font-cjk), sans-serif, var(--font-emoji);
+  font-size: var(--t2);
+  color: var(--muted);
 }
 
 /*

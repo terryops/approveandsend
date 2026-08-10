@@ -15,7 +15,44 @@ import { getWorkspaceConfig } from '../config/workspace';
  */
 
 /** The marker the model returns instead of translating text already in target. */
-const ALREADY = 'SAME';
+export const ALREADY = 'SAME';
+
+/**
+ * The two rules both prompts in this directory need, written once.
+ *
+ * `cards.ts` asks a different question of a different shape — a batch of labels
+ * rather than a letter — but it needs these two answers to be the same, and for
+ * a while it got them by keeping its own copy. Both copies were arrived at by
+ * the same bug and annotated with the same paragraph, which is exactly the pair
+ * that drifts: the Portuguese wording the comment below anticipates would have
+ * landed in one file and silently not the other, leaving the mail half fixed
+ * and the cards half not.
+ *
+ * The first rule is the expensive one. A regional variant of the target is the
+ * target: without saying so, the tag `zh-CN` reads as an instruction to
+ * convert, and a letter from Taipei came back rewritten into Simplified — a
+ * paid model call whose entire output was a script change, and which cost the
+ * reviewer the customer's own wording on the panel that exists to show them
+ * exactly that. Written for any language rather than for Chinese: Brazilian and
+ * European Portuguese are the same story.
+ *
+ * What neither rule says is how to *answer*, and that is on purpose: one of
+ * these prompts translates a letter and the other a list, so "already in the
+ * target language" is a whole reply in one and one item among ten in the other.
+ * Each states its own; naming `SAME` here would have told the card prompt to
+ * answer for a batch what was true of a single string in it.
+ */
+export function preservationRules(language: string): string[] {
+  return [
+    '- A different regional variant or script of the same language counts as',
+    `  already being ${language} and does not need translating. Traditional and`,
+    '  Simplified Chinese are one language here. Never convert between them,',
+    '  and never transliterate one script into another.',
+    "- Leave order numbers, error codes, account ids, people's names, language",
+    '  tags, plan names, product names, URLs, email addresses and file names',
+    '  exactly as they are.',
+  ];
+}
 
 export function reviewLanguage(): string {
   return getWorkspaceConfig().reviewLanguage.trim();
@@ -35,22 +72,10 @@ function prompt(text: string, language: string): string {
     '',
     'Rules:',
     `- If the text is already written in ${language}, reply with exactly: ${ALREADY}`,
-    // A regional variant of the target is the target. Without this the tag
-    // `zh-CN` reads as an instruction to convert, so a letter from Taipei came
-    // back rewritten into Simplified — a paid model call whose entire output
-    // was a script change, and which cost the reviewer the customer's own
-    // wording on the panel that exists to show them exactly that. The rule is
-    // written for any language, not just Chinese: Brazilian and European
-    // Portuguese are the same story.
-    '- A different regional variant or script of the same language counts as',
-    `  already being ${language}: answer ${ALREADY} for it. Traditional and`,
-    '  Simplified Chinese are one language here. Never convert between them,',
-    '  and never transliterate one script into another.',
+    ...preservationRules(language),
     '- Otherwise reply with the translation and nothing else: no preamble, no',
     '  notes, no explanation of your choices, no quotation marks around it.',
     '- Keep the line breaks and paragraph structure of the original.',
-    '- Leave order numbers, error codes, URLs, email addresses, file names and',
-    '  product names exactly as they are.',
     '',
     '--- TEXT ---',
     text,

@@ -23,6 +23,8 @@ export interface TaskMessage {
   fromName: string | null;
   subject: string;
   body: string;
+  /** The message as it was written, when it was HTML. See `mail/incoming.ts`. */
+  bodyHtml: string | null;
   receivedAt: string;
   createdAt: string;
 }
@@ -34,6 +36,7 @@ export interface NewTaskMessage {
   fromName?: string | null;
   subject?: string;
   body?: string;
+  bodyHtml?: string | null;
   receivedAt: string;
 }
 
@@ -46,6 +49,7 @@ interface Row {
   from_name: string | null;
   subject: string;
   body: string;
+  body_html: string | null;
   received_at: string;
   created_at: string;
 }
@@ -60,6 +64,7 @@ function map(row: Row): TaskMessage {
     fromName: row.from_name,
     subject: row.subject,
     body: row.body,
+    bodyHtml: row.body_html,
     receivedAt: row.received_at,
     createdAt: row.created_at,
   };
@@ -84,7 +89,7 @@ export function addMessage(taskId: string, input: NewTaskMessage, db: Db = getDb
       const updated = db
         .prepare(
           `UPDATE task_messages SET direction = ?, from_address = ?, from_name = ?,
-                                    subject = ?, body = ?, received_at = ?
+                                    subject = ?, body = ?, body_html = ?, received_at = ?
              WHERE id = ? RETURNING *`,
         )
         .get(
@@ -93,6 +98,7 @@ export function addMessage(taskId: string, input: NewTaskMessage, db: Db = getDb
           input.fromName ?? null,
           input.subject ?? '',
           input.body ?? '',
+          input.bodyHtml || null,
           input.receivedAt,
           existing.id,
         ) as Row;
@@ -103,8 +109,8 @@ export function addMessage(taskId: string, input: NewTaskMessage, db: Db = getDb
   const row = db
     .prepare(
       `INSERT INTO task_messages (id, task_id, direction, message_id, from_address,
-                                  from_name, subject, body, received_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+                                  from_name, subject, body, body_html, received_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
     .get(
       randomUUID(),
@@ -115,6 +121,7 @@ export function addMessage(taskId: string, input: NewTaskMessage, db: Db = getDb
       input.fromName ?? null,
       input.subject ?? '',
       input.body ?? '',
+      input.bodyHtml || null,
       input.receivedAt,
       now,
     ) as Row;

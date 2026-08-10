@@ -34,7 +34,16 @@ export function MarkOpened({ taskId }: { taskId: string }) {
     // Nothing waits for this and nothing renders from it: the action revalidates
     // nothing, so the answer is an empty response the router throws away. The
     // dot it clears is on the inbox, which is rendered afresh on the way back.
-    void noteOpened(taskId);
+    //
+    // Caught rather than left to float, because it can genuinely reject: the
+    // action begins with `requireApi`, which throws on a session that expired
+    // while this tab sat open, and a page restored from bfcache after a logout
+    // mounts and posts exactly like a fresh one. There is nothing to tell anyone
+    // — the dot is a nicety, and whatever comes next will find the same expired
+    // session and say so properly — but a rejection nobody handles is an error
+    // dialog in development and a reported exception in production, on every
+    // task page, for a request that was always allowed to fail.
+    noteOpened(taskId).catch(() => {});
   }, [taskId]);
 
   return null;
