@@ -15,14 +15,27 @@ import { newlines } from '../text';
  * not look destructive. Keeping the old text costs a row.
  */
 
-export const DRAFT_SOURCES = ['model', 'human'] as const;
+/**
+ * Where a text came from, as far as the person choosing between them cares.
+ *
+ * `critic` is a narrower `model` — the drafter wrote it too, and the second
+ * opinion then threw it out. It is kept apart because "the assistant wrote this
+ * earlier" and "a second model refused to let this go out" are different
+ * answers to the only question this panel is ever asked, which is whether to
+ * press Put this back.
+ */
+export const DRAFT_SOURCES = ['model', 'human', 'critic'] as const;
 export type DraftSource = (typeof DRAFT_SOURCES)[number];
+
+export function isDraftSource(value: unknown): value is DraftSource {
+  return typeof value === 'string' && (DRAFT_SOURCES as readonly string[]).includes(value);
+}
 
 export interface DraftVersion {
   id: string;
   taskId: string;
   body: string;
-  /** Who typed it. Not who asked for it — a redraft a human requested is still 'model'. */
+  /** Where it came from. Not who asked for it — a redraft a human requested is still 'model'. */
   source: DraftSource;
   /** What the reviewer asked for, on the versions that came from a redraft. */
   notes: string | null;
@@ -53,7 +66,9 @@ function mapVersion(row: VersionRow): DraftVersion {
     id: row.id,
     taskId: row.task_id,
     body: row.body,
-    source: row.source === 'human' ? 'human' : 'model',
+    // Anything unrecognised reads as the model's, which is what every row
+    // written before a value existed actually was.
+    source: isDraftSource(row.source) ? row.source : 'model',
     notes: row.notes,
     createdAt: row.created_at,
   };

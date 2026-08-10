@@ -901,6 +901,35 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 30,
+    name: 'critique',
+    up: db => {
+      // What the second opinion actually said.
+      //
+      // The critic has run on every draft since there was a critic, and until
+      // now exactly one bit of it survived the job: `approved`, folded into the
+      // risk grade as the `criticRejected` factor. So a reviewer was told that
+      // a second model would not sign the reply off, and never told what it
+      // objected to — which is a verdict with its reasons thrown away, and the
+      // reasons are the only part that helps anybody decide what to do next.
+      //
+      // JSON rather than a column each, because the three fields are written
+      // together by one job and read together by one card, and a `rewritten`
+      // that can disagree with the `approved` beside it is a row that lies.
+      // Null means no critic pass ran — which is a real state, and not the same
+      // as one that ran and found nothing.
+      //
+      // The rewrite itself is deliberately not in here. When the critic
+      // replaces a draft the new text goes where every other draft goes, into
+      // `tasks.draft`, and the text it replaced into `draft_versions`. Keeping
+      // a third copy on this column would mean two places to change when the
+      // reviewer edits the reply, and one of them would be wrong.
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN critique TEXT;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -30,7 +30,7 @@ import { newlines } from '@/lib/text';
 import { reviewLayout } from '@/lib/tasks/layout';
 import { replyBox } from '@/lib/tasks/reply-box';
 import { getTask, markOpened } from '@/lib/tasks/store';
-import { deskedAt } from '@/lib/tasks/types';
+import { deskedAt, type Critique } from '@/lib/tasks/types';
 import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
@@ -162,6 +162,49 @@ function RenderedReply({ text, format }: { text: string; format: ReplyFormat }) 
       className="reply-rendered"
       dangerouslySetInnerHTML={{ __html: previewHtml(text, format) }}
     />
+  );
+}
+
+/**
+ * What the second opinion objected to, under the grade that was built from it.
+ *
+ * The grade said "a second model would not sign this off" and stopped there,
+ * which is the shape of every verdict a reviewer learns to ignore: it cannot be
+ * argued with, it cannot be checked, and the reasons behind it were being
+ * thrown away by the job that wrote it. These are those reasons.
+ *
+ * The heading is the part that has to be right. Three states arrive here and
+ * they ask for different things from the person reading: a rewrite means the
+ * text in the box has already been corrected and this is the record of what
+ * was wrong with it; a rejection with no rewrite means the text is still wrong
+ * and nothing has been done about it; remarks under an approval are a footnote.
+ * One line of copy telling them apart is the difference between a card that
+ * gets read and a second banner that gets skipped.
+ *
+ * A left rule rather than another coloured band. The risk banner is already
+ * directly above it in the alarming colour, and two washes stacked read as one
+ * bigger alarm rather than as a verdict and its reasons.
+ */
+function CritiqueNote({ critique }: { critique: Critique }) {
+  // Nothing to say. An approval with no remarks is the ordinary case, and a
+  // card announcing that a check passed is a card in the way of the draft.
+  if (critique.issues.length === 0) return null;
+
+  const said = critique.rewritten
+    ? 'task.critique.rewritten'
+    : critique.approved
+      ? 'task.critique.remarks'
+      : 'task.critique.unfixed';
+
+  return (
+    <div className="critique">
+      <p className="said">{t(said)}</p>
+      <ul>
+        {critique.issues.map((issue, i) => (
+          <li key={i}>{issue}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -438,6 +481,12 @@ export default async function TaskPage({
                 )}
               </div>
             )}
+
+            {/* And for the same reason, the reasons themselves. This is the
+                screen where the decision is actually made, and "it quotes a
+                price that is not in the catalogue" is worth more here than
+                anywhere else on the desk. */}
+            {task.critique && <CritiqueNote critique={task.critique} />}
 
             {/* Their letter and the reply beside it, rather than one above the
                 other. Holding both in view at once is the entire job of this
@@ -798,6 +847,17 @@ export default async function TaskPage({
             )}
           </div>
         )}
+
+        {/* Under the grade rather than in the sidebar with the analysis, and
+            not folded into a `details`. It is the same argument the banner
+            above it won: a reason that has to be asked for is a reason nobody
+            reads, and this one is about the reply directly below it.
+
+            Outside the `risk` condition on purpose. A critic can object to a
+            draft the arithmetic still grades `low` — one factor is not two —
+            and on that task this is the only thing on the page that knows
+            anything is wrong. */}
+        {task.critique && <CritiqueNote critique={task.critique} />}
 
         {/* The keyboard. Renders nothing; see review-keys.tsx for why every one
             of these presses a control that is already on the page. */}

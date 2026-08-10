@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb, type Db } from '../db';
 import { recordEvent } from './events';
 import { isRiskFactor, isRiskLevel, type Risk } from './risk';
-import { isCause, isOrigin, isSentiment, isTaskStatus, type Analysis, type NewTask, type Task, type TaskStatus } from './types';
+import { isCause, isOrigin, isSentiment, isTaskStatus, type Analysis, type Critique, type NewTask, type Task, type TaskStatus } from './types';
 
 interface TaskRow {
   id: string;
@@ -34,6 +34,7 @@ interface TaskRow {
   rejection_reason: string | null;
   risk_level: string | null;
   risk_factors: string | null;
+  critique: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +78,26 @@ function parseRisk(level: string | null, factors: string | null): Risk | null {
   };
 }
 
+/** Null means no critic pass ran, which is not the same as one that found nothing. */
+function parseCritique(raw: string | null): Critique | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      // Only an explicit `false` is a rejection. A row written by a build that
+      // did not have this field is a row where the critic said nothing worth
+      // stopping for, and defaulting it the other way would put a red banner on
+      // every one of them.
+      approved: value.approved !== false,
+      issues: Array.isArray(value.issues) ? value.issues.filter((i): i is string => typeof i === 'string') : [],
+      rewritten: value.rewritten === true,
+    };
+  } catch {
+    // Same as everywhere else here: reading a row must not throw.
+    return null;
+  }
+}
+
 function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -107,6 +128,7 @@ function mapTask(row: TaskRow): Task {
     openedAt: row.opened_at,
     rejectionReason: row.rejection_reason,
     risk: parseRisk(row.risk_level, row.risk_factors),
+    critique: parseCritique(row.critique),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -390,6 +412,7 @@ export interface TaskUpdate {
   openedAt?: string | null;
   rejectionReason?: string | null;
   risk?: Risk | null;
+  critique?: Critique | null;
 }
 
 const COLUMNS: Record<keyof TaskUpdate, string> = {
@@ -413,6 +436,7 @@ const COLUMNS: Record<keyof TaskUpdate, string> = {
   // Two columns behind one field. `risk` is set as a unit or not at all, so
   // there is no update that writes a level without its reasons.
   risk: 'risk_level',
+  critique: 'critique',
 };
 
 export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): Task | null {
@@ -430,6 +454,26 @@ export function updateTask(id: string, changes: TaskUpdate, db: Db = getDb()): T
       const risk = value as Risk | null;
       sets.push('risk_level = ?', 'risk_factors = ?');
       params.push(risk?.level ?? null, risk ? JSON.stringify(risk.factors) : null);
+      continue;
+    }
+
+    // Written out field by field rather than stringified whole, because the
+    // object the drafting job holds carries the critic's rewrite as well and
+    // that text must not land here. It is already the draft; a second copy on
+    // this column would go stale the first time anybody edited the reply, and
+    // it would be the copy somebody eventually read.
+    if (key === 'critique') {
+      const critique = value as Critique | null;
+      sets.push('critique = ?');
+      params.push(
+        critique
+          ? JSON.stringify({
+              approved: critique.approved,
+              issues: critique.issues,
+              rewritten: critique.rewritten,
+            })
+          : null,
+      );
       continue;
     }
 

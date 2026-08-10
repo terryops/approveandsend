@@ -225,6 +225,13 @@ export const en = {
   "task.cause.user_error": "Something they did",
   "task.cause.not_a_problem": "Nothing broken",
   "task.riskFactor.possibleBug": "This may be a real bug on our side",
+  // The three states of the card under the grade, and the whole reason it is
+  // three lines and not one: the first says the text below has already been
+  // corrected, the second says it has not, and a reviewer who cannot tell them
+  // apart is being asked to check work nobody told them was outstanding.
+  "task.critique.rewritten": "A second opinion rewrote this reply. What it found:",
+  "task.critique.unfixed": "A second opinion would not sign this off, and did not offer a fix:",
+  "task.critique.remarks": "A second opinion signed this off, with remarks:",
   "task.optionsLabel": "Other ways to answer",
   "task.optionUnlabelled": "another approach",
   "task.optionsEdited": "The box is your own text now. Pick a tab to go back to one of the options — what you have written is kept in earlier drafts.",
@@ -244,6 +251,11 @@ export const en = {
   "task.versions": "Earlier drafts ({n})",
   "task.versionBy.model": "written by the assistant",
   "task.versionBy.human": "edited by hand",
+  // Not "written by the assistant" with extra words. This row is on the panel
+  // to be compared against the box and possibly restored, and what somebody
+  // needs to know before pressing that button is that a second model threw
+  // this text out — not who typed it.
+  "task.versionBy.critic": "replaced by a second opinion",
   "task.restore": "Put this back",
   "task.history": "History ({n})",
   "task.event.received": "Email received",

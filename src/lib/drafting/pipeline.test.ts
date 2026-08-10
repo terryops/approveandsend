@@ -797,6 +797,29 @@ describe('drafting', () => {
     expect(result.draft).toBe('A safer reply.');
   });
 
+  it('hands back the draft the rewrite replaced, so the swap is not silent', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'], revised: 'A safer reply.' }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { critic: true, db });
+
+    expect(result.critique?.rewritten).toBe(true);
+    expect(result.supersededDraft).toBe('We have escalated this and will update you shortly.');
+  });
+
+  it('is not a rewrite when the critic refuses without offering one', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'] }));
+
+    const result = await draftReply(createTask(INCOMING, db).task, { critic: true, db });
+
+    // The dangerous state, and the one the screen has to word differently:
+    // nothing was fixed, and the text below the verdict is the text it objected to.
+    expect(result.critique?.rewritten).toBe(false);
+    expect(result.supersededDraft).toBeUndefined();
+    expect(result.draft).toBe('We have escalated this and will update you shortly.');
+  });
+
   it('ignores a rewrite that arrives with an approval', async () => {
     queued.push(GOOD_DRAFT);
     queued.push(JSON.stringify({ approved: true, issues: [], revised: 'Gratuitous rephrasing.' }));
@@ -867,6 +890,84 @@ describe('draft-reply job', () => {
     expect(listVersions(task.id, db)).toMatchObject([
       { body: 'We have escalated this and will update you shortly.', notes: 'make it shorter' },
     ]);
+  });
+
+  it('keeps what the second opinion objected to, not only that it objected', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(
+      JSON.stringify({
+        approved: false,
+        issues: ['Quotes a price that is not in the catalogue'],
+        revised: 'A safer reply.',
+      }),
+    );
+    const { task } = createTask(INCOMING, db);
+    enqueueDraftReply(task.id, { db });
+
+    await worker().runOnce();
+
+    const updated = getTask(task.id, db);
+    expect(updated?.draft).toBe('A safer reply.');
+    // The reasons are the part a reviewer can act on. Until this was stored
+    // they existed for the length of one function call and were then dropped,
+    // leaving the grade to say "a second model disagreed" and nothing else.
+    expect(updated?.critique).toEqual({
+      approved: false,
+      issues: ['Quotes a price that is not in the catalogue'],
+      rewritten: true,
+    });
+    expect(updated?.risk?.factors).toContain('criticRejected');
+  });
+
+  it('does not keep a second copy of the rewrite on the row', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'], revised: 'A safer reply.' }));
+    const { task } = createTask(INCOMING, db);
+    enqueueDraftReply(task.id, { db });
+
+    await worker().runOnce();
+
+    // The rewrite is the draft. A copy of it on this column would go stale the
+    // first time anybody edited the reply, and it would be the copy some later
+    // screen read.
+    const row = db.prepare('SELECT critique FROM tasks WHERE id = ?').get(task.id) as {
+      critique: string;
+    };
+    expect(row.critique).not.toContain('A safer reply.');
+  });
+
+  it('keeps the draft the second opinion replaced, marked as its own kind', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'], revised: 'A safer reply.' }));
+    const { task } = createTask(INCOMING, db);
+    enqueueDraftReply(task.id, { db });
+
+    await worker().runOnce();
+
+    // Newest first. The rewrite is what is in the box, and under it the text it
+    // replaced — which was, until this, the one edit on the desk that left no
+    // trace at all.
+    expect(listVersions(task.id, db)).toMatchObject([
+      { body: 'A safer reply.', source: 'model' },
+      { body: 'We have escalated this and will update you shortly.', source: 'critic' },
+    ]);
+  });
+
+  it('clears the previous verdict when the new draft has none', async () => {
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['Promises a date'], revised: 'A safer reply.' }));
+    const { task } = createTask(INCOMING, db);
+    enqueueDraftReply(task.id, { db });
+    await worker().runOnce();
+    expect(getTask(task.id, db)?.critique).not.toBeNull();
+
+    // A redraft with the critic switched off. Carrying the old objections over
+    // would put them beside a reply they were never made about.
+    queued.push(GOOD_DRAFT);
+    enqueueDraftReply(task.id, { critic: false, db });
+    await worker().runOnce();
+
+    expect(getTask(task.id, db)?.critique).toBeNull();
   });
 
   it('queues the other ways it could have answered, without being asked', async () => {

@@ -3990,14 +3990,50 @@ ol.history .detail {
   font-size: var(--t3);
 }
 
-/* Things the model thinks are still missing. Marked with a rule down the side
-   rather than a colour on the text, and the rule is a wash of the warning
-   colour rather than the colour itself: at full strength it is a rust-brown bar
-   down a page of grey text, which is more alarm than "you might also want to". */
+/* What the second opinion objected to. Marked with a rule down the side rather
+   than a colour on the text, and the rule is a wash of the warning colour
+   rather than the colour itself: at full strength it is a rust-brown bar down a
+   page of grey text, which is more alarm than "you might also want to".
+
+   A band would have been the obvious thing and is the wrong one. This sits
+   directly under `.risk-banner`, which is already a coloured wash saying the
+   short version of the same sentence, and two of those stacked read as one
+   bigger alarm instead of as a verdict followed by its reasons. */
 .critique {
   border-left: 3px solid color-mix(in srgb, var(--warn) 45%, var(--line));
   padding-left: var(--s3);
+  margin-bottom: var(--s3);
   font-size: var(--t4);
+}
+
+/* The line that says which of the three this is — corrected, uncorrected, or a
+   remark under an approval. Body ink and a little weight: it is read before the
+   list under it, and it is the part that decides what the list means. */
+.critique .said {
+  font-weight: 650;
+  color: var(--text);
+  margin: 0;
+}
+
+.critique ul {
+  margin: var(--s2) 0 0;
+  padding-left: 1.2em;
+}
+
+.critique li {
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.critique li + li {
+  margin-top: var(--s1);
+}
+
+/* Flush with the head above it on the confirmation panel, the same way the
+   banner it follows is. That panel is edge to edge; a bar floating in from the
+   margin would be the only thing on it that is not. */
+.confirm .critique {
+  margin: var(--s3) 20px;
 }
 
 /* Set apart from the text it renders, because it is the one thing on this

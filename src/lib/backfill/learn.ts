@@ -88,6 +88,9 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     openedAt: null,
     rejectionReason: null,
     risk: null,
+    // Null on the way in, and the verdict on the way out is read off the
+    // `DraftResult` rather than written back here — this row is never stored.
+    critique: null,
     createdAt: now,
     updatedAt: now,
   };

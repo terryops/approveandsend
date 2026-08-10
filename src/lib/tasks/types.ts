@@ -91,6 +91,36 @@ export interface Analysis {
   cause?: Cause;
 }
 
+/**
+ * What the second opinion said, kept for the person who has to send the reply.
+ *
+ * The verdict alone was already on the row — it is the `criticRejected` factor
+ * on the risk grade — and a verdict without its reasons is the one thing a
+ * reviewer cannot act on. "A second model would not sign this off" leaves them
+ * re-reading a draft looking for something they have not been told the shape
+ * of; "it quotes a price that is not in the catalogue" is a sentence they can
+ * check in ten seconds.
+ *
+ * `revised` is not here on purpose. When the critic rewrites, the new text is
+ * the draft — see the note on migration 30.
+ */
+export interface Critique {
+  /** False when the critic found something that must be fixed before sending. */
+  approved: boolean;
+  /** What it objected to, in its own words. Empty when it signed the draft off. */
+  issues: string[];
+  /**
+   * True when the draft on this row is the critic's rewrite rather than the
+   * drafter's text.
+   *
+   * The difference decides what the screen says, and it is the difference
+   * between "this has been fixed, here is what was wrong with it" and "this is
+   * still wrong". A rejection with no rewrite behind it is the one that needs a
+   * human before it goes anywhere.
+   */
+  rewritten: boolean;
+}
+
 export interface Task {
   id: string;
   status: TaskStatus;
@@ -133,6 +163,8 @@ export interface Task {
   rejectionReason: string | null;
   /** How much attention the draft deserves. Null until one has been written. */
   risk: Risk | null;
+  /** What the second opinion made of the draft. Null when no critic pass ran. */
+  critique: Critique | null;
 
   createdAt: string;
   updatedAt: string;

@@ -88,6 +88,10 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
         // edited by hand.
         ...(result.subject ? { replySubject: result.subject } : {}),
         risk,
+        // Null when no critic pass ran, and that includes the pass that errored
+        // on a redraft. Carrying the previous draft's verdict over would put
+        // objections on a screen next to a reply they were never made about.
+        critique: result.critique ?? null,
         ...(result.analysis.scope ? { scope: result.analysis.scope } : {}),
         error: null,
         // Unread again. Whoever glanced at the previous draft — on a redraft,
@@ -100,6 +104,21 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     );
 
     recordEvent(taskId, 'drafted', { db: context.db });
+    // First, because it came first: the reply as the drafter wrote it, before
+    // the second opinion replaced it. Present only when there was a rewrite.
+    //
+    // Until this line the rewrite was the one edit on this desk that left no
+    // trace — a model changed the text a human was about to send, and the
+    // version panel that exists precisely so no draft is lost silently did not
+    // have it. Now it is a row like any other, which means the diff and the Put
+    // this back button work on it for free.
+    if (result.supersededDraft) {
+      recordDraft(taskId, result.supersededDraft, {
+        source: 'critic',
+        notes: task.reviewerNotes,
+        db: context.db,
+      });
+    }
     // Kept against the moment somebody presses Redraft on a reply they had
     // already rewritten by hand. The note that produced this one goes with it,
     // because "the version before I asked for it shorter" is how anybody

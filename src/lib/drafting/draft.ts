@@ -19,7 +19,7 @@ import { formatRetrieved, retrieveRules } from '../rules/retrieve';
 import { listRules, recordApplied } from '../rules/store';
 import { attachmentSummary, listAttachments } from '../tasks/attachments';
 import { threadContextFor } from '../tasks/messages';
-import type { Analysis, Task } from '../tasks/types';
+import type { Analysis, Critique as StoredCritique, Task } from '../tasks/types';
 import { isCause, isSentiment } from '../tasks/types';
 import { clip, htmlToText } from '../thread-context';
 
@@ -52,6 +52,16 @@ export interface DraftResult {
   droppedRuleIds: string[];
   /** The critic's verdict, when a critic pass ran. */
   critique?: Critique;
+  /**
+   * The draft as the drafter wrote it, present only when the critic replaced it.
+   *
+   * `draft` above is always the text to send, which is what every caller wants
+   * and why the swap happens in here rather than at each of them. This is the
+   * text that was swapped out, so the job can keep it: a rewrite nobody can see
+   * the other side of is a rewrite nobody can disagree with, and the critic is
+   * a model, not an editor with a mandate.
+   */
+  supersededDraft?: string;
 }
 
 export interface DraftOptions {
@@ -107,10 +117,12 @@ export interface DraftOptions {
   db?: Db;
 }
 
-export interface Critique {
-  /** False when the critic found something that must be fixed before sending. */
-  approved: boolean;
-  issues: string[];
+/**
+ * The verdict as it comes back from the model, which is the stored one plus the
+ * rewrite. Only the rewrite is transport: it becomes the draft, and what is
+ * kept on the task is the judgement — see `Critique` in `tasks/types`.
+ */
+export interface Critique extends StoredCritique {
   /** Present only when the critic rewrote the draft. */
   revised?: string;
 }
@@ -469,7 +481,14 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
     );
     if (critique) {
       result.critique = critique;
-      if (critique.revised) result.draft = critique.revised;
+      if (critique.revised) {
+        // The text going out is the corrected one; the text it replaced goes
+        // back to the caller rather than nowhere. Whoever reviews this gets to
+        // read both and disagree with the critic, which they cannot do about a
+        // rewrite that happened silently inside one function call.
+        result.supersededDraft = result.draft;
+        result.draft = critique.revised;
+      }
     }
   }
 
@@ -542,13 +561,15 @@ JSON only:
 
     const approved = parsed.approved !== false;
     const revised = typeof parsed.revised === 'string' ? parsed.revised.trim() : '';
+    // A rewrite that comes back with an approval is the critic contradicting
+    // itself; trust the verdict and keep the draft we already had.
+    const rewriting = !approved && Boolean(revised);
 
     return {
       approved,
       issues: Array.isArray(parsed.issues) ? parsed.issues.filter((i): i is string => typeof i === 'string') : [],
-      // A rewrite that comes back with an approval is the critic contradicting
-      // itself; trust the verdict and keep the draft we already had.
-      ...(!approved && revised ? { revised } : {}),
+      rewritten: rewriting,
+      ...(rewriting ? { revised } : {}),
     };
   } catch (error) {
     console.warn('[drafting] critic pass failed, keeping the draft as written:', error);
