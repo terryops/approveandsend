@@ -1,0 +1,179 @@
+'use client';
+
+import Link, { useLinkStatus } from 'next/link';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useFormStatus } from 'react-dom';
+
+/**
+ * The desk saying it heard the click, before it has anything to show for it.
+ *
+ * Every screen here is a server component reading SQLite, which means every
+ * click — opening an email, picking one of the options — is a round trip. On a
+ * warm local install that is under a tenth of a second, and a tenth of a second
+ * in which *nothing at all changes on screen* is the whole complaint: the row
+ * stays the colour it was, the tab stays where it was, and the only evidence the
+ * press landed arrives when the entire page has been replaced. That reads as a
+ * hang and then a jump, at any latency, and it gets worse the further the
+ * install is from the browser.
+ *
+ * Neither of these makes the server faster. They make the gap visible, which is
+ * the half of "slow" that is about the interface rather than the database.
+ *
+ * Both are client components because both are subscriptions to something only
+ * the browser knows — is a navigation in flight, is this form posting — and
+ * both render nothing at all with JavaScript off, where there is no such gap to
+ * cover: a plain form post repaints the whole document, and the browser's own
+ * loading indicator is already saying so.
+ */
+
+/**
+ * A navigation that has started but not landed, marked on the thing that
+ * started it.
+ *
+ * `useLinkStatus` is Next's answer to exactly the case this app is: a dynamic
+ * route with no `loading.tsx`, where the router cannot prefetch anything useful
+ * and so has nothing to show until the server answers. It reports `pending`
+ * from the click until the new page commits.
+ *
+ * Renders an element rather than a class on the row, and the element is always
+ * there — see the note on `.opening` in globals.css. An indicator that appears
+ * is an indicator that reflows the row it appears in, and a row that jumps a
+ * pixel as you click it is worse than one that sits still.
+ *
+ * `aria-hidden`, because it says nothing a screen reader does not already get:
+ * a router navigation moves focus and announces the new page, and a second
+ * voice saying "loading" over the top of that is noise.
+ */
+export function Opening() {
+  const { pending } = useLinkStatus();
+  return <span aria-hidden="true" className={`opening${pending ? ' is-opening' : ''}`} />;
+}
+
+/**
+ * The one link in this app that is worth fetching before it is clicked.
+ *
+ * A review screen is a dynamic route, and Next does not prefetch those on its
+ * own — there is nothing cacheable to fetch, so a click is a round trip and the
+ * `Opening` bar above is the honest best a click can do. `prefetch` overrides
+ * that and fetches the whole page ahead of time, which turns the click into a
+ * cache read: the screen is simply there.
+ *
+ * It is not free, which is why it is a component rather than a prop sprinkled
+ * on every `<Link>` in the app. Each prefetch is a full render of a task page on
+ * the server, and the inbox is a hundred rows. So there are two settings, and
+ * which one a list gets depends on how many rows it has:
+ *
+ * `eager` fetches as the link comes into view, the way Next does for a static
+ * route. That is right for the queue rail, which is twelve rows, is the same
+ * twelve on every task, and is walked with `J` and `K` — a keyboard has no
+ * pointer to read intent from, so waiting for one would mean never prefetching
+ * the rows that most need it.
+ *
+ * Without it, nothing is fetched until the pointer arrives, and then the whole
+ * page is. That is the documented answer for a long list, and it costs almost
+ * nothing while buying almost everything: the distance from noticing a row to
+ * clicking it is a few hundred milliseconds of hand movement, and the render it
+ * is racing is a read of a local file. Focus counts as intent too, so tabbing
+ * through the inbox warms the same rows a mouse would.
+ *
+ * What a warm click cannot fix is a screen that has moved on since it was
+ * fetched. Every mutation in `actions.ts` calls `revalidatePath`, which drops
+ * these, so nothing you do yourself can go stale; what is left is the queue
+ * writing a draft, or a colleague sending one, in the few minutes between the
+ * fetch and the click. The first heals itself — the task was `pending` when it
+ * was fetched, so the screen arrives with the poller already mounted — and the
+ * second fails safe, because `sendReply` reads the row and refuses a task that
+ * has already gone.
+ */
+export function TaskLink({
+  href,
+  className,
+  current,
+  eager = false,
+  children,
+}: {
+  href: string;
+  className?: string;
+  /** `aria-current`, for the row you are already on. */
+  current?: boolean;
+  eager?: boolean;
+  children: ReactNode;
+}) {
+  // Armed by the pointer, and never disarmed: a row you have hovered once is a
+  // row you may come back to, and the fetch has already been paid for.
+  const [wanted, setWanted] = useState(false);
+  const warm = () => setWanted(true);
+
+  return (
+    <Link
+      href={href}
+      className={className}
+      prefetch={eager || wanted}
+      aria-current={current ? 'page' : undefined}
+      onMouseEnter={warm}
+      onFocus={warm}
+      onTouchStart={warm}
+    >
+      {/* Every one of these gets the bar, because a warm click is not a
+          guaranteed one: the entry may have expired, or the pointer may have
+          gone straight from the keyboard to the click without ever hovering. */}
+      <Opening />
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * The button that was pressed, looking pressed, for as long as the post takes.
+ *
+ * The option tabs and the format tabs are submit buttons in the draft's own
+ * form: pressing one posts the whole reply and the server decides which tab is
+ * lit. That is the right design — the tab is lit by the row rather than by a
+ * guess in the browser — and it has one cost, which is that for the length of a
+ * round trip the tab you just pressed looks exactly like the tab you did not.
+ * People press it again.
+ *
+ * So this is an optimistic read of one bit and nothing more: *you pressed this
+ * one*. It never claims the switch happened — the styling it turns on is the
+ * chosen look plus a dimming, and the moment the server answers, the class goes
+ * and the real answer is underneath it. If the action refuses (a sent task, a
+ * lost race) the tab snaps back to where it was, which is the truth.
+ *
+ * A wrapper rather than a component that renders the button, because the button
+ * has to stay in the page it belongs to. `formAction={useAlternative.bind(...)}`
+ * written in `tasks/[id]/page.tsx` is what `actions.fields.test.ts` reads to
+ * check that every field the form posts reaches an action that wants it, and
+ * that check works by finding the action's *name* next to the form. Passing the
+ * bound action down here as a prop would compile, work, and quietly put it out
+ * of a job — the same trade `here.tsx` refused for the same reason.
+ *
+ * `display: contents` on the wrapper, so a stack of tabs is still a stack of
+ * tabs: the span has no box of its own and the button it holds sits in the
+ * flex row exactly where it did before.
+ */
+export function Pressable({ children }: { children: ReactNode }) {
+  // Form-scoped: true while *any* button in this form is posting. Which one it
+  // was is the part only the click knows, and that is the state below.
+  const { pending } = useFormStatus();
+  const [armed, setArmed] = useState(false);
+  const posting = useRef(false);
+
+  // Disarmed on the falling edge, not on `!pending`. The click and the
+  // submission are two renders, and in the first of them this component has
+  // already been told it was pressed while the form has not yet been told it is
+  // posting — clearing on a bare `!pending` would clear it there, half a frame
+  // before the state it exists to show.
+  useEffect(() => {
+    if (posting.current && !pending) setArmed(false);
+    posting.current = pending;
+  }, [pending]);
+
+  return (
+    <span
+      className={`pressable${armed && pending ? ' pressing' : ''}`}
+      onClick={() => setArmed(true)}
+    >
+      {children}
+    </span>
+  );
+}

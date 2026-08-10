@@ -29,16 +29,31 @@ customer's own language sets `match` and `Chinese`, and both halves are true at
 once: the customer gets French, the reviewer gets Chinese, and nobody is
 approving a paragraph they are guessing at.
 
-Leave `reviewLanguage` empty — the default — and the feature is off end to end:
-no column is read, no job is queued, no model is called, and nothing new appears
-on the review screen. This is the right setting for a team that reads the mail
-it receives.
+Leave `reviewLanguage` empty — the default — and the mail half is off end to
+end: no column is read, no model is called for a message or a draft, and no
+second panel appears on the review screen. This is the right setting for a team
+that reads the mail it receives.
+
+## The cards are the other half, and they follow the interface
+
+Context sources write their own prose, in whatever language their author was
+thinking in — English, for the built-in ones and for most config files. The same
+job renders those cards, but into the **interface** language rather than this
+one: a card is a piece of the interface that happens to have been written
+somewhere else, and a desk that reads its own mail unaided still wants its own
+furniture in its own words. So a desk with no `reviewLanguage` and a billing
+lookup does queue the job, for the cards alone.
+
+What the model was told is untouched — see
+[Context sources](context-sources.md#in-the-language-the-desk-is-read-in).
 
 ## What it costs
 
 One extra model call per translated part, so at most two per task: the
-customer's message and the reply. Point the translator role at a cheap model —
-this is transcription, not judgement:
+customer's message and the reply. A task with context cards on it costs one
+more — one call for all the cards, however many sources you run, and only when
+a lookup comes back with something a stored rendering does not cover. Point the
+translator role at a cheap model — this is transcription, not judgement:
 
 ```bash
 AI_MODEL_TRANSLATOR=gpt-5.6-luna

@@ -12,7 +12,18 @@ import { getDb, type Db } from '../db';
  * honest, rather than as the previous draft, which is a trap.
  */
 
-export type TranslationKind = 'body' | 'draft';
+/**
+ * The three things on the review screen that may arrive in a language the
+ * person approving them does not read.
+ *
+ * Two of them are mail — theirs and ours — and are rendered into
+ * `reviewLanguage`. The third is the row of context cards, rendered into the
+ * interface language instead, because a card is furniture rather than mail;
+ * see `cards.ts`. All three share this table because all three want the same
+ * guarantee from it: a rendering is shown only for the exact text it was made
+ * from.
+ */
+export type TranslationKind = 'body' | 'draft' | 'context';
 
 export interface StoredTranslation {
   taskId: string;

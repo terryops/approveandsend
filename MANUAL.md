@@ -562,8 +562,13 @@ reviewer approving a Japanese reply they cannot read has not read it.
 A translation is tied to a SHA-256 of the exact text it was made from, so a
 redrafted reply shows **no** translation rather than the previous draft's — the
 one failure a reviewer in this position could never catch themselves. Empty is
-the default and turns the whole thing off: no job, no model call, nothing on
+the default and turns the mail half off: no job, no model call, nothing on
 screen. [docs/review-language.md](docs/review-language.md).
+
+The context cards above the draft are rendered too, and into the *interface*
+language rather than this one — a card is furniture on that screen, not mail, so
+a desk that reads its own post still gets its lookups in its own words. What the
+model was told stays in the words the source wrote it in.
 
 ## Three languages, and they are all different
 

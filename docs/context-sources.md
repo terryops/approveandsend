@@ -402,6 +402,35 @@ Stripe every time, a subscription cancelled after the draft was written would
 make the draft look like a mistake nobody made. The row is the evidence of what
 the model actually saw.
 
+### In the language the desk is read in
+
+A source writes its own prose, and it writes it in whatever language its author
+was thinking in — English, for the built-in ones and for most config files.
+That is fine for the model and wrong for the person reading the screen: a desk
+set to Chinese had a paragraph of English sitting above a draft where every
+other word had been translated.
+
+So the cards are rendered into the **interface** language once, by the same job
+that renders the mail, and the review screen shows the rendering. Note which
+language that is: `reviewLanguage` is about mail — what the customer wrote and
+what you are about to send — and a card is a piece of the interface that
+happens to have been written somewhere else. A desk that reads its own mail
+unaided still gets its cards in its own words.
+
+What the model reads is untouched. The `prompt` sentence goes into the drafting
+prompt exactly as your source wrote it; only the reviewer's copy is rendered.
+
+It costs one extra translator call per task with cards on it — one call for all
+of them, however many sources you run — and it is not paid twice: the rendering
+is stored against a hash of the card, so it is bought again only when a lookup
+comes back with something different. Values that are not words never leave the
+building: `200`, `100%` and `2026-05-10` are not sent to be translated, and the
+model is told to leave names, plan names, ids and language tags exactly as they
+are.
+
+If the rendering fails or comes back malformed, the card appears in its source's
+own words. Nothing is lost but the translation.
+
 ## Learning from the archive ignores all of this
 
 The backfill (see the Archive screen) drafts counterfactually against mail from

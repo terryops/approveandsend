@@ -1,16 +1,28 @@
+import { hasContext, listContext } from '../../context/store';
 import { getDb, type Db } from '../../db';
+import { operatorLanguage } from '../../i18n';
 import { getTask } from '../../tasks/store';
+import { cardsSource, translateCards } from '../../translation/cards';
 import { hasTranslation, saveTranslation, type TranslationKind } from '../../translation/store';
 import { reviewLanguage, translateForReview, translationEnabled } from '../../translation/translate';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
 
 /**
- * Rendering an email and its reply into the reviewer's language.
+ * Rendering an email, its reply and the cards beside them into a language the
+ * reviewer reads.
  *
- * Runs after drafting rather than before, so one job covers both halves of what
- * a reviewer needs to read: the customer's message and the answer they are
- * about to approve.
+ * Runs after drafting rather than before, so one job covers everything a
+ * reviewer has to read on that screen: the customer's message, the answer they
+ * are about to approve, and what the lookups said about the person who wrote
+ * in.
+ *
+ * Two languages, deliberately. The mail is rendered into `reviewLanguage` —
+ * what the customer wrote and what we are about to send. The cards are
+ * rendered into the interface language, because they are part of the interface
+ * and arrive in English from a source that had no way of knowing better; see
+ * `translation/cards.ts`. A desk that reads its own mail unaided still wants
+ * its own furniture in its own words.
  *
  * Its own job, and the lowest priority of anything task-shaped, because it is
  * the one step here that is purely for a human. Nothing downstream consumes it
@@ -45,10 +57,16 @@ export function enqueueTranslateTask(
  * for the same reason they do not have to know whether it has context sources:
  * a no-op job per email would clutter the queue of every install that reads
  * its own mail perfectly well.
+ *
+ * Cards are the second reason to run, and they are why this asks the database
+ * rather than only the config. A desk with no `reviewLanguage` and a billing
+ * lookup has nothing to translate about the mail and a card in the wrong
+ * language sitting above it.
  */
 export function enqueueForTranslation(taskId: string, options: { db?: Db } = {}): void {
-  if (!translationEnabled()) return;
-  enqueueTranslateTask(taskId, options);
+  const db = options.db ?? getDb();
+  if (!translationEnabled() && !hasContext(taskId, db)) return;
+  enqueueTranslateTask(taskId, { ...options, db });
 }
 
 export const translateTaskHandler: JobHandler = async (payload, context) => {
@@ -56,17 +74,20 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
   const taskId = typeof value.taskId === 'string' ? value.taskId.trim() : '';
   if (!taskId) throw new PermanentJobError('Payload is missing taskId');
 
-  const language = reviewLanguage();
-  if (!language) return { skipped: 'no review language configured' };
-
   const task = getTask(taskId, context.db);
   if (!task) throw new PermanentJobError(`Task ${taskId} no longer exists`);
 
+  const language = reviewLanguage();
+  const cards = listContext(taskId, context.db);
+  if (!language && cards.length === 0) return { skipped: 'nothing on this task needs rendering' };
+
   // What is on screen: after sending, that is the reply that actually went.
-  const parts: { kind: TranslationKind; text: string }[] = [
-    { kind: 'body', text: task.body ?? '' },
-    { kind: 'draft', text: task.finalReply ?? task.draft ?? '' },
-  ];
+  const parts: { kind: TranslationKind; text: string }[] = language
+    ? [
+        { kind: 'body', text: task.body ?? '' },
+        { kind: 'draft', text: task.finalReply ?? task.draft ?? '' },
+      ]
+    : [];
 
   const translated: string[] = [];
   const sameLanguage: string[] = [];
@@ -94,12 +115,37 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
     }
   }
 
+  // The cards, into the language the desk is read in rather than the one the
+  // mail is read in. One call for all of them — see `translateCards` — so a
+  // task with three sources costs one cheap request, not three.
+  const desk = operatorLanguage();
+  const source = cardsSource(cards);
+  if (cards.length > 0 && !hasTranslation(taskId, 'context', source, desk, context.db)) {
+    try {
+      const rendered = await translateCards(cards, desk);
+      // Stored even when the model changed nothing, which is the difference
+      // between paying once per desk that already reads English and paying
+      // again every time somebody saves a draft. A rendering identical to the
+      // card is the right answer to show, and a row saying so is the only way
+      // to stop asking.
+      if (rendered) {
+        saveTranslation(taskId, 'context', desk, source, JSON.stringify(rendered), context.db);
+        translated.push('context');
+      } else {
+        failed.push('context: the rendering did not line up with the cards');
+      }
+    } catch (error) {
+      failed.push(`context: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   if (failed.length > 0 && translated.length === 0) {
     throw new Error(failed.join('; '));
   }
 
   return {
-    language,
+    ...(language ? { language } : {}),
+    ...(cards.length > 0 ? { deskLanguage: desk } : {}),
     translated,
     ...(sameLanguage.length > 0 ? { alreadyInLanguage: sameLanguage } : {}),
     ...(failed.length > 0 ? { failed } : {}),

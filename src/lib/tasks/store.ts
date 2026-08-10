@@ -369,9 +369,19 @@ export function countTasksByStatus(
  * `updated_at`. That column is how "changed since you last looked" is decided
  * everywhere else, and a read that counted as a change would mark every task
  * stale the moment it was read, which is the opposite of what it is for.
+ *
+ * The first opening, and only the first. Nothing reads this column as a time —
+ * the inbox dot, the rail's "unopened" and `countUnopened` all ask whether it is
+ * null — so rewriting it was buying nobody anything and charging for it on every
+ * render of the review screen, which includes every tick of the poller. A page
+ * left open on a task the queue has not reached yet was a write to the journal
+ * every five seconds for as long as it stayed open.
  */
 export function markOpened(id: string, db: Db = getDb()): void {
-  db.prepare('UPDATE tasks SET opened_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  db.prepare('UPDATE tasks SET opened_at = ? WHERE id = ? AND opened_at IS NULL').run(
+    new Date().toISOString(),
+    id,
+  );
 }
 
 /**

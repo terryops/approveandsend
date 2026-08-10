@@ -1348,6 +1348,137 @@ header.top nav a.active:hover {
 }
 
 /*
+ * The gap between a press and the page that answers it.
+ *
+ * Every screen here is rendered on the server from a row in SQLite, so opening
+ * an email and switching option are both round trips — and until the answer
+ * lands there is nothing on screen that was not there before the click. That is
+ * the part of "slow" that is not the database's fault and cannot be fixed by
+ * making the database faster: a tenth of a second in which the interface does
+ * not react is read as a press that missed, and the press is repeated.
+ *
+ * Two shapes for two kinds of wait. A navigation gets a line that fills, because
+ * the whole row is about to be replaced by another screen. A tab gets the look
+ * of having been chosen, because the thing it is waiting for is a change to the
+ * box beside it. See `pending.tsx` for what turns each of them on.
+ */
+
+/*
+ * A navigation in flight, drawn along the bottom of the row that started it.
+ *
+ * Always in the markup and never in the layout: it is absolutely positioned, so
+ * a row costs exactly the same height whether or not it has been clicked. An
+ * indicator that is inserted on click is an indicator that moves the text under
+ * the pointer at the moment of pressing it.
+ *
+ * It fills rather than pulses, and it fills over 700ms — longer than a local
+ * round trip usually takes, so on a fast desk it reads as a flicker of accent
+ * along the row and on a slow one as something making progress. It deliberately
+ * does not loop: this bar is not a promise about how long the wait is, and a bar
+ * that restarts is a bar saying the work started again.
+ */
+.opening {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+}
+
+.opening.is-opening {
+  opacity: 1;
+  animation: opening 0.7s ease-out forwards;
+}
+
+@keyframes opening {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The row as a whole, so the answer is not two pixels tall. `:has` rather than a
+   class on the row, because the only component that knows a navigation has
+   started is the one inside the link. */
+.inbox-row:has(.opening.is-opening),
+.queue-rail a:has(.opening.is-opening) {
+  background: var(--tint);
+}
+
+/* What the bar is measured against. Both of these are the click target's own
+   box — the whole row in the inbox, the whole card in the rail. */
+.inbox-row,
+.queue-rail a {
+  position: relative;
+}
+
+/* Reduced motion gets the fact without the movement: the line is simply there,
+   the whole width, for as long as the wait lasts. */
+@media (prefers-reduced-motion: reduce) {
+  .opening.is-opening {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
+
+/*
+ * A submit button that has been pressed and is waiting for its own form.
+ *
+ * `display: contents` because this wrapper is scaffolding and not a box: the
+ * option tabs are a flex column and the format tabs a flex row, and a span
+ * around each one would make them a column and a row of spans instead.
+ */
+.pressable {
+  display: contents;
+}
+
+/* The chosen look, arriving on the click rather than on the answer. Faded,
+   because it is a guess: the server has not agreed yet, and the fade is the
+   difference between "this is the one" and "this is the one I asked for". */
+.alt-tabs .pressable.pressing > button,
+.format-tabs .pressable.pressing > button {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.alt-tabs .pressable.pressing > button .alt-label {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* And the one that was chosen a moment ago steps back, so that for the length of
+   a round trip there is one lit tab rather than two. Only while something is
+   actually being pressed — the moment the answer lands both of these stop
+   matching and the row is drawn from the row again. */
+.alt-tabs:has(.pressable.pressing) .pressable:not(.pressing) > button.active {
+  color: var(--muted);
+  border-color: transparent;
+  background: none;
+}
+
+.alt-tabs:has(.pressable.pressing) .pressable:not(.pressing) > button.active .alt-label {
+  background: var(--tint);
+  color: var(--muted);
+}
+
+.format-tabs:has(.pressable.pressing) .pressable:not(.pressing) > button.active {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--panel);
+  font-weight: inherit;
+}
+
+/*
  * A message rendered as paragraphs rather than as preformatted text.
  *
  * The gap is the 12px the mail itself uses (see BLOCK_STYLE in mail/render.ts),
@@ -5214,6 +5345,20 @@ a.queue-light:hover {
 /* The one card on the page that is being written rather than read. */
 .card.reply-card {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+/*
+ * Where the reply's own buttons land when they come back.
+ *
+ * This carries `id="reply"`, which is what `replyHref` in actions.ts redirects
+ * to — see the note there for why an option tab used to throw the reader at the
+ * top of the thread. The margin is what stops the strip sitting flush against
+ * the top edge of the window, which reads as a page cut off rather than a page
+ * scrolled; 16px is the offset every sticky column on this screen already uses,
+ * so the two agree about where the top of the reading is.
+ */
+.reply-lead {
+  scroll-margin-top: 16px;
 }
 
 /*

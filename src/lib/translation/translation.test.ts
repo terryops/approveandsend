@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetAiConfig } from '../ai';
 import { resetWorkspaceConfig } from '../config/workspace';
+import { listContext, saveContext } from '../context/store';
 import { openDb, type Db } from '../db';
 import { TRANSLATE_TASK, enqueueForTranslation, translateTaskHandler } from '../queue/handlers';
 import { completeJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
+import { cardsSource, parseCards, renderCard } from './cards';
 import { clearTranslations, getTranslation, hasTranslation, saveTranslation } from './store';
 import { reviewLanguage, translateForReview, translationEnabled } from './translate';
 
@@ -327,15 +329,195 @@ describe('the translation job', () => {
     await expect(translateTaskHandler({ taskId: id }, context())).rejects.toThrow();
   });
 
-  it('does nothing when no review language is configured', async () => {
+  it('does nothing when there is no review language and nothing to render', async () => {
     const id = task('Bonjour', 'Merci');
     delete process.env.AAS_REVIEW_LANGUAGE;
     resetWorkspaceConfig();
 
     const result = await translateTaskHandler({ taskId: id }, context());
 
-    expect(result).toEqual({ skipped: 'no review language configured' });
+    expect(result).toEqual({ skipped: 'nothing on this task needs rendering' });
     expect(prompts).toHaveLength(0);
+  });
+});
+
+/*
+ * The cards, which are the other thing on that screen written by somebody who
+ * was not thinking about the language it would be read in.
+ *
+ * A source writes its own prose, and it writes it in English: the built-in ones
+ * because this repository is, a declarative one because the config file sits
+ * next to an internal endpoint whose fields are called `plan` and `credits`. On
+ * a Chinese desk that put a paragraph of English above a draft where every
+ * other word had been translated.
+ */
+describe('rendering the context cards', () => {
+  beforeEach(() => {
+    // The desk is read in Chinese. The cards arrive in English regardless.
+    process.env.AAS_LANGUAGE = 'zh-CN';
+    resetWorkspaceConfig();
+  });
+
+  afterEach(() => {
+    delete process.env.AAS_LANGUAGE;
+    resetWorkspaceConfig();
+  });
+
+  function card(id: string, block: Parameters<typeof saveContext>[3]): void {
+    saveContext(id, 'subeasy', 'Subeasy', block, db);
+  }
+
+  const account = {
+    title: 'Subeasy Account',
+    fields: [
+      { label: 'Plan', value: 'Pro' },
+      { label: 'Credits', value: '200' },
+      { label: 'User', value: '洪藝珊' },
+    ],
+    prompt: 'They have 200 credits left; the next batch expires 9 September 2026.',
+  };
+
+  it('renders the card into the language the desk is read in', async () => {
+    const id = task('Bonjour');
+    card(id, account);
+    // The mail first — this desk translates both — then the card.
+    queued.push(
+      '你好',
+      JSON.stringify({
+        text: ['Subeasy 账户', '方案', 'Pro', '积分', '用户', '洪藝珊', '他们还剩 200 积分。'],
+      }),
+    );
+
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
+      translated: string[];
+      deskLanguage: string;
+    };
+
+    expect(result.translated).toContain('context');
+    // The interface language, not the review language. A card is furniture on
+    // this screen; the mail beside it is the thing `reviewLanguage` is about.
+    expect(result.deskLanguage).toBe('Simplified Chinese');
+
+    const rendered = parseCards(
+      getTranslation(id, 'context', cardsSource(listContext(id, db)), 'Simplified Chinese', db)?.content,
+    );
+    expect(rendered?.subeasy?.title).toBe('Subeasy 账户');
+    expect(rendered?.subeasy?.fields[0]).toEqual({ label: '方案', value: 'Pro' });
+    expect(rendered?.subeasy?.prompt).toBe('他们还剩 200 积分。');
+  });
+
+  it('does not send values that are not words', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+    queued.push(JSON.stringify({ text: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }));
+
+    await translateTaskHandler({ taskId: id }, context());
+
+    // `200` is a number, and asking is how it comes back as 二百. Six strings
+    // go: the title, three labels, `Pro` and the name (both of which the model
+    // is told to leave alone), and the sentence.
+    expect(prompts[0]).toContain('"Pro"');
+    expect(prompts[0]).not.toContain('"200"');
+  });
+
+  it('asks once for a label two cards share', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    saveContext(id, 'billing', 'Billing', { title: 'Billing', fields: [{ label: 'Plan', value: 'Pro' }], prompt: '' }, db);
+    saveContext(id, 'crm', 'CRM', { title: 'CRM', fields: [{ label: 'Plan', value: 'Pro' }], prompt: '' }, db);
+    queued.push(JSON.stringify({ text: ['账单', '方案', 'Pro', '客户系统'] }));
+
+    await translateTaskHandler({ taskId: id }, context());
+
+    const rendered = parseCards(
+      getTranslation(id, 'context', cardsSource(listContext(id, db)), 'Simplified Chinese', db)?.content,
+    );
+    // One string in, one string out — and the same label on two cards cannot
+    // come back reading two ways.
+    expect(rendered?.billing?.fields[0]?.label).toBe('方案');
+    expect(rendered?.crm?.fields[0]?.label).toBe('方案');
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('stores nothing when the answer does not line up with the card', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+    // Two strings merged into one. Matched back by position, that would put a
+    // label from one row onto the row below it.
+    queued.push(JSON.stringify({ text: ['Subeasy 账户', '方案 / 积分', '用户'] }));
+
+    await expect(translateTaskHandler({ taskId: id }, context())).rejects.toThrow();
+    expect(
+      getTranslation(id, 'context', cardsSource(listContext(id, db)), 'Simplified Chinese', db),
+    ).toBeNull();
+  });
+
+  it('stops asking once a card has been rendered, even when nothing changed', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+    queued.push(JSON.stringify({ text: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }));
+
+    await translateTaskHandler({ taskId: id }, context());
+    await translateTaskHandler({ taskId: id }, context());
+
+    // Stored even where the model changed nothing, which is the difference
+    // between paying once per desk that already reads English and paying again
+    // every time somebody saves a draft.
+    expect(prompts).toHaveLength(1);
+  });
+
+  it('shows nothing once the lookup behind it has changed', async () => {
+    const id = task('Bonjour');
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+    card(id, account);
+    queued.push(JSON.stringify({ text: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }));
+    await translateTaskHandler({ taskId: id }, context());
+
+    // The subscription lapsed between one lookup and the next.
+    card(id, { ...account, fields: [{ label: 'Plan', value: 'Free' }] });
+
+    // A rendering of last week's card with this week's numbers missing is the
+    // same trap the mail panels refuse.
+    expect(
+      getTranslation(id, 'context', cardsSource(listContext(id, db)), 'Simplified Chinese', db),
+    ).toBeNull();
+  });
+
+  it('falls back a field at a time, and never moves a link', () => {
+    const block = {
+      sourceId: 'subeasy',
+      title: 'Subeasy Account',
+      fields: [
+        { label: 'Plan', value: 'Pro', href: 'https://subeasy.ai/u/1' },
+        { label: 'Credits', value: '200' },
+      ],
+      prompt: 'They have 200 credits left.',
+    };
+
+    const rendered = renderCard(block, { subeasy: { title: '账户', fields: [{ label: '方案', value: 'Pro' }], prompt: '' } });
+
+    expect(rendered.title).toBe('账户');
+    expect(rendered.fields[0]).toEqual({ label: '方案', value: 'Pro', href: 'https://subeasy.ai/u/1' });
+    // A rendering one field short leaves the rest as its source wrote it,
+    // rather than shifting the next row's answer onto it.
+    expect(rendered.fields[1]).toEqual({ label: 'Credits', value: '200' });
+    expect(rendered.prompt).toBe('They have 200 credits left.');
+  });
+
+  it('shows the card as its source wrote it when there is no rendering', () => {
+    const block = { sourceId: 'subeasy', title: 'Subeasy Account', fields: [], prompt: 'Pro since April.' };
+
+    // The state every card is in until the job has run, and the state it stays
+    // in if the job could not.
+    expect(renderCard(block, null)).toEqual({ title: 'Subeasy Account', fields: [], prompt: 'Pro since April.' });
   });
 });
 
@@ -350,6 +532,20 @@ describe('queueing it', () => {
     // A no-op job per email would clutter the queue view of every install that
     // has no use for the feature.
     expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(0);
+  });
+
+  it('enqueues for a desk that reads its own mail but not its own cards', () => {
+    delete process.env.AAS_REVIEW_LANGUAGE;
+    resetWorkspaceConfig();
+
+    const id = task('Bonjour');
+    saveContext(id, 'subeasy', 'Subeasy', { title: 'Subeasy Account', fields: [], prompt: 'Pro since April.' }, db);
+    enqueueForTranslation(id, { db });
+
+    // Nothing about the mail needs rendering here; the card above it does, and
+    // deciding that from `reviewLanguage` alone would leave it in English for
+    // good.
+    expect(listJobs({ type: TRANSLATE_TASK }, db)).toHaveLength(1);
   });
 
   it('enqueues once a review language is set', () => {

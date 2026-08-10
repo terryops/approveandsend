@@ -548,11 +548,25 @@ never-promise list, breaches of the rules, the wrong language, tone that does
 not match${catalogueBlock ? ', any product, plan or price that does not appear exactly as written in the catalogue above — a number that is close is a wrong number' : ''}${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}${filesBlock ? ', and whether it asks for a file they already attached' : ''}. Ignore matters of taste — a reply you would have phrased
 differently is not a problem.
 
+## Two languages, and which is which
+The reply is for the customer and stays in their language, so \`revised\` is
+written in the language the draft is in — correcting a reply is not translating
+it, and a rewrite that arrives in another language is a rewrite nobody can send.
+
+\`issues\` is the other direction: it is a note to the colleague who has to
+decide whether to send this, and they read ${operatorLanguage()}. So write the
+issues in ${operatorLanguage()} whatever language the mail and the reply are in.
+This is the one place on the review screen that says why a second model would
+not sign the draft off, and a reason in a language the reviewer has to guess at
+is a reason they skip past. Quote the reply's own words where the exact wording
+is the problem, and leave product names, error strings and identifiers as they
+appear.
+
 JSON only:
 {
   "approved": true or false,
-  "issues": ["what is wrong, specifically; empty when approved"],
-  "revised": "the corrected reply in full — include this ONLY if approved is false"
+  "issues": ["what is wrong, specifically, in ${operatorLanguage()}; empty when approved"],
+  "revised": "the corrected reply in full, in the language of the draft — include this ONLY if approved is false"
 }`;
 
   try {

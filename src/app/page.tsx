@@ -12,6 +12,7 @@ import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store'
 import { deskedAt, isTaskStatus, TASK_STATUSES, type Task, type TaskStatus } from '@/lib/tasks/types';
 
 import { bulkDelete, bulkDismiss, bulkReopen, loadDemo, syncNow } from './actions';
+import { TaskLink } from './pending';
 import { SearchForm } from './search-form';
 
 export const dynamic = 'force-dynamic';
@@ -344,7 +345,15 @@ export default async function InboxPage({
                     width of the row beats a target the width of a subject line,
                     and there is no client JS here to make the rest of the row
                     clickable. */}
-                <Link className={`subject ${unread ? '' : 'read'}`} href={`/tasks/${task.id}`}>
+                {/* Not a plain `Link`: a review screen is a dynamic route, so
+                    nothing about it is fetched until it is clicked unless
+                    something asks. This asks when the pointer arrives — a
+                    hundred rows is too many to fetch on sight, and the second
+                    between noticing a row and clicking it is long enough to
+                    render one. It also draws the bar that says the click
+                    landed, for the times the fetch has not finished. See
+                    `TaskLink`. */}
+                <TaskLink className={`subject ${unread ? '' : 'read'}`} href={`/tasks/${task.id}`}>
                   <span className="line">
                     {task.subject || t('inbox.noSubject')}
                     {/* Which of the machine's three it is, as a word. A badge
@@ -369,7 +378,7 @@ export default async function InboxPage({
                       ].join(' · ')}
                     </span>
                   )}
-                </Link>
+                </TaskLink>
                 <span className="topic-cell">
                   {task.scope && (
                     // The slug stays on the title: it is what the rules page and

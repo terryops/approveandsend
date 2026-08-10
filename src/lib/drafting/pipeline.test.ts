@@ -71,6 +71,7 @@ const WORKSPACE_ENV = [
   'AAS_SIGNATURE',
   'AAS_REPLY_LANGUAGE',
   'AAS_AUTO_APPROVE_RULES',
+  'AAS_LANGUAGE',
 ];
 
 beforeEach(async () => {
@@ -818,6 +819,26 @@ describe('drafting', () => {
     expect(result.critique?.rewritten).toBe(false);
     expect(result.supersededDraft).toBeUndefined();
     expect(result.draft).toBe('We have escalated this and will update you shortly.');
+  });
+
+  it('asks for the objections in the language the desk is read in', async () => {
+    process.env.AAS_LANGUAGE = 'zh-CN';
+    resetWorkspaceConfig();
+    queued.push(GOOD_DRAFT);
+    queued.push(JSON.stringify({ approved: false, issues: ['承诺了具体日期'], revised: 'A safer reply.' }));
+
+    await draftReply(createTask(INCOMING, db).task, { critic: true, db });
+
+    // The verdict card is the one place on the review screen that says why a
+    // second model would not sign the draft off, and it arrived in English on
+    // a desk where every other word had been translated. The drafter has been
+    // told this about `intent` and `keyPoints` since there was a drafter; the
+    // critic never was.
+    expect(prompts[1]).toContain('issues in Simplified Chinese');
+    expect(prompts[1]).toContain('in Simplified Chinese; empty when approved');
+    // And the rewrite is not a translation: it is the reply, and it goes to
+    // the customer in the language they wrote in.
+    expect(prompts[1]).toContain('in the language of the draft');
   });
 
   it('ignores a rewrite that arrives with an approval', async () => {

@@ -88,6 +88,19 @@ export function listContext(taskId: string, db: Db = getDb()): StoredContext[] {
   return rows.map(map);
 }
 
+/**
+ * Whether this task has any cards at all.
+ *
+ * Asked before queuing a translation job: a desk that reads its own mail
+ * perfectly well still wants its context cards in its own language, so
+ * "translation is off" cannot be decided by `reviewLanguage` alone any more.
+ * One indexed row rather than `listContext(...).length`, because the answer is
+ * needed on a path that is otherwise doing nothing.
+ */
+export function hasContext(taskId: string, db: Db = getDb()): boolean {
+  return db.prepare('SELECT 1 FROM task_context WHERE task_id = ? LIMIT 1').get(taskId) !== undefined;
+}
+
 export function clearContext(taskId: string, db: Db = getDb()): number {
   return db.prepare('DELETE FROM task_context WHERE task_id = ?').run(taskId).changes;
 }

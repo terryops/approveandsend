@@ -1,7 +1,7 @@
 'use server';
 
 import { isReplyFormat, type ReplyFormat } from '@/lib/mail/render';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
@@ -63,7 +63,7 @@ import { getVersion, recordDraft } from '@/lib/tasks/versions';
 import { setReviewLayoutCookie, type ReviewLayout } from '@/lib/tasks/layout';
 import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
-import { createTask, getTask, updateTask } from '@/lib/tasks/store';
+import { createTask, getTask, markOpened, updateTask } from '@/lib/tasks/store';
 import { sweepStuckTasks } from '@/lib/tasks/sweep';
 import { hasTranslation, saveTranslation } from '@/lib/translation/store';
 import { reviewLanguage, translateForReview } from '@/lib/translation/translate';
@@ -98,10 +98,20 @@ function field(form: FormData, name: string): string {
  * `undefined` means the form never mentioned it, and `updateTask` skips a key
  * it is not given. An empty string still means cleared, because a box somebody
  * emptied on purpose is an answer.
+ *
+ * `newlines` for the same reason `field` has it, and it was missing here: every
+ * box this reads is a textarea, a textarea submits CRLF whatever it holds, and
+ * the model writes LF. `keepEdits` is the one caller that then *compares* what
+ * it read against the row — so pressing the format tabs on a freshly drafted
+ * reply changed nothing a reader could see and yet wrote the draft, logged an
+ * "edited" nobody did, and queued a re-translation of the same words. Worse on
+ * the strip above it: `draft.trim() === option.body.trim()` is what lights the
+ * option tab a reply came from, so the tab went dark and the screen said the
+ * reviewer had edited — one press after they had not.
  */
 function optional(form: FormData, name: string): string | undefined {
   const value = form.get(name);
-  return typeof value === 'string' ? value.trim() : undefined;
+  return typeof value === 'string' ? newlines(value).trim() : undefined;
 }
 
 /**
@@ -187,6 +197,70 @@ function formatFrom(form: FormData): { replyFormat: ReplyFormat } | Record<strin
   return isReplyFormat(value) ? { replyFormat: value } : {};
 }
 
+/**
+ * Back to the reply, rather than back to the top of the page.
+ *
+ * Every control on the review screen is a submit button that ends in a
+ * `redirect()` to this same route, and a redirect is a navigation: the browser
+ * lands at the top of the document. On a task with a thread and three context
+ * cards, pressing an option tab therefore scrolled the option tabs off the
+ * screen — the answer to "what did that do" was somewhere below the fold, and
+ * getting back to the control you had just used was a scroll every time. It
+ * reads as the page reloading rather than as a tab switching, which is the one
+ * thing a row of tabs must never look like.
+ *
+ * A fragment rather than a script, because it is the only fix that holds in
+ * both directions: Next's router scrolls to the hash on the URL it navigates
+ * to, and a browser with no JavaScript posting the same form does the same
+ * thing with the `Location` it is handed. See `id="reply"` on the task page for
+ * what it points at, and why it is the strip rather than the box.
+ *
+ * Not on every action here. The ones that redirect to the top still do, and
+ * deliberately: a refusal, an error or a dismissal is a sentence about the
+ * whole task, and the top of the page is where it is read.
+ */
+function replyHref(id: string, query = ''): string {
+  return `/tasks/${id}${query}#reply`;
+}
+
+/**
+ * Whether the router is driving this action, or a browser posting a form.
+ *
+ * It decides whether the two switches on the review screen — the format tabs and
+ * the option tabs — end in a `redirect()` or in nothing at all, and the two
+ * cases genuinely want different endings.
+ *
+ * A `redirect()` out of a server action is not free and it is not a header. Next
+ * answers the POST by fetching the destination back out of itself over HTTP —
+ * see `createRedirectRenderResult` — and because that second request carries no
+ * router state, what comes back is the whole tree from the root layout down
+ * rather than the segment that changed. So pressing a tab cost two renders of a
+ * screen that is not small, and the reply the router applied was a replacement
+ * for the entire page: measured here at ~100ms against ~78ms without it, and
+ * every uncontrolled bit of DOM state on the page thrown away with it — the
+ * settings disclosure you opened to reach the format tabs closed itself every
+ * time you used it.
+ *
+ * `revalidatePath` on its own does the thing the redirect was there for. The
+ * action's own response carries the re-rendered page, scoped to the part that
+ * changed, and the URL never moves — which also means there is no navigation to
+ * scroll, so the `#reply` fragment has nothing left to fix.
+ *
+ * Without JavaScript there is no such response to apply. The browser posted a
+ * form and is waiting for a page, and the `Location` it is handed is the only
+ * thing that can put it back at the tabs it pressed. So that path keeps the
+ * redirect exactly as it was.
+ *
+ * `next-action` is the header Next itself uses to tell the two apart (it is what
+ * `isFetchAction` reads), and it is only ever set by the router. Reading a
+ * framework-internal header is a liberty, so it is taken in the safe direction:
+ * if the name ever changes, every request looks like a form post and every press
+ * goes back to redirecting — which is what this code did before.
+ */
+async function routerDriven(): Promise<boolean> {
+  return (await headers()).get('next-action') !== null;
+}
+
 /** Saving without sending. The reviewer's edits are the training signal, so
  * losing them to a closed tab loses more than the typing.
  *
@@ -242,6 +316,32 @@ export async function saveDraft(form: FormData): Promise<void> {
 }
 
 /**
+ * The unread dot, cleared by somebody having actually looked.
+ *
+ * The only action here that is not a form post, and the only one posted by a
+ * `useEffect` rather than by a button. Both of those follow from what it is for:
+ * it records a *view*, and a view is the one event on this desk that the server
+ * cannot infer from a render any more. The inbox prefetches a task page when the
+ * pointer crosses its row, which renders this whole screen without anybody
+ * seeing it — so the old `after(() => markOpened(id))` was clearing the dot off
+ * mail nobody had opened. See `opened.tsx`.
+ *
+ * Deliberately does not revalidate. Nothing on the screen that just mounted
+ * changes because of this, and a revalidation would send the whole review page
+ * back down the wire again a moment after it arrived, which is the opposite of
+ * why any of this was touched. The dot lives on the inbox, and the inbox is
+ * rendered again on the way back to it.
+ *
+ * `markOpened` writes only where the column is still null, so the duplicate this
+ * gets on a hard load — where the page has already marked it server-side, for
+ * the sake of browsers with no scripting — costs a statement and no write.
+ */
+export async function noteOpened(taskId: string): Promise<void> {
+  await requireApi();
+  markOpened(taskId);
+}
+
+/**
  * Whatever is in the draft box, kept before something else overwrites it.
  *
  * Every button on the review screen posts the whole form, so the text a
@@ -287,7 +387,20 @@ async function keepEdits(form: FormData, id: string): Promise<void> {
     updateTask(id, { reviewerNotes: notes || null });
   }
   if (draft === undefined) return;
-  if (draft.trim() === (before.draft ?? '').trim()) return;
+  // Both sides in one spelling before they are compared. `optional` settles the
+  // box; this settles the row, which every press made before that fix wrote
+  // CRLF into — without it each of those tasks pays for the old bug exactly
+  // once more, on whichever button its reviewer happens to press next.
+  const kept = newlines(before.draft ?? '');
+  if (draft.trim() === kept.trim()) {
+    // The same reply in two spellings. The row is rewritten so the comparison
+    // above the box — and the one that lights an option tab — stops reading a
+    // carriage return as an edit, and nothing else happens: no version, no
+    // "edited" in the history, no re-translation, because nobody edited
+    // anything.
+    if (kept !== (before.draft ?? '')) updateTask(id, { draft: kept });
+    return;
+  }
 
   updateTask(id, { draft });
   recordDraft(id, draft, { source: 'human' });
@@ -815,7 +928,12 @@ export async function setReplyFormat(format: ReplyFormat, form: FormData): Promi
   }
 
   revalidatePath(`/tasks/${id}`);
-  redirect(`/tasks/${id}?saved=1`);
+  // The revalidation is the answer, and with the router listening it is the
+  // whole answer: the page comes back patched in place, at the scroll position
+  // and with the disclosure still open. Only a form post with no script behind
+  // it needs sending anywhere, and then straight back to the tabs it pressed —
+  // see `routerDriven` and `replyHref`.
+  if (!(await routerDriven())) redirect(replyHref(id, '?saved=1'));
 }
 
 /**
@@ -930,7 +1048,12 @@ export async function useAlternative(alternativeId: string, form: FormData): Pro
   }
 
   revalidatePath(`/tasks/${id}`);
-  redirect(`/tasks/${id}?saved=1`);
+  // Comparing three approaches means pressing A, B and C in turn, so this is the
+  // press that most needs to cost nothing: with the router listening the page is
+  // patched where it stands and the tab that was clicked is still under the
+  // cursor, because nothing navigated. A form post with no script still gets
+  // sent back to the strip — see `routerDriven` and `replyHref`.
+  if (!(await routerDriven())) redirect(replyHref(id, '?saved=1'));
 }
 
 /**

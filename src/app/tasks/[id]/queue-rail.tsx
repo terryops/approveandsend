@@ -18,6 +18,7 @@
 
 import Link from 'next/link';
 
+import { TaskLink } from '../../pending';
 import { t } from '@/lib/i18n';
 import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
 import type { Task } from '@/lib/tasks/types';
@@ -85,7 +86,12 @@ export function QueueRail({ currentId, rows }: { currentId: string; rows: Task[]
           const care = task.risk?.level === 'high';
           return (
             <li key={task.id} className={here ? 'here' : ''}>
-              <Link href={`/tasks/${task.id}`} aria-current={here ? 'page' : undefined}>
+              {/* `eager`, which the inbox rows deliberately are not. There are
+                  twelve of these against a hundred there, they are the same
+                  twelve on every task so they are fetched once and reused all
+                  afternoon, and `J` and `K` walk them from the keyboard — where
+                  there is no pointer to wait for. See `TaskLink`. */}
+              <TaskLink href={`/tasks/${task.id}`} current={here} eager>
                 {/* Only when there is something to say. No clock: this column
                     answers "what is next", and the hour a mail landed is not
                     part of that — the order already carries it, and the task
@@ -110,7 +116,7 @@ export function QueueRail({ currentId, rows }: { currentId: string; rows: Task[]
                   {shortName(task)}
                   {task.analysis?.intent ? ` · ${task.analysis.intent}` : ''}
                 </span>
-              </Link>
+              </TaskLink>
             </li>
           );
         })}

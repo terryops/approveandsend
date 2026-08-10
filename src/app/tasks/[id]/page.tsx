@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { after } from 'next/server';
 
@@ -9,15 +10,17 @@ import { REPLY_FORMATS, previewHtml, type ReplyFormat } from '@/lib/mail/render'
 import { MAX_UPLOAD_BYTES } from '@/lib/mail/uploads';
 
 import { DismissOnEscape } from '../../dismiss-on-escape';
+import { Pressable } from '../../pending';
 import { TaskPoller } from '../../task-poller';
 import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
+import { MarkOpened } from './opened';
 import { QueueRail, railTasks } from './queue-rail';
 import { DiffToggle } from './diff-toggle';
 import { DraftTools } from './draft-tools';
 import { DraftOverlay, ReviewKeys } from './review-keys';
 import { listContext } from '@/lib/context/store';
-import { t } from '@/lib/i18n';
+import { operatorLanguage, t } from '@/lib/i18n';
 import { getOperator } from '@/lib/operators/store';
 import { listAttachments } from '@/lib/tasks/attachments';
 import { listPending } from '@/lib/tasks/outgoing';
@@ -34,6 +37,7 @@ import { deskedAt, type Critique } from '@/lib/tasks/types';
 import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
+import { cardsSource, parseCards, renderCard } from '@/lib/translation/cards';
 import { getTranslation } from '@/lib/translation/store';
 import { reviewLanguage } from '@/lib/translation/translate';
 
@@ -226,11 +230,38 @@ export default async function TaskPage({
   const task = getTask(id);
   if (!task) notFound();
 
-  // After the response, not during the render. Rendering is supposed to be
-  // free of side effects — Next may run it twice, or throw the result away —
-  // and a write in the middle of it is a write that happens an unpredictable
-  // number of times. `after` runs once, when the page has actually been sent.
-  after(() => markOpened(id));
+  // Somebody has looked at this — but only if somebody has, and that is no
+  // longer a thing this function can know.
+  //
+  // It used to be an unconditional `after(() => markOpened(id))`: after the
+  // response rather than during the render, because rendering is supposed to be
+  // free of side effects and Next may run it twice or throw the result away.
+  // That reasoning is still right and is no longer sufficient, because the
+  // inbox now prefetches this page when the pointer crosses a row. A prefetch is
+  // a complete render of this screen that nobody sees, `after` runs for it like
+  // any other, and the result was the unread dot quietly clearing itself off
+  // every row the mouse travelled over on its way somewhere else.
+  //
+  // So the marker moved into the browser, where "was this seen" is answerable —
+  // see `MarkOpened` at the foot of this component, and `noteOpened`.
+  //
+  // What stays here is the one case an effect cannot cover: a browser running no
+  // JavaScript at all. It never soft-navigates, so it never prefetches, so every
+  // request it makes is a person typing or clicking their way to this address.
+  //
+  // `sec-fetch-dest` is how that is recognised, and it is deliberately not one
+  // of Next's own headers: `RSC` and `Next-Router-Prefetch` would both answer
+  // this precisely, and both are deleted before a page can read them — see
+  // `stripFlightHeaders`, which is why the first attempt at this line silently
+  // did nothing and marked every hovered row as read anyway. `document` is the
+  // browser's own word for "this request is a navigation, and its answer is a
+  // page"; the router's fetches, prefetches included, all say `empty`.
+  //
+  // A client old enough not to send it at all gets no server-side mark, which is
+  // the safe direction to be wrong in: with scripts on the effect covers it, and
+  // with scripts off the dot simply stays until the task is answered. Marking
+  // mail read that nobody opened is the failure worth avoiding.
+  if ((await headers()).get('sec-fetch-dest') === 'document') after(() => markOpened(id));
 
   const sent = task.status === 'sent';
   // A claim `sendReply` is holding right now. Every button below is a write to
@@ -361,6 +392,14 @@ export default async function TaskPage({
   const bodyText = task.body || '';
   const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
   const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+  // And the cards, which are in whatever language their source was written in
+  // — English, for the built-in ones and for most config files. Rendered into
+  // the interface language instead of the review language, because a card is
+  // part of this screen rather than part of the mail; see translation/cards.ts.
+  // Absent until the job has run, and absent for good if it could not: the
+  // fallback is the card as its source wrote it, which is what was there
+  // before.
+  const cards = parseCards(getTranslation(task.id, 'context', cardsSource(context), operatorLanguage())?.content);
 
   // Newest first, and never including what is in the box right now — the
   // point of the panel is what the box used to say.
@@ -863,6 +902,12 @@ export default async function TaskPage({
             of these presses a control that is already on the page. */}
         <ReviewKeys next={neighbours.next} previous={neighbours.previous} />
 
+        {/* Renders nothing either, and is the reason the unread dot still means
+            something now that the inbox fetches this page before it is asked
+            for. A prefetch renders this component; only a browser mounts it.
+            See `opened.tsx`. */}
+        <MarkOpened taskId={task.id} />
+
         {/* Watching a job somebody else started.
 
             Renders nothing either. It ends by itself: the refresh that finds the
@@ -879,8 +924,23 @@ export default async function TaskPage({
             minutes, and a screen that asks a hundred times in that window is
             asking ninety-nine times for nothing. Both are one read of a local
             file, so neither is expensive — this one is just honest about what it
-            is waiting for. */}
-        {inFlight && !working && <TaskPoller intervalMs={5000} />}
+            is waiting for.
+
+            "Neither is expensive" was true of the read and not of the refresh
+            it hangs off, which re-renders this entire screen — the letter, the
+            thread, the rulebook, the history — and then reconciles it. Behind
+            the panel that is worth paying every two seconds, because a worker is
+            running and the answer is close. Out here the queue may not be
+            scheduled at all, and then this is a full render every five seconds
+            for the rest of the afternoon, competing with whatever the reviewer
+            clicks next, to print exactly the same words. So it gives up
+            gradually: `slowTo` lets the gap grow towards a minute while nothing
+            changes, and the first few refreshes — the ones that catch a wait
+            that was really going to end — are as quick as they ever were. A
+            minute rather than longer because the ceiling is also how stale this
+            screen is allowed to get once somebody has walked away from it and
+            come back. See the poller. */}
+        {inFlight && !working && <TaskPoller intervalMs={5000} slowTo={60_000} />}
 
         {/* The subject, at the size of the thing it names.
 
@@ -1021,11 +1081,19 @@ export default async function TaskPage({
         {/* Shown above the draft, not beside it: this is what the model was
             told, and a reviewer deciding whether a reply is right needs to know
             what it was working from before they read it. */}
-        {context.map((block) => (
+        {context.map((block) => {
+          // In the desk's language where one has been rendered, and in the
+          // source's own words where it has not. Not two versions side by side
+          // like the mail panels: nobody is approving a card, so the original
+          // is evidence of nothing that a link to the record itself does not
+          // already answer.
+          const card = renderCard(block, cards);
+
+          return (
           <div className="card" key={block.sourceId}>
             <div className="row">
               <h2 className="grow" style={{ margin: 0 }}>
-                {block.title}
+                {card.title}
               </h2>
               {block.href && (
                 <a className="meta" href={block.href} target="_blank" rel="noreferrer">
@@ -1034,7 +1102,7 @@ export default async function TaskPage({
               )}
             </div>
             <dl className="facts">
-              {block.fields.map((field, i) => (
+              {card.fields.map((field, i) => (
                 <div key={i}>
                   <dt>{field.label}</dt>
                   <dd>
@@ -1049,9 +1117,10 @@ export default async function TaskPage({
                 </div>
               ))}
             </dl>
-            {block.prompt && <p className="meta">{block.prompt}</p>}
+            {card.prompt && <p className="meta">{card.prompt}</p>}
           </div>
-        ))}
+          );
+        })}
 
         </div>
         <div className="reply-side">
@@ -1099,24 +1168,37 @@ export default async function TaskPage({
               before the reply to the row above it. That row needs to be one
               element, or "which row is the reply card on" depends on whether
               this task happened to get alternatives. */}
-          <div className="reply-lead">
+          {/* And it is where the reply-screen buttons come back to.
+              `#reply` is the target `setReplyFormat` and `useAlternative`
+              redirect to; see the note on the strip below, and `replyHref` in
+              actions.ts for what it is fixing. Here rather than on the card,
+              because the tabs are part of what a reviewer is looking at when
+              they press one, and landing under them hides the control that just
+              moved. */}
+          <div className="reply-lead" id="reply">
           {alternatives.length > 0 && (
             <div className="alt-strip">
               <span className="meta">{t('task.optionsLabel')}</span>
               <div className="alt-tabs" role="group" aria-label={t('task.optionsLabel')}>
+                {/* Wrapped so the tab you pressed looks pressed while the post
+                    is in the air — the switch is a round trip, and until it
+                    lands the row you chose is indistinguishable from the two you
+                    did not. See `Pressable`, and note that the action stays
+                    named here rather than handed down as a prop. */}
                 {alternatives.map(option => (
-                  <button
-                    key={option.id}
-                    type="submit"
-                    formAction={useAlternative.bind(null, option.id)}
-                    className={selected?.id === option.id ? 'active' : ''}
-                    aria-current={selected?.id === option.id ? 'true' : undefined}
-                  >
-                    <span className="alt-label">{option.label}</span>
-                    <span className="alt-strategy">
-                      {option.strategy || t('task.optionUnlabelled')}
-                    </span>
-                  </button>
+                  <Pressable key={option.id}>
+                    <button
+                      type="submit"
+                      formAction={useAlternative.bind(null, option.id)}
+                      className={selected?.id === option.id ? 'active' : ''}
+                      aria-current={selected?.id === option.id ? 'true' : undefined}
+                    >
+                      <span className="alt-label">{option.label}</span>
+                      <span className="alt-strategy">
+                        {option.strategy || t('task.optionUnlabelled')}
+                      </span>
+                    </button>
+                  </Pressable>
                 ))}
               </div>
             </div>
@@ -1221,16 +1303,17 @@ export default async function TaskPage({
                   <div className="format-tabs" role="group" aria-label={t('task.format.label')}>
                     <span className="meta">{t('task.format.label')}</span>
                     {REPLY_FORMATS.map(option => (
-                      <button
-                        key={option}
-                        type="submit"
-                        formAction={setReplyFormat.bind(null, option)}
-                        className={task.replyFormat === option ? 'active' : ''}
-                        aria-current={task.replyFormat === option ? 'true' : undefined}
-                        title={t(`task.format.hint.${option}`)}
-                      >
-                        {t(`task.format.${option}`)}
-                      </button>
+                      <Pressable key={option}>
+                        <button
+                          type="submit"
+                          formAction={setReplyFormat.bind(null, option)}
+                          className={task.replyFormat === option ? 'active' : ''}
+                          aria-current={task.replyFormat === option ? 'true' : undefined}
+                          title={t(`task.format.hint.${option}`)}
+                        >
+                          {t(`task.format.${option}`)}
+                        </button>
+                      </Pressable>
                     ))}
                   </div>
                   {/* A textarea, not a text input, for the reason the reason box
