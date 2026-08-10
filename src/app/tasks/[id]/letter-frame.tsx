@@ -30,10 +30,16 @@
  *   `allow-top-navigation` is deliberately absent: a letter may open a tab and
  *   may not replace the desk.
  *
- * Sized to its content, with a cap. `resize: vertical` on the wrapper is the
- * escape hatch for the letter that is longer than the cap — the same gesture as
- * dragging the reply box, on the one card where "show me more of this" is the
- * whole request.
+ * Sized to its content, with a cap, and a button under it for the letters that
+ * exceed it.
+ *
+ * That button replaced a `resize: vertical` on the wrapper, which was the
+ * cheaper idea and a broken one. The height here is React state, so the moment
+ * anything re-measured — an image landing, which is the common case — the next
+ * render wrote the computed height back over whatever the reviewer had dragged
+ * the box to. A drag that undoes itself a second later is worse than no drag,
+ * and "show me the rest of this" is one question with one answer rather than a
+ * dimension to be tuned.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -53,9 +59,24 @@ const MAX = 560;
 /** Before any measurement, and forever in a browser with no JavaScript. */
 const UNMEASURED = 320;
 
-export function LetterFrame({ document: srcDoc, title }: { document: string; title: string }) {
+export function LetterFrame({
+  document: srcDoc,
+  title,
+  expandLabel,
+  collapseLabel,
+}: {
+  document: string;
+  title: string;
+  /** Both, so the button is one control rather than a label that changes under
+   * the pointer — the reader is told what pressing it does, in their language,
+   * and the state is carried by the letter's own height. */
+  expandLabel: string;
+  collapseLabel: string;
+}) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState<number | null>(null);
+  /** What the letter measures, uncapped. Null until it has been measured. */
+  const [content, setContent] = useState<number | null>(null);
+  const [full, setFull] = useState(false);
 
   const measure = useCallback(() => {
     const doc = frame.current?.contentDocument;
@@ -63,8 +84,7 @@ export function LetterFrame({ document: srcDoc, title }: { document: string; tit
     // `documentElement` and not `body`: the body has margins collapsed into it
     // and a letter whose last element has a bottom margin measures short by
     // exactly that margin, which is a strip of the letter cut off the end.
-    const tall = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
-    setHeight(Math.min(tall, MAX));
+    setContent(Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight));
   }, []);
 
   useEffect(() => {
@@ -90,20 +110,46 @@ export function LetterFrame({ document: srcDoc, title }: { document: string; tit
     };
   }, [measure, srcDoc]);
 
+  // Only where there is something behind it. A letter that already fits gets no
+  // button, for the same reason `DiffToggle` is not rendered when there are no
+  // marks to toggle: a control that does nothing is a control in the way, and
+  // this screen has thrown two of those out before.
+  const truncated = content !== null && content > MAX;
+  const height = content === null ? UNMEASURED : full ? content : Math.min(content, MAX);
+
   return (
-    <div className="letter-frame" style={{ height: (height ?? UNMEASURED) + 2 }}>
-      <iframe
-        ref={frame}
-        // The reader of a screen reader meets this as "frame, <subject>" rather
-        // than as an unnamed region they have to enter to identify.
-        title={title}
-        srcDoc={srcDoc}
-        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-        // Belt to the CSP's braces: no referrer leaves this document, so even a
-        // request that somehow escapes `img-src` carries nothing about us.
-        referrerPolicy="no-referrer"
-        loading="lazy"
-      />
-    </div>
+    <>
+      <div className="letter-frame" style={{ height: height + 2 }}>
+        <iframe
+          ref={frame}
+          // The reader of a screen reader meets this as "frame, <subject>" rather
+          // than as an unnamed region they have to enter to identify.
+          title={title}
+          srcDoc={srcDoc}
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          // Belt to the CSP's braces: no referrer leaves this document, so even a
+          // request that somehow escapes `img-src` carries nothing about us.
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+      </div>
+      {truncated && (
+        <button
+          // The confirmation panel renders this letter inside the form whose
+          // first submit button sends the reply. Every button on this screen
+          // says what it is for that reason.
+          type="button"
+          className="letter-more"
+          onClick={() => setFull(open => !open)}
+          // The frame is the thing that changes, so it is the thing named — and
+          // `aria-expanded` is what makes the pair a disclosure rather than two
+          // unrelated buttons a screen reader has to infer a relationship
+          // between.
+          aria-expanded={full}
+        >
+          {full ? collapseLabel : expandLabel}
+        </button>
+      )}
+    </>
   );
 }

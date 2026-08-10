@@ -1556,15 +1556,17 @@ header.top nav a.active:hover {
 
 .letter-frame {
   /*
-   * Dragged taller, for the letter that is longer than the cap.
+   * Capped at 560px by the component, and opened by the button below it.
    *
-   * The component stops growing the frame at 560px because the reply has to stay
-   * on screen beside it. That is right for the ninety percent and wrong for the
-   * refund thread with a receipt in the middle of it, and the cheapest correct
-   * answer to "I need to see more of this one" is the corner every textarea on
-   * this desk already has.
+   * The cap is there because the reply has to stay on screen beside the letter —
+   * a screen where you cannot see both is the screen this app exists to replace.
+   * It is right for the ninety percent and wrong for the refund thread with a
+   * receipt in the middle of it, which is what `.letter-more` is for.
+   *
+   * This was `resize: vertical` first, and that did not survive contact with an
+   * image: the height is React state, so the next measurement wrote the computed
+   * value back over whatever the reviewer had dragged the box to.
    */
-  resize: vertical;
   overflow: hidden;
   min-height: 120px;
   border: 1px solid light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.28));
@@ -1579,6 +1581,37 @@ header.top nav a.active:hover {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+/*
+ * The rest of a long letter, on request.
+ *
+ * Under the frame rather than over it, because it is the answer to a question
+ * the cut-off edge of the letter has just raised, and a control above the thing
+ * it opens is read before there is anything to open. Rendered only where the
+ * letter is actually taller than the cap — see `LetterFrame`.
+ *
+ * The same pill as `.diff-toggle`, deliberately: they are the two places on
+ * this screen where a reviewer adjusts what they are being shown rather than
+ * changing anything, and two shapes for one kind of action is two things to
+ * learn.
+ */
+.letter-more {
+  margin-top: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-family: var(--font-latin), var(--font-cjk), sans-serif, var(--font-emoji);
+  font-size: var(--t2);
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.letter-more:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
 }
 
 /*

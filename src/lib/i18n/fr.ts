@@ -95,6 +95,8 @@ export const fr: Dictionary = {
   "task.status.failed": "échec",
   "task.emptyBody": "(corps vide)",
   "task.remoteImages": "{n} images distantes n’ont pas été chargées. Les charger indiquerait à l’expéditeur que vous avez ouvert ce message.",
+  "task.letterExpand": "Afficher tout le message",
+  "task.letterCollapse": "Réduire",
   "task.attachments": "Pièces jointes",
   "task.superseded": "Ce message a été remplacé par un message ultérieur de la même personne.",
   "task.supersededOpen": "Ouvrir le plus récent →",

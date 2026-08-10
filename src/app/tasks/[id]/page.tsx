@@ -125,7 +125,12 @@ function EmailBody({
         {/* No `lang` on the wrapper: the letter has its own document now, so the
             CJK face is chosen by the frame's own stylesheet rather than by this
             page's `:lang()` rules, which cannot see inside it. */}
-        <LetterFrame document={letter.document} title={subject || t('task.theirLetter')} />
+        <LetterFrame
+          document={letter.document}
+          title={subject || t('task.theirLetter')}
+          expandLabel={t('task.letterExpand')}
+          collapseLabel={t('task.letterCollapse')}
+        />
       </div>
     );
   }

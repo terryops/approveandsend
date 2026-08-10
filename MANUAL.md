@@ -255,6 +255,10 @@ the page: known tags, known attributes, known style properties, and nothing that
 could take an element out of its place in the flow. Plain-text mail, and anything
 whose HTML is bigger than half a megabyte, reads exactly as it always did.
 
+A long letter is capped so the reply stays on screen beside it, with a button
+under it that opens the rest — and no button at all on the letters that already
+fit, because a control that does nothing is a control in the way.
+
 **Remote images load, but the desk fetches them.** A picture pulled straight
 from a stranger's server is a read receipt: it tells them the address is live,
 that a person opened the mail, when, from which IP and in which browser. So the
