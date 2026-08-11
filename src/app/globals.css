@@ -4805,27 +4805,25 @@ dl.facts > div.wrong dd {
   }
 
   /*
-   * Row 1 is everything that comes before the reply; row 2 is the two cards,
-   * level with each other; row 3 is the buttons.
+   * Row 1 is the two cards, level with each other; row 2 is the buttons.
    *
-   * Placed explicitly rather than left to auto-flow, because "which row is the
-   * reply card on" would otherwise depend on whether this particular task
-   * happened to be given alternatives — and the answer has to be the same on
-   * every task, or the reading whose whole promise is "these two start level"
-   * keeps that promise only sometimes.
+   * There used to be a row above them holding whatever came before the reply —
+   * which was the approach tabs and nothing else. It cost the letter the height
+   * of that row and gave the left half of it to no one; the tabs live inside
+   * the reply card now, where they are level with the letter rather than above
+   * it. See the note in `page.tsx`.
+   *
+   * Still placed explicitly rather than left to auto-flow. The rows are simpler
+   * than they were, and the reason for naming them has not changed: which row a
+   * card lands on must not depend on what this particular task happens to have.
    */
-  .detail-compare .reply-lead {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
   .detail-compare .review-pair > .letter-side {
     /* Back to a box of its own — the base rule dissolves it, and a `display:
        contents` element cannot be placed in a grid, which is the whole job
        here. The reply half stays dissolved on purpose; see above. */
     display: block;
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     min-width: 0;
     /* Each side is now the container `.compare` measures itself against, rather
        than the full-width `.detail-main` it sits in. Without this a translation
@@ -4878,7 +4876,7 @@ dl.facts > div.wrong dd {
 
   .detail-compare .reply-card {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
     min-width: 0;
     container-type: inline-size;
   }
@@ -4902,7 +4900,7 @@ dl.facts > div.wrong dd {
   .detail-compare .review-form > .review-actions,
   .detail-compare .review-form > .meta {
     grid-column: 1 / -1;
-    grid-row: 3;
+    grid-row: 2;
   }
 }
 
@@ -5700,15 +5698,49 @@ a.queue-light:hover {
 /*
  * Where the reply's own buttons land when they come back.
  *
- * This carries `id="reply"`, which is what `replyHref` in actions.ts redirects
- * to — see the note there for why an option tab used to throw the reader at the
- * top of the thread. The margin is what stops the strip sitting flush against
- * the top edge of the window, which reads as a page cut off rather than a page
- * scrolled; 16px is the offset every sticky column on this screen already uses,
- * so the two agree about where the top of the reading is.
+ * The card carries `id="reply"`, which is what `replyHref` in actions.ts
+ * redirects to — see the note there for why an option tab used to throw the
+ * reader at the top of the thread. The margin is what stops the card sitting
+ * flush against the top edge of the window, which reads as a page cut off
+ * rather than a page scrolled; 16px is the offset every sticky column on this
+ * screen already uses, so the two agree about where the top of the reading is.
  */
-.reply-lead {
+.reply-card {
   scroll-margin-top: 16px;
+}
+
+/*
+ * The approaches, as the reply card's own top band.
+ *
+ * They were a block above the card and are inside it now, which is a claim
+ * about what they are: not a step before writing the reply, but a control on
+ * the box directly beneath them — press one and that box changes. A rule under
+ * the band says so, and is the same hairline the card's other divisions use.
+ *
+ * `-var(--s1)` on the top, because a card's own padding is measured for prose
+ * and these are pills with their own. Full-bleed was the other option and is
+ * wrong: the band would then be a second card head, and this card already has
+ * one directly under it.
+ */
+.reply-card > .alt-strip {
+  margin: 0 0 var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The line that says nothing is lit because you have been editing. It belongs
+   to the strip above it rather than to the reply below, so it goes inside the
+   band's border and takes the strip's own bottom margin with it. */
+.reply-card > .alt-strip + .alt-note {
+  margin: calc(var(--s4) * -1 + var(--s2)) 0 var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.reply-card > .alt-strip:has(+ .alt-note) {
+  margin-bottom: var(--s2);
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 /*

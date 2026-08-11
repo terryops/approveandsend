@@ -1411,21 +1411,28 @@ export default async function TaskPage({
               in the drafts panel rather than gone. The id is bound to the
               action instead of carried as the button's value; see the note on
               `useAlternative` for why the obvious HTML silently does nothing. */}
-          {/* Wrapped, and the wrapper is what side by side places.
+          {/* The approaches are inside the card now, and the wrapper they used
+              to sit in is gone.
 
-              In that reading the letter and the reply have to start level, so
-              the grid pins both cards to one row and everything that comes
-              before the reply to the row above it. That row needs to be one
-              element, or "which row is the reply card on" depends on whether
-              this task happened to get alternatives. */}
-          {/* And it is where the reply-screen buttons come back to.
-              `#reply` is the target `setReplyFormat` and `useAlternative`
-              redirect to; see the note on the strip below, and `replyHref` in
-              actions.ts for what it is fixing. Here rather than on the card,
-              because the tabs are part of what a reviewer is looking at when
-              they press one, and landing under them hides the control that just
-              moved. */}
-          <div className="reply-lead" id="reply">
+              They were a block of their own above it, which side by side placed
+              in a row of its own so that the two cards could still start level.
+              That row held one thing, in the right-hand column, and the left
+              half of it was empty — a hundred and fifty pixels of nothing beside
+              the strip, taken off the top of the letter, on the one screen where
+              the letter is the thing that runs out of room. The strip was also
+              being asked to fit three approaches into half a screen, so it wrapped
+              onto a second line and paid for the room twice.
+
+              In the card the row disappears. Both cards start at the top, the
+              letter gets the height back, and the strip gets the width it wanted
+              — and it is closer to what it acts on than it has ever been: these
+              tabs rewrite the box directly underneath them.
+
+              `#reply` moves here with them. It is the target `setReplyFormat`
+              and `useAlternative` redirect to — see `replyHref` in actions.ts —
+              and it has to land on whatever holds the tabs, or pressing one
+              scrolls the control that just moved out of view. */}
+          <div className="card reply-card" id="reply">
           {alternatives.length > 0 && (
             <div className="alt-strip">
               <span className="meta">{t('task.optionsLabel')}</span>
@@ -1467,11 +1474,8 @@ export default async function TaskPage({
               strip with none of its tabs active otherwise reads as a rendering
               fault rather than as an answer to "where am I". */}
           {alternatives.length > 0 && !selected && (
-            <p className="meta">{t('task.optionsEdited')}</p>
+            <p className="meta alt-note">{t('task.optionsEdited')}</p>
           )}
-          </div>
-
-          <div className="card reply-card">
           {/* Whose words these are, and how they will be rendered — the two
               things a reviewer needs to know before reading a single line of the
               box below. The format lives up here rather than on a row of its own
