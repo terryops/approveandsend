@@ -176,6 +176,7 @@ export const en = {
   "task.draftPlaceholder": "No draft yet. Run the queue, or write one here.",
   "task.whatYouAreAboutToSend": "What you are about to send",
   "task.noTranslation": "No current {language} translation — run the queue to render this draft.",
+  "task.translationComing": "Rendering this reply in {language}…",
   "task.sendingBanner": "This reply is being handed to the mail provider. If it is still here in a few minutes the send did not finish, and it will be put back for review.",
   "task.subjectLabel": "The subject line",
   "task.subjectPlaceholder": "Subject — leave empty to reply under theirs",

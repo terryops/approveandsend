@@ -62,6 +62,53 @@ export function translationEnabled(): boolean {
   return reviewLanguage() !== '';
 }
 
+/** The language part of a tag, or the whole of anything that is not one. */
+function primarySubtag(language: string): string {
+  return language.trim().toLowerCase().split(/[-_]/)[0] ?? '';
+}
+
+/**
+ * Whether a reply this desk writes could be in a language the reviewer does not
+ * read.
+ *
+ * The one question `translateForReview` cannot answer without being paid for.
+ * Asking the model is right for the customer's letter: it arrives in whatever
+ * language a stranger chose, and the regex that used to guess called
+ * kanji-heavy Japanese Chinese. A reply is not that. This desk wrote it, and
+ * `replyLanguage` is the instruction it was written to — so when that
+ * instruction names the language the reviewer already reads, the answer is
+ * `SAME` before the call is made.
+ *
+ * That call was neither free nor once. A no-op for mail stores nothing — see
+ * `cardsAwaitingRendering`, which exists because of the same gap — so there is
+ * no row afterwards saying "this needed nothing", and every edit to the draft
+ * asked again, forever, on a desk whose replies were never going to be in
+ * another language.
+ *
+ * `match` is the case that has to stay honest: it mirrors whatever the customer
+ * wrote, so the language of the reply is not knowable from the config and the
+ * model is the only thing that can say.
+ *
+ * Compared by primary subtag, which is the rule the prompt already gives the
+ * model: `zh-TW` and `zh-CN` are one language here and neither is ever
+ * converted into the other. The wizard takes free text, so "Chinese" is a
+ * perfectly good answer to either field — that compares whole, and two fields
+ * that disagree in shape simply fall through to asking.
+ *
+ * The trade, said out loud: a model that ignores `replyLanguage` and answers in
+ * some third language leaves a reviewer with no rendering and no note saying
+ * why. What is bought is that a single-language desk stops paying a model call
+ * per draft edit to be told what its own configuration already says.
+ */
+export function repliesNeedRendering(): boolean {
+  const review = reviewLanguage();
+  if (!review) return false;
+
+  const reply = getWorkspaceConfig().replyLanguage.trim();
+  if (!reply || reply.toLowerCase() === 'match') return true;
+  return primarySubtag(reply) !== primarySubtag(review);
+}
+
 function prompt(text: string, language: string): string {
   return [
     `Translate the text below into ${language}.`,

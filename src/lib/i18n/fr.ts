@@ -155,6 +155,7 @@ export const fr: Dictionary = {
   "task.draftPlaceholder": "Pas encore de brouillon. Exécutez la file, ou écrivez-en un ici.",
   "task.whatYouAreAboutToSend": "Ce que vous êtes sur le point d’envoyer",
   "task.noTranslation": "Aucune traduction {language} à jour — exécutez la file pour rendre ce brouillon.",
+  "task.translationComing": "Traduction de cette réponse en {language}…",
   "task.sendingBanner": "Cette réponse est en cours de remise au fournisseur de messagerie. Si elle est toujours là dans quelques minutes, l’envoi n’a pas abouti et elle repassera en relecture.",
   "task.subjectLabel": "La ligne objet",
   "task.subjectPlaceholder": "Objet — laissez vide pour répondre sous le leur",

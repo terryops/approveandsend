@@ -16,7 +16,12 @@ import { completeJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
 import { cardsSource, parseCards, renderCard } from './cards';
 import { clearTranslations, getTranslation, hasTranslation, saveTranslation } from './store';
-import { reviewLanguage, translateForReview, translationEnabled } from './translate';
+import {
+  repliesNeedRendering,
+  reviewLanguage,
+  translateForReview,
+  translationEnabled,
+} from './translate';
 
 // --- an AI server that answers with whatever the test queued --------------
 
@@ -107,6 +112,7 @@ afterEach(async () => {
   db.close();
   delete process.env.AAS_CONFIG;
   delete process.env.AAS_REVIEW_LANGUAGE;
+  delete process.env.AAS_REPLY_LANGUAGE;
   resetWorkspaceConfig();
   resetAiConfig();
   if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
@@ -170,6 +176,72 @@ describe('deciding whether anything needs translating', () => {
     // tone — helpful for a customer, misleading for someone checking what the
     // draft actually says.
     expect(prompts[0]).toContain('never send your translation');
+  });
+});
+
+/**
+ * The half of the question the configuration can answer on its own.
+ *
+ * A no-op for mail stores nothing — see `cardsAwaitingRendering` — so nothing
+ * afterwards remembers that a reply needed no rendering, and every edit to a
+ * draft asked again. On a desk that answers in the language its reviewers read,
+ * that was a model call per keystroke-worth-of-saving whose entire output was
+ * `SAME`, forever.
+ */
+describe('deciding whether a reply could need rendering at all', () => {
+  function speak(reply: string | undefined, review: string | undefined): void {
+    if (reply === undefined) delete process.env.AAS_REPLY_LANGUAGE;
+    else process.env.AAS_REPLY_LANGUAGE = reply;
+    if (review === undefined) delete process.env.AAS_REVIEW_LANGUAGE;
+    else process.env.AAS_REVIEW_LANGUAGE = review;
+    resetWorkspaceConfig();
+  }
+
+  it('says no when the feature is off', () => {
+    speak('fr', undefined);
+    expect(repliesNeedRendering()).toBe(false);
+  });
+
+  it('says yes when replies mirror the customer', () => {
+    // `match` is the default and it is the honest case: what language this
+    // reply is in depends on what a stranger wrote, so the config cannot say
+    // and the model is the only thing that can.
+    speak('match', 'Chinese');
+    expect(repliesNeedRendering()).toBe(true);
+  });
+
+  it('says yes when the desk answers in a language the reviewer does not read', () => {
+    speak('fr', 'Chinese');
+    expect(repliesNeedRendering()).toBe(true);
+  });
+
+  it('says no when the reply is written in the language the reviewer reads', () => {
+    speak('zh-CN', 'zh-CN');
+    expect(repliesNeedRendering()).toBe(false);
+  });
+
+  it('counts a regional variant as the same language, exactly as the prompt does', () => {
+    // The prompt tells the model that Traditional and Simplified are one
+    // language and neither is ever converted into the other. A rule the model
+    // is given and this function does not share would be a call made only to
+    // be told `SAME`.
+    speak('zh-TW', 'zh-CN');
+    expect(repliesNeedRendering()).toBe(false);
+  });
+
+  it('compares whole when the fields are not tags', () => {
+    // The wizard takes free text and "Chinese" is a perfectly good answer to
+    // either box.
+    speak('Chinese', 'Chinese');
+    expect(repliesNeedRendering()).toBe(false);
+  });
+
+  it('falls through to asking when the two fields disagree in shape', () => {
+    // `zh` and `Chinese` are the same language and this cannot tell. Asking is
+    // the safe direction to be wrong in: it costs a call, where the other way
+    // costs the reviewer their rendering.
+    speak('zh', 'Chinese');
+    expect(repliesNeedRendering()).toBe(true);
   });
 });
 
@@ -266,6 +338,28 @@ describe('the translation job', () => {
     // The body never changes and the draft usually has not. Re-translating
     // what is already on file is the easiest money to stop spending.
     expect(prompts).toHaveLength(2);
+  });
+
+  it('leaves the reply alone on a desk that answers in the reviewer language', async () => {
+    // The letter is still asked about: a stranger wrote it, in a language
+    // nothing here chose. The reply is this desk's own work, written to an
+    // instruction that names the language the reviewer already reads, so the
+    // call it used to make could only ever come back `SAME` — and came back
+    // `SAME` again on the next edit, and the one after that.
+    process.env.AAS_REPLY_LANGUAGE = 'zh-CN';
+    process.env.AAS_REVIEW_LANGUAGE = 'zh-CN';
+    resetWorkspaceConfig();
+
+    const id = task('Bonjour, remboursement?', '当然，5天内。');
+    queued.push('你好，退款？');
+
+    const result = (await translateTaskHandler({ taskId: id }, context())) as {
+      translated: string[];
+    };
+
+    expect(result.translated).toEqual(['body']);
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('Bonjour, remboursement?');
   });
 
   it('re-translates only the half that changed', async () => {

@@ -155,6 +155,7 @@ export const zhCN: Dictionary = {
   "task.draftPlaceholder": "还没有草稿。运行队列，或者在这里自己写一份。",
   "task.whatYouAreAboutToSend": "你即将发出的内容",
   "task.noTranslation": "当前没有 {language} 译文——运行队列来生成这份草稿的译文。",
+  "task.translationComing": "正在把这封回复译成 {language}……",
   "task.sendingBanner": "这封回复正在交给邮件服务商。如果几分钟后还停在这里，说明发送没有完成，系统会把它退回待审。",
   "task.subjectLabel": "主题行",
   "task.subjectPlaceholder": "自拟主题——留空就发成“Re: 来信原主题”",

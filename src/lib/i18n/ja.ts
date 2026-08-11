@@ -155,6 +155,7 @@ export const ja: Dictionary = {
   "task.draftPlaceholder": "まだ下書きがありません。キューを実行するか、ここに直接書いてください。",
   "task.whatYouAreAboutToSend": "これから送信する内容",
   "task.noTranslation": "この下書きの {language} 訳はまだありません。キューを実行すると生成されます。",
+  "task.translationComing": "この返信を {language} に翻訳しています…",
   "task.sendingBanner": "この返信をメールプロバイダに渡しています。数分たってもここに残っている場合は送信が完了しなかったため、レビュー待ちに戻されます。",
   "task.subjectLabel": "件名",
   "task.subjectPlaceholder": "件名——空欄なら相手の件名をそのまま使います",

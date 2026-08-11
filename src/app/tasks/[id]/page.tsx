@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { after } from 'next/server';
+import { Suspense } from 'react';
 
 import { nudgeQueue } from '@/lib/queue';
 
@@ -41,8 +42,12 @@ import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { cardsSource, parseCards, renderCard } from '@/lib/translation/cards';
-import { getTranslation } from '@/lib/translation/store';
-import { reviewLanguage } from '@/lib/translation/translate';
+import { getTranslation, saveTranslation } from '@/lib/translation/store';
+import {
+  repliesNeedRendering,
+  reviewLanguage,
+  translateForReview,
+} from '@/lib/translation/translate';
 
 import {
   approveAndSend,
@@ -222,6 +227,65 @@ function RenderedReply({ text, format }: { text: string; format: ReplyFormat }) 
       className="reply-rendered"
       dangerouslySetInnerHTML={{ __html: previewHtml(text, format) }}
     />
+  );
+}
+
+/**
+ * The reply in the language the reviewer reads, arriving after the panel it
+ * belongs to.
+ *
+ * A stored rendering is keyed to the exact text it was made from, so an edited
+ * draft has none — and editing before sending is what this desk is for. Somebody
+ * had to pay for that call, and until now it was `confirmSend`, awaited between
+ * the button and the redirect: the panel could not be drawn until the translator
+ * had answered, on a screen where every other thing on it was already known. A
+ * shelled-out CLI made that seconds.
+ *
+ * Behind a boundary it is the last thing to arrive rather than the first thing
+ * waited for. The letter, the reply, the risk, the attachments and both buttons
+ * are on screen immediately; this lands underneath when it lands. A reviewer who
+ * cannot read the reply is no worse served — they could not send before the
+ * rendering arrived either — and everyone else got their panel back.
+ *
+ * The write is a cache write and it is deliberately made from a render. What is
+ * being stored is the answer to a question this render just asked and paid for,
+ * keyed on the text it was asked about; the alternative is asking again on the
+ * way back from Escape. A render that is abandoned mid-flight stores nothing,
+ * which is why `confirmSend` also queues the job — see the note there.
+ *
+ * `null` from `translateForReview` is not a failure. It means the model was
+ * shown the reply and said it was already in the target language, which is the
+ * same thing the reader needs told as a translator that fell over: there is
+ * nothing here to read but the reply itself.
+ */
+async function DraftReading({
+  taskId,
+  text,
+  language,
+}: {
+  taskId: string;
+  text: string;
+  language: string;
+}) {
+  let rendered: string | null = null;
+  try {
+    rendered = await translateForReview(text, language);
+  } catch {
+    // A translator that is down must not stop somebody sending mail. The note
+    // below says plainly that there is no rendering rather than pretending.
+  }
+
+  if (!rendered) return <p className="meta">{t('task.noTranslation', { language })}</p>;
+
+  saveTranslation(taskId, 'draft', language, text, rendered);
+
+  return (
+    <div className="translation">
+      <p className="meta">
+        {t('task.translation')} · {language}
+      </p>
+      <EmailBody text={rendered} />
+    </div>
   );
 }
 
@@ -468,6 +532,17 @@ export default async function TaskPage({
   const bodyText = task.body || '';
   const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
   const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+  // And whether the panel should wait for one that is not stored yet.
+  //
+  // Only the panel. This is a model call, and the review screen behind it is
+  // rendered on every view of every task — one there would be a translator bill
+  // for walking the queue with `J`. The panel is a screen somebody asked for,
+  // once, about one reply they are about to send.
+  //
+  // `repliesNeedRendering` is what keeps it from asking a question the config
+  // already answers: a desk answering in the language its reviewers read gets
+  // the note below instead, having spent nothing.
+  const reading = Boolean(language) && !outgoing && body.trim() !== '' && repliesNeedRendering();
   // And the cards, which are in whatever language their source was written in
   // — English, for the built-in ones and for most config files. Rendered into
   // the interface language instead of the review language, because a card is
@@ -650,13 +725,29 @@ export default async function TaskPage({
                     same function `sendReply` calls. */}
                 <h3 className="confirm-heading">{t('task.confirm.theyWillGet')}</h3>
                 <RenderedReply text={body} format={task.replyFormat} />
-                {outgoing && (
+                {outgoing ? (
                   <div className="translation">
                     <p className="meta">
                       {t('task.translation')} · {outgoing.language}
                     </p>
                     <EmailBody text={outgoing.content} />
                   </div>
+                ) : (
+                  /* The one thing on this panel that is not already known when
+                     the panel is drawn — so it is the one thing the panel does
+                     not wait for. Everything above this line is a read of the
+                     row; this is a model call, and it used to happen in
+                     `confirmSend` with the redirect held behind it, which is why
+                     pressing Preview did nothing visible for as long as the
+                     translator took. Streamed in, the letter and the reply are
+                     on screen at once and the reading lands under them. */
+                  reading && (
+                    <Suspense
+                      fallback={<p className="meta">{t('task.translationComing', { language })}</p>}
+                    >
+                      <DraftReading taskId={task.id} text={body} language={language} />
+                    </Suspense>
+                  )
                 )}
               </div>
             </div>
@@ -673,8 +764,15 @@ export default async function TaskPage({
 
             {/* Said out loud rather than left as a blank column. A reviewer who
                 cannot read the reply needs to know that this screen is not
-                showing it to them, not to assume the panel is still loading. */}
-            {language && !outgoing && (
+                showing it to them, not to assume the panel is still loading.
+
+                Not while one is on its way: `reading` is the case where the
+                column above is either a spinner or about to be a reading, and a
+                note saying there is none under a boundary that is fetching one
+                is the assumption this sentence exists to prevent, made by the
+                sentence itself. `DraftReading` says it there if the answer
+                turns out to be nothing. */}
+            {language && !outgoing && !reading && (
               <p className="meta confirm-notes">{t('task.noTranslation', { language })}</p>
             )}
 

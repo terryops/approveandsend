@@ -155,6 +155,7 @@ export const de: Dictionary = {
   "task.draftPlaceholder": "Noch kein Entwurf. Arbeite die Warteschlange ab, oder schreib hier einen.",
   "task.whatYouAreAboutToSend": "Was du gleich sendest",
   "task.noTranslation": "Keine aktuelle Übersetzung auf {language} — arbeite die Warteschlange ab, damit dieser Entwurf übersetzt wird.",
+  "task.translationComing": "Diese Antwort wird auf {language} übersetzt …",
   "task.sendingBanner": "Diese Antwort wird gerade an den Mailanbieter übergeben. Steht sie in ein paar Minuten noch hier, ist der Versand nicht durchgelaufen und sie geht zurück in die Prüfung.",
   "task.subjectLabel": "Die Betreffzeile",
   "task.subjectPlaceholder": "Betreff — leer lassen, um unter dem des Kunden zu antworten",

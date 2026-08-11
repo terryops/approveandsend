@@ -4,7 +4,12 @@ import { deskLanguage } from '../../i18n';
 import { getTask } from '../../tasks/store';
 import { cardsSource, translateCards } from '../../translation/cards';
 import { hasTranslation, saveTranslation, type TranslationKind } from '../../translation/store';
-import { reviewLanguage, translateForReview, translationEnabled } from '../../translation/translate';
+import {
+  repliesNeedRendering,
+  reviewLanguage,
+  translateForReview,
+  translationEnabled,
+} from '../../translation/translate';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
 
@@ -100,10 +105,18 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
   if (!language && cards.length === 0) return { skipped: 'nothing on this task needs rendering' };
 
   // What is on screen: after sending, that is the reply that actually went.
+  //
+  // The letter is always asked about — a stranger wrote it, in a language
+  // nothing here chose. The reply is asked about only where it could be in a
+  // language the reviewer does not read: `repliesNeedRendering` reads that off
+  // `replyLanguage`, and on a desk that answers in the reviewer's own language
+  // this half was a model call per draft edit whose entire output was `SAME`.
   const parts: { kind: TranslationKind; text: string }[] = language
     ? [
         { kind: 'body', text: task.body ?? '' },
-        { kind: 'draft', text: task.finalReply ?? task.draft ?? '' },
+        ...(repliesNeedRendering()
+          ? [{ kind: 'draft' as const, text: task.finalReply ?? task.draft ?? '' }]
+          : []),
       ]
     : [];
 

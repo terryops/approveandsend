@@ -67,8 +67,6 @@ import { markHandled } from '@/lib/tasks/mark-read';
 import { sendReply } from '@/lib/tasks/send';
 import { createTask, getTask, markOpened, updateTask } from '@/lib/tasks/store';
 import { sweepStuckTasks } from '@/lib/tasks/sweep';
-import { hasTranslation, saveTranslation } from '@/lib/translation/store';
-import { reviewLanguage, translateForReview } from '@/lib/translation/translate';
 
 /**
  * Every mutation the UI can perform.
@@ -324,6 +322,20 @@ export async function saveDraft(form: FormData): Promise<void> {
   // of the same words.
   if (draft.trim() !== newlines(before?.draft ?? '').trim()) {
     enqueueForTranslation(id);
+    // And turned, rather than left for the crontab.
+    //
+    // Queueing it was half the job. Nothing in this process turns the queue —
+    // see the long note on `redraftTask` — and the only screen that nudged it
+    // was the one polling behind a redraft, so a saved draft's rendering sat
+    // there until a cron came past. On an install without one it sat there for
+    // good. What that costs is not abstract: the reviewer who saves, edits some
+    // more and then presses Preview is the reviewer this rendering is for, and
+    // they were the one guaranteed to arrive before it did.
+    //
+    // Here rather than on every view of a task: this fires on an actual edit,
+    // which is the moment the work is created, and not on a render. `after`,
+    // fire-and-forget, through the same guarded call every other kick uses.
+    after(() => nudgeQueue(3));
     // Only a real change to the text. Saving is what people do while
     // thinking, and a history of six identical "edited" lines says less than
     // one does.
@@ -600,17 +612,22 @@ export async function confirmSend(form: FormData): Promise<void> {
   // The stored translation is keyed to the exact text it was made from, so an
   // edited draft has none — and a confirmation screen that shows the reply
   // untranslated to someone who cannot read it is the leap of faith this whole
-  // step exists to remove. One call, at the one moment it is worth paying for.
-  const language = reviewLanguage();
-  if (language && draft.trim() !== '' && !hasTranslation(id, 'draft', draft, language)) {
-    try {
-      const rendered = await translateForReview(draft, language);
-      if (rendered) saveTranslation(id, 'draft', language, draft, rendered);
-    } catch {
-      // A translator that is down must not stop somebody sending mail. The
-      // panel says plainly that there is no translation rather than pretending.
-    }
-  }
+  // step exists to remove. So it still gets made; what changed is where it is
+  // waited for.
+  //
+  // It used to be awaited here, between the button and the redirect, which put
+  // a whole model call — a shelled-out CLI on some installs, seconds not
+  // milliseconds — in front of a panel that needs none of it to be drawn. The
+  // reviewer got a screen that did nothing at all until the translator was
+  // finished. It is streamed into the panel now, arriving in the one column
+  // that is about it; see `DraftReading` on the task page.
+  //
+  // This is the durable copy of the same work, and it is here rather than there
+  // because a render can be abandoned — Escape, a closed tab, a reviewer who
+  // has seen enough — and a render that is abandoned writes nothing. The job
+  // dedupes on the task and every part of it opens with `hasTranslation`, so
+  // whichever of the two lands first, the other finds the work already done.
+  enqueueForTranslation(id);
 
   redirect(`/tasks/${id}?confirm=1`);
 }
@@ -1096,6 +1113,9 @@ export async function useAlternative(alternativeId: string, form: FormData): Pro
       actor: (await currentOperator())?.id ?? null,
     });
     enqueueForTranslation(id);
+    // Turned as well, for the reason Save's is — this swap replaced the whole
+    // reply, so the rendering on screen is of a draft nobody is going to send.
+    after(() => nudgeQueue(3));
   }
 
   revalidatePath(`/tasks/${id}`);
