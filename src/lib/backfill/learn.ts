@@ -78,6 +78,9 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     externalId: null,
     source: null,
     subject: incoming.subject,
+    // A letter's own subject is the only heading it needs, and nothing shows
+    // this task on a screen anyway.
+    title: null,
     replySubject: null,
     fromAddress: incoming.from.address,
     fromName: incoming.from.name ?? null,

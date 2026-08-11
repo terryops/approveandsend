@@ -5923,6 +5923,32 @@ kbd {
   box-shadow: none;
 }
 
+/*
+ * The topic control, which is a menu and a button on one line.
+ *
+ * The select takes the width and the button takes what it needs: the topic
+ * names are the long part — a workspace may file mail under "Subtitle editing
+ * and export" — and a menu that truncates its options is a menu you cannot use
+ * to pick between two of them.
+ */
+.topic-form {
+  gap: var(--s2);
+  align-items: center;
+}
+
+.topic-form select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The hint under it is a sentence about consequences, not a caption: it says
+   the reply is not rewritten by changing this. Wrapped, and spaced off the
+   control so it does not read as part of it. */
+.topic-form + .meta {
+  display: block;
+  margin: var(--s2) 0 0;
+}
+
 /* Closer than before. The blocks used to need `--s5` to read as separate
    things; now each has an edge of its own doing that, and the extra air only
    pushed the third one below the fold. */

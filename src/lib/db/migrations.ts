@@ -1010,6 +1010,31 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 33,
+    name: 'desk title',
+    up: db => {
+      // What this row is called on our side of the desk, which is not always
+      // what it is called on the customer's side.
+      //
+      // Every screen headed a task with `subject`, and for mail that is exactly
+      // right: the subject is what the customer wrote at the top of their
+      // letter, and a queue of them reads like an inbox because it is one. For
+      // a task handed in by a program it is nearly useless. Those all go out
+      // under one line the sender chose once — twelve rows reading "About your
+      // SubEasy rating", distinguishable only by the address beside them — and
+      // the subject is the *outgoing* one, so it cannot be edited into
+      // something informative without editing the letter the customer receives.
+      //
+      // So the two jobs are separated. `subject` stays the line on the mail.
+      // `title` is the line on the screen: whatever the caller thinks a
+      // reviewer needs to know before opening it — a rating, a plan, an amount,
+      // an order number. NULL everywhere else, and everywhere it is NULL the
+      // subject is still the heading, so nothing that existed before this
+      // renders differently.
+      db.exec(`ALTER TABLE tasks ADD COLUMN title TEXT;`);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

@@ -5,7 +5,7 @@ import { requirePage } from '@/lib/auth/guard';
 import { stripeConfigured } from '@/lib/billing/stripe';
 import { t } from '@/lib/i18n';
 import { listTasks } from '@/lib/tasks/store';
-import { deskedAt } from '@/lib/tasks/types';
+import { deskedAt, deskTitle } from '@/lib/tasks/types';
 import { stamp } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -99,7 +99,7 @@ export default async function SenderPage({
                 {task.scope ? ` · ${task.scope}` : ''}
               </p>
               <p className="what">
-                <Link href={`/tasks/${task.id}`}>{task.subject || t('task.noSubject')}</Link>
+                <Link href={`/tasks/${task.id}`}>{deskTitle(task) || t('task.noSubject')}</Link>
               </p>
 
               {/* What was actually said, in full and at body size. It is the

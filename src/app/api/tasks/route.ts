@@ -87,6 +87,11 @@ export async function POST(request: Request): Promise<Response> {
     fromAddress: to,
     ...(text(body.name, MAX_LABEL) ? { fromName: text(body.name, MAX_LABEL) } : {}),
     subject: text(body.subject, MAX_LABEL),
+    // The line the desk reads, where the subject is not one. A sender handing
+    // in a hundred rows under one subject knows something about each of them
+    // that the subject cannot carry — which of them is the angry one, which is
+    // the large account — and this is where that goes. It is never sent.
+    ...(text(body.title, MAX_LABEL) ? { title: text(body.title, MAX_LABEL) } : {}),
     ...(text(body.externalId, MAX_LABEL) ? { externalId: text(body.externalId, MAX_LABEL) } : {}),
     ...(text(body.source, MAX_LABEL) ? { source: text(body.source, MAX_LABEL) } : {}),
     // A caller that already knows what this is about says so, and the drafter

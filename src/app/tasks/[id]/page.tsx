@@ -40,7 +40,7 @@ import { newlines } from '@/lib/text';
 import { reviewLayout } from '@/lib/tasks/layout';
 import { replyBox } from '@/lib/tasks/reply-box';
 import { getTask, markOpened } from '@/lib/tasks/store';
-import { deskedAt, type Critique } from '@/lib/tasks/types';
+import { deskedAt, deskTitle, type Critique } from '@/lib/tasks/types';
 import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
@@ -57,6 +57,7 @@ import {
   approveAndSend,
   askRedraft,
   attachFiles,
+  changeTopic,
   confirmSend,
   askDismiss,
   detachFile,
@@ -377,6 +378,11 @@ export default async function TaskPage({
   const query = await searchParams;
   const task = getTask(id);
   if (!task) notFound();
+
+  // The vocabulary this install files mail under, for the control in the side
+  // column. Empty on an install that has configured none, where the select is
+  // one option long and the topic is whatever the classifier invented.
+  const topics = getWorkspaceConfig().topics;
 
   // Somebody has looked at this — but only if somebody has, and that is no
   // longer a thing this function can know.
@@ -1260,7 +1266,7 @@ export default async function TaskPage({
             height — which is the one thing this reading exists to prevent. */}
         <header className="task-head">
           <div className="row">
-            <h1 className="subject grow">{task.subject || t('task.noSubject')}</h1>
+            <h1 className="subject grow">{deskTitle(task) || t('task.noSubject')}</h1>
             <span className={`tag ${task.status}`}>{t(`task.status.${task.status}`)}</span>
           </div>
           <p className="meta">
@@ -1270,6 +1276,11 @@ export default async function TaskPage({
                 trusted. */}
             {task.origin === 'composed' ? `${t('compose.to')}: ` : ''}
             {task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
+            {/* Only where the heading above is not the subject. This is the
+                one screen where the line the customer will see has to be
+                readable, and a desk title is exactly the thing that takes it
+                off the top of the page. */}
+            {task.title?.trim() && task.subject ? ` · ${t('task.outgoingSubject', { subject: task.subject })}` : ''}
             {/* `deskedAt`, not `receivedAt`. A composed mail was never received,
                 so that column is null and this heading used to end at the
                 address — an address, a gap, and nothing to say when the letter
@@ -2218,6 +2229,41 @@ export default async function TaskPage({
             draft, and not worth a screenful of scrolling to get past on the
             way to the thing being approved. */}
         <aside className="detail-side">
+          {/* Above what the model understood, because this is the one line of
+              that reading a person is allowed to overrule. A plain form and a
+              plain select: no client JS, and the change is a POST that lands
+              back on this page.
+
+              Always rendered, including before anything has been drafted. A
+              task handed in by a program arrives already filed, and the moment
+              to correct that is before the drafter reads the rulebook, not
+              after. */}
+          <section className="side-block">
+            <h2 className="side-heading">{t('task.topic.heading')}</h2>
+            <form className="row topic-form" action={changeTopic}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <select name="scope" defaultValue={task.scope ?? ''} aria-label={t('task.topic.heading')}>
+                <option value="">{t('task.topic.none')}</option>
+                {topics.map(topic => (
+                  <option key={topic.slug} value={topic.slug}>
+                    {topic.label}
+                  </option>
+                ))}
+                {/* Whatever this row is wearing, when it is not in the
+                    vocabulary any more — a topic somebody deleted from the
+                    config, or a free slug from an install that has none.
+                    Without it the select would silently show the first entry
+                    and one submit would file the task under something nobody
+                    chose. */}
+                {task.scope && !topics.some(topic => topic.slug === task.scope) && (
+                  <option value={task.scope}>{task.scope}</option>
+                )}
+              </select>
+              <button type="submit">{t('task.topic.save')}</button>
+            </form>
+            <p className="meta">{t('task.topic.hint')}</p>
+          </section>
+
           {task.analysis && (
             <section className="side-block">
               <h2 className="side-heading">{t('task.whatItUnderstood')}</h2>
@@ -2228,7 +2274,10 @@ export default async function TaskPage({
                   able to find it without reading the other three. */}
               <p className="side-tags">
                 <span className="chip">{t(`task.sentiment.${task.analysis.sentiment}`)}</span>
-                {task.analysis.scope && <span className="chip">{task.analysis.scope}</span>}
+                {/* The topic is not here any more. It was the raw slug, and it
+                    is now the control below this block — a thing you can read
+                    the label of and change, rather than a fifth pill saying
+                    `billing-refund-cancel` at you. */}
                 {/* Left out entirely when nothing is broken. A "cause" on a sales
                     enquiry is a label looking for a fault that was never there. */}
                 {task.analysis.cause && task.analysis.cause !== 'not_a_problem' && (

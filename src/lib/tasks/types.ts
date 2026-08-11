@@ -149,6 +149,16 @@ export interface Task {
   source: string | null;
 
   subject: string;
+  /**
+   * What the desk calls this row, when that is not what the mail is called.
+   *
+   * Null for everything that arrived as mail: a letter's own subject is the
+   * best heading it will ever have. Set by whoever hands a task in, for the
+   * rows where the subject is a line they chose for the customer and every one
+   * of them therefore reads the same. It never reaches the customer — see
+   * `outgoingSubject` in `tasks/send.ts`, which is still the subject.
+   */
+  title: string | null;
   fromAddress: string;
   fromName: string | null;
   receivedAt: string | null;
@@ -221,6 +231,19 @@ export function deskedAt(task: Pick<Task, 'receivedAt' | 'createdAt'>): string {
   return task.receivedAt ?? task.createdAt;
 }
 
+/**
+ * What to head this row with, on every screen that lists or opens one.
+ *
+ * The same shape of decision as `deskedAt` and here for the same reason: five
+ * screens print a heading, and "which of the two lines is the heading" is a
+ * rule, not something five files should each remember. Empty when there is
+ * neither — each caller words its own "no subject" placeholder, because the
+ * inbox and the review screen say it differently.
+ */
+export function deskTitle(task: Pick<Task, 'title' | 'subject'>): string {
+  return task.title?.trim() || task.subject;
+}
+
 /** What ingestion knows before anything has looked at the mail. */
 export interface NewTask {
   origin?: TaskOrigin;
@@ -228,6 +251,8 @@ export interface NewTask {
   threadId?: string;
   messageIdHeader?: string;
   subject?: string;
+  /** The heading for the desk, where the subject would not be one. */
+  title?: string;
   fromAddress?: string;
   fromName?: string;
   receivedAt?: string;

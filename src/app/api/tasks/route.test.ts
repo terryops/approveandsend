@@ -14,6 +14,8 @@ import { openDb, setDb, type Db } from '@/lib/db';
 import { COMPOSE_MESSAGE } from '@/lib/queue/handlers';
 import { listJobs } from '@/lib/queue/store';
 import { getTask, listTasks } from '@/lib/tasks/store';
+import { deskTitle } from '@/lib/tasks/types';
+import { outgoingSubject } from '@/lib/tasks/send';
 
 import { POST } from './route';
 
@@ -129,6 +131,29 @@ describe('POST /api/tasks', () => {
     // against the rules that apply to everything, which is where a task with no
     // topic at all already lands.
     expect(getTask(junk.taskId, db)?.scope).toBeNull();
+  });
+
+  it('takes a heading for the desk that never reaches the customer', async () => {
+    const { taskId } = (await (
+      await post({ ...REVIEW, title: '2/10 · export was silent · Sam' })
+    ).json()) as { taskId: string };
+
+    const task = getTask(taskId, db)!;
+    // Two lines with two jobs. The subject is what lands in their inbox; the
+    // title is what stops twelve rows on our side reading identically.
+    expect(task.title).toBe('2/10 · export was silent · Sam');
+    expect(task.subject).toBe('About your review');
+    expect(outgoingSubject(task)).toBe('About your review');
+  });
+
+  it('leaves the heading alone when the caller sends none', async () => {
+    const { taskId } = (await (await post(REVIEW)).json()) as { taskId: string };
+    const task = getTask(taskId, db)!;
+
+    expect(task.title).toBeNull();
+    // Which is what every screen falls back to, and what every task that
+    // predates the column holds.
+    expect(deskTitle(task)).toBe('About your review');
   });
 
   it('defaults ahead of the inbox and honours a priority it is given', async () => {

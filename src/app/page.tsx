@@ -9,7 +9,14 @@ import { deskUntouched } from '@/lib/desk/untouched';
 import { t, topicName, topicNameMap, type MessageKey } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
-import { deskedAt, isTaskStatus, TASK_STATUSES, type Task, type TaskStatus } from '@/lib/tasks/types';
+import {
+  deskedAt,
+  deskTitle,
+  isTaskStatus,
+  TASK_STATUSES,
+  type Task,
+  type TaskStatus,
+} from '@/lib/tasks/types';
 import { day, daysAgo, split } from '@/lib/time';
 
 import { bulkDelete, bulkDismiss, bulkReopen, loadDemo, syncNow } from './actions';
@@ -308,7 +315,7 @@ export default async function InboxPage({
                   type="checkbox"
                   name="taskId"
                   value={task.id}
-                  aria-label={task.subject || t('inbox.noSubject')}
+                  aria-label={deskTitle(task) || t('inbox.noSubject')}
                 />
                 {/* Named once. The rows under it are the same person, and
                     repeating the address four times is four chances to misread
@@ -355,7 +362,7 @@ export default async function InboxPage({
                     `TaskLink`. */}
                 <TaskLink className={`subject ${unread ? '' : 'read'}`} href={`/tasks/${task.id}`}>
                   <span className="line">
-                    {task.subject || t('inbox.noSubject')}
+                    {deskTitle(task) || t('inbox.noSubject')}
                     {/* Which of the machine's three it is, as a word. A badge
                         would put a third pill on a row whose whole point is
                         that it is not asking anything of you. */}

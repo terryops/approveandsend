@@ -21,7 +21,7 @@ import Link from 'next/link';
 import { TaskLink } from '../../pending';
 import { t } from '@/lib/i18n';
 import { countTasksByStatus, listTasks } from '@/lib/tasks/store';
-import type { Task } from '@/lib/tasks/types';
+import { deskTitle, type Task } from '@/lib/tasks/types';
 
 /**
  * How long is long enough.
@@ -111,7 +111,7 @@ export function QueueRail({ currentId, rows }: { currentId: string; rows: Task[]
                     )}
                   </span>
                 )}
-                <span className="rail-subject">{task.subject || t('task.noSubject')}</span>
+                <span className="rail-subject">{deskTitle(task) || t('task.noSubject')}</span>
                 <span className="rail-who">
                   {shortName(task)}
                   {task.analysis?.intent ? ` · ${task.analysis.intent}` : ''}

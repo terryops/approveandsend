@@ -21,6 +21,10 @@ export const TASK_ACTIONS = [
   'drafted',
   'edited',
   'redraft',
+  // A human overruling the classifier. Worth its own line in the history: it
+  // changes which rules the next draft is written against, so a draft that
+  // reads differently before and after has a reason on the record.
+  'recategorised',
   'dismissed',
   'reopened',
   'sent',

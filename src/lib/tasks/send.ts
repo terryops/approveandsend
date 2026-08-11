@@ -97,7 +97,7 @@ export function replySubject(subject: string): string {
  * No "Re:" is glued to a chosen subject. It is not a reply to itself, and the
  * threading headers are what actually keep the conversation together.
  */
-function outgoingSubject(task: Task, chosen: string | undefined): string {
+export function outgoingSubject(task: Task, chosen?: string): string {
   if (task.origin === 'composed') return task.subject;
   const picked = (chosen ?? task.replySubject ?? '').trim();
   return picked || replySubject(task.subject);

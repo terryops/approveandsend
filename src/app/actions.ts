@@ -16,6 +16,7 @@ import {
   updateCatalogItem,
 } from '@/lib/catalog/store';
 import { syncCatalogFromStripe } from '@/lib/catalog/sync';
+import { normaliseTopicSlug, topicLabel } from '@/lib/config/workspace';
 import { taskIdsWithContext } from '@/lib/context/store';
 import { seedDemoData } from '@/lib/demo/seed';
 import { setThemeCookie, type Theme } from '@/lib/desk/theme';
@@ -698,6 +699,40 @@ export async function approveAndSend(form: FormData): Promise<void> {
   revalidatePath(`/tasks/${id}`);
   if (failure) redirect(`/tasks/${id}?error=${encodeURIComponent(failure)}`);
   redirect('/?sent=1');
+}
+
+/**
+ * A reviewer overruling the classifier.
+ *
+ * The category is not decoration. It decides which rules the drafter is handed
+ * — see `assemble` — so a mail filed under the wrong one is answered against
+ * the wrong rulebook, and until now the only remedy was to fix the letter by
+ * hand every time it happened. Nothing is redrafted from here, deliberately:
+ * changing the filing of a mail somebody is halfway through editing must not
+ * throw their edit away. The hint under the control says to redraft, and the
+ * button for it is on the same screen.
+ *
+ * An empty selection is a real answer — "none of these" — and stores NULL,
+ * which is what an unclassified task has always held.
+ */
+export async function changeTopic(form: FormData): Promise<void> {
+  await requireApi();
+  const id = field(form, 'taskId');
+  const chosen = normaliseTopicSlug(form.get('scope'));
+  const task = getTask(id);
+  if (task && task.scope !== chosen) {
+    updateTask(id, { scope: chosen });
+    recordEvent(id, 'recategorised', {
+      // The name a person recognises, not the slug: this line is read in the
+      // history by whoever is wondering why the reply changed.
+      detail: chosen ? topicLabel(chosen) : '',
+      actor: (await currentOperator())?.id ?? null,
+    });
+  }
+
+  revalidatePath('/');
+  revalidatePath(`/tasks/${id}`);
+  redirect(`/tasks/${id}`);
 }
 
 export async function dismissTask(form: FormData): Promise<void> {

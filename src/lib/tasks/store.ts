@@ -18,6 +18,7 @@ interface TaskRow {
   external_id: string | null;
   source: string | null;
   subject: string;
+  title: string | null;
   from_address: string;
   from_name: string | null;
   received_at: string | null;
@@ -114,6 +115,7 @@ function mapTask(row: TaskRow): Task {
     externalId: row.external_id,
     source: row.source,
     subject: row.subject,
+    title: row.title,
     fromAddress: row.from_address,
     fromName: row.from_name,
     receivedAt: row.received_at,
@@ -177,9 +179,9 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
     .prepare(
       `INSERT INTO tasks (id, status, origin, priority, message_id, thread_id, message_id_header,
                           external_id, source, scope,
-                          subject, from_address, from_name, received_at, body, body_html,
+                          subject, title, from_address, from_name, received_at, body, body_html,
                           created_at, updated_at)
-       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .get(
@@ -193,6 +195,7 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
       input.source ?? null,
       input.scope ?? null,
       input.subject ?? '',
+      input.title || null,
       input.fromAddress ?? '',
       input.fromName ?? null,
       input.receivedAt ?? null,
@@ -268,6 +271,9 @@ export interface ListTasksFilter {
 /** The columns free text is matched against, in the order a person scans them. */
 const SEARCH_COLUMNS = [
   'subject',
+  // The heading a reviewer actually reads on rows that have one, and therefore
+  // the words they will type when looking for one again.
+  'title',
   'from_name',
   'from_address',
   'body',
