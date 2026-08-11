@@ -13,6 +13,7 @@ import type {
 } from '../mail/types';
 
 import { listEvents } from './events';
+import { listMessages } from './messages';
 import { attachToTask, listPending, pendingAttachments } from './outgoing';
 import { sendReply } from './send';
 import { createTask, getTask, updateTask } from './store';
@@ -31,6 +32,13 @@ class FakeMailbox implements MailProvider {
 
   sent: OutgoingMail[] = [];
   failNextSend: string | null = null;
+  /**
+   * What the backend says the mail went out as, when a test cares.
+   *
+   * `null` leaves the counter below in charge. `''` is Zoho answering a send
+   * with no id at all, which is a real reply and not an error.
+   */
+  sendResult: string | null = null;
 
   async listInbox(): Promise<MailMessage[]> {
     return [];
@@ -55,7 +63,7 @@ class FakeMailbox implements MailProvider {
       throw new Error(reason);
     }
     this.sent.push(mail);
-    return { messageId: `sent-${this.sent.length}` };
+    return { messageId: this.sendResult ?? `sent-${this.sent.length}` };
   }
 
   async markAsRead(): Promise<void> {}
@@ -100,6 +108,35 @@ describe('sendReply', () => {
     expect(provider.sent).toHaveLength(1);
     expect(provider.sent[0]?.subject).toBe('Re: Refund?');
     expect(after.status).toBe('sent');
+  });
+
+  it('writes down what the mail went out as', async () => {
+    const id = task('awaiting_review');
+
+    await sendReply(id, { finalReply: 'Your refund is on its way.' }, {
+      provider,
+      db,
+      learn: false,
+    });
+
+    // The send is the only moment this is knowable, and it used to be thrown
+    // away — every reply this desk had ever sent was a row with no id on it.
+    const outbound = listMessages(id, db).filter(m => m.direction === 'outbound');
+    expect(outbound).toHaveLength(1);
+    expect(outbound[0]?.messageId).toBe('sent-1');
+  });
+
+  it('leaves the id unset rather than empty when the backend has none to give', async () => {
+    const id = task('awaiting_review');
+    provider.sendResult = '';
+
+    await sendReply(id, { finalReply: 'Done.' }, { provider, db, learn: false });
+
+    // Zoho answers a send with no id of its own. Writing `''` would put a value
+    // in the column `addMessage` dedupes on, and the second idless reply on a
+    // task would find the first and overwrite it instead of being recorded.
+    const outbound = listMessages(id, db).filter(m => m.direction === 'outbound');
+    expect(outbound[0]?.messageId).toBeNull();
   });
 
   it('answers under the subject the reviewer approved', async () => {

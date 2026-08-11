@@ -3,7 +3,7 @@ import { getDb } from '../db';
 import { t } from '../i18n';
 import { mailProvider, sendsHtmlReplies } from '../mail/config';
 import { replyHtml, replyText } from '../mail/render';
-import type { MailProvider, OutgoingAttachment } from '../mail/types';
+import type { MailProvider, OutgoingAttachment, SendResult } from '../mail/types';
 import { describeUploads } from '../mail/uploads';
 import { enqueueLearnFromSent } from '../queue/handlers/learn-from-sent';
 import { clearAlternatives } from './alternatives';
@@ -167,8 +167,12 @@ export async function sendReply(
     return current ?? task;
   }
 
+  // Kept, rather than dropped on the floor. `SendResult` exists to say what the
+  // mail went out as — this is the only call in the app that can know it, and
+  // the send is the only moment it is knowable.
+  let sent: SendResult;
   try {
-    await provider.send({
+    sent = await provider.send({
       to: [{ address: task.fromAddress, ...(task.fromName ? { name: task.fromName } : {}) }],
       subject,
       // The marks come out of the plain-text half and turn into tags in the
@@ -236,6 +240,22 @@ export async function sendReply(
       taskId,
       {
         direction: 'outbound',
+        // With an id on it, so the row is a message rather than an anonymous
+        // paragraph. Every other writer of this column — `captureThread` — puts
+        // a provider id in it, and two of the three backends return an RFC 5322
+        // Message-ID here instead: Zoho returns its own id and says so, Gmail
+        // reads the header back and falls back to the API id. So this column
+        // holds ids from both spaces and a reader must not assume otherwise.
+        //
+        // Storing the header id anyway, because it is the one a customer's
+        // `In-Reply-To` will name when this thread comes back, and because the
+        // alternative on every provider is NULL — which is what it was.
+        //
+        // Conditional, not `?? null`: Zoho hands back `''` when its response
+        // carries no id, and an empty string is not an identifier. `addMessage`
+        // keys its dedupe on this, and `WHERE message_id = ''` would match the
+        // next reply on this task that also had nothing to say for itself.
+        ...(sent.messageId ? { messageId: sent.messageId } : {}),
         fromAddress: '',
         subject,
         body: reply,
