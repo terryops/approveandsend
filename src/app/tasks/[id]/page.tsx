@@ -24,6 +24,7 @@ import { QueueRail, railTasks } from './queue-rail';
 import { DiffToggle } from './diff-toggle';
 import { LetterFrame } from './letter-frame';
 import { DraftTools } from './draft-tools';
+import { RenderedDraft } from './rendered-draft';
 import { DraftOverlay, ReviewKeys } from './review-keys';
 import { listContext } from '@/lib/context/store';
 import { deskLanguage, t } from '@/lib/i18n';
@@ -68,6 +69,18 @@ import {
 } from '../../actions';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The two rules that undo `showing` where no script will ever arrive.
+ *
+ * A string rather than a stylesheet rule, because a stylesheet cannot ask
+ * whether scripting is on and `<noscript>` cannot be written in CSS. It is the
+ * exact inverse of the pair in `globals.css`, and it exists so that the class
+ * can be server-rendered — see `RenderedDraft` for why that matters and what it
+ * costs.
+ */
+const NO_SCRIPT_DRAFT =
+  '.draft-box.showing .reply-shown{display:none}.draft-box.showing textarea.draft{display:block}';
 
 /**
  * How many of the active rules the sidebar names before it stops and links.
@@ -1700,7 +1713,22 @@ export default async function TaskPage({
                 bottom of the page — the reviewer's eye is on the button they
                 pressed, and the thing that changed is a screen away. The flash
                 is the only thing saying which of the two moved. */}
-            <div className={`draft-box${restored ? ' restored' : ''}`}>
+            <div className={`draft-box showing${restored ? ' restored' : ''}`}>
+              {/* The reply as it will arrive, which is what this box shows until
+                  somebody clicks it. `previewHtml` is the function `sendReply`
+                  composes the mail with, so this is not a picture of the reply —
+                  it is the reply. See `RenderedDraft` for the click, and for why
+                  the class above is the server's rather than a script's.
+
+                  `showing` is on the box unconditionally, including on a sent
+                  task: there the rendering is simply what went out, and the
+                  click that would start an edit is refused because the textarea
+                  under it is read-only. */}
+              <div
+                className="reply-shown reply-rendered"
+                lang={languageTag(task.analysis?.language)}
+                dangerouslySetInnerHTML={{ __html: previewHtml(body, task.replyFormat) }}
+              />
               {edit.meaningful && (
                 <div className="reply-diff diff" lang={languageTag(task.analysis?.language)}>
                   {edit.ops.map((op, i) => (
@@ -1749,6 +1777,15 @@ export default async function TaskPage({
                 style={{ '--reply-rows': box.rows } as React.CSSProperties}
               />
               <DraftOverlay highlighted={edit.meaningful} />
+              <RenderedDraft format={task.replyFormat} />
+              {/* And the reader with no JavaScript gets the box back.
+                  `showing` is in the markup so that nobody sees a frame of raw
+                  Markdown before the script arrives; without a script there is
+                  nothing to click the rendering into an editor, so this hands
+                  back the plain textarea this screen has always had. */}
+              <noscript>
+                <style>{NO_SCRIPT_DRAFT}</style>
+              </noscript>
             </div>
             {/* The nearest thing here to a confirmation step: what is going out,
                 in a language the reviewer reads. */}

@@ -270,6 +270,12 @@ export function Pressable({ draft, children }: { draft?: string; children: React
     form.requestSubmit(button);
     swapped.current = { box, before: box.value };
     box.value = draft;
+    // Said out loud, because a value set from script fires nothing on its own.
+    // The box is showing the reply rendered rather than its source — see
+    // `RenderedDraft` — and a rendering that keeps the old approach on screen
+    // for the length of the round trip is precisely the wait this optimistic
+    // write exists to remove.
+    box.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
   return (

@@ -6377,6 +6377,50 @@ kbd {
 }
 
 /*
+ * The reply as it will arrive, standing where the editor stands.
+ *
+ * Same arrangement as the diff above and for the same reason: one thing in the
+ * box at a time, laid out rather than positioned over anything, so there is no
+ * pair of fonts and paddings to keep equal forever. `cursor: text` says the
+ * obvious thing — this is the reply, and clicking it is how you write in it.
+ *
+ * `.reply-rendered` is on the same element, which is what gives this the mail's
+ * own typography rather than a second set of rules describing it. That class
+ * carries a height cap for the places it is quoted inside; here it *is* the
+ * editor, and an editor that stops at 460px and scrolls inside a box that also
+ * scrolls is the nested scrollport this screen has been dismantling elsewhere.
+ */
+.reply-shown {
+  display: none;
+  min-height: 260px;
+  max-height: none;
+  overflow: visible;
+  cursor: text;
+}
+
+.draft-box.showing .reply-shown {
+  display: block;
+}
+
+/* And the editor goes, exactly as it does under the diff — hidden rather than
+   removed, so the reply still posts. See the note under the diff's rule. */
+.draft-box.showing textarea.draft {
+  display: none;
+}
+
+/*
+ * The diff wins.
+ *
+ * Both of these are faces for a box nobody is typing in, and a reviewer who has
+ * asked to see what they changed has asked a narrower question than "what does
+ * this look like" — `DiffToggle` is a control they pressed, and `showing` is
+ * merely the state the card is in when it is not being edited.
+ */
+.draft-box.diffing .reply-shown {
+  display: none;
+}
+
+/*
  * And the editor goes, rather than being hidden behind the diff.
  *
  * `display: none` and not `visibility` or an opacity: a control that is only
