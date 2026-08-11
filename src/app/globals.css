@@ -737,7 +737,24 @@ input[type='file']:focus-visible {
 }
 
 .shell {
-  max-width: 1040px;
+  /*
+   * 1240, and the header's 1200 is this minus the padding — the two numbers move
+   * together or not at all.
+   *
+   * It was 1040. That put a 1000px band of chrome above a letter laid out across
+   * 1360 or 1628, so the wordmark started 180px inside the subject line beneath
+   * it and the rule under the nav stopped well short of both columns: a header
+   * that reads as an island floating over its own page. The header cannot simply
+   * be widened on its own — see the note on `header.top`, where the fixed width
+   * is what stops the whole application appearing to shift when you click from
+   * the inbox into a task — so the floor came up to meet it instead.
+   *
+   * The list screens get the extra 200px whether or not they asked. The note
+   * below is right that a table does not read better for being wider; what it is
+   * paying for is the wordmark landing on the same pixel on every screen in the
+   * app, which is worth more than 200px of gutter on the queue.
+   */
+  max-width: 1240px;
   margin: 0 auto;
   padding: var(--s5) 20px 64px;
 }
@@ -841,7 +858,11 @@ input[type='file']:focus-visible {
  */
 header.top,
 .shell > .banner {
-  max-width: 1000px;
+  /* The content box of the 1240 shell, so a list screen resolves this to zero
+     centring and only a shell that grew — 1360 for a letter, 1628 for a letter
+     with a queue beside it — pays it back. The pair moves together; see the
+     note on `.shell` for why neither number can be raised alone. */
+  max-width: 1200px;
   margin-inline: auto;
 }
 
