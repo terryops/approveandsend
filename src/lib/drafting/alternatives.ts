@@ -102,7 +102,7 @@ JSON only, no prose around it:
   "options": [
     {
       "strategy": "a few words in ${operatorLanguage()} on what this one commits us to, e.g. refund immediately, ask for the export id first",
-      "body": "the reply itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
+      "body": "the reply itself, plain text, ready to send"
     }
   ]
 }`;

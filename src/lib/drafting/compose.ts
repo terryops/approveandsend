@@ -67,7 +67,7 @@ ${signOffRule(workspace.signature)}
 JSON only, no prose around it:
 {
   "subject": "a subject line that says what the mail is about — no Re:, this starts the conversation",
-  "body": "the mail itself, plain text, ready to send${workspace.signature ? '' : ' — no signature'}"
+  "body": "the mail itself, plain text, ready to send"
 }`;
 
   const parsed = extractJson<Record<string, unknown>>(await callAI(prompt, { role: 'drafter' }));

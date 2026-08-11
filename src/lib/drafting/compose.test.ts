@@ -130,13 +130,16 @@ describe('composeMessage', () => {
     expect(composed?.body.endsWith('— The Acme team')).toBe(true);
   });
 
-  it('leaves the closing to the model when the desk has no signature', async () => {
-    // Nobody is adding a line, so forbidding one would end the mail mid-air.
+  it('asks the model for the closing when the desk has no signature', async () => {
+    // The empty setting is not "unsigned". Nobody is adding a line below the
+    // reply, so forbidding one would end the mail mid-air — the model writes
+    // the closing instead, in the language the mail is in.
     queued.push(COMPOSED);
 
     await composeMessage(brief(), { db });
 
     expect(prompts[0]).not.toContain('Do not write a sign-off');
+    expect(prompts[0]).toContain('End the reply the way a letter ends');
   });
 
   it('returns null rather than throwing on an unusable response', async () => {

@@ -184,15 +184,28 @@ contents, and do not ask for a file that is already in this list.`;
  * sign-off was noticed there, and composed mail and the alternatives strip —
  * both of which append the same signature — went on producing it.
  *
- * Empty signature, no rule. Then nobody is adding a closing line, so the model
- * writing one is the reply ending the way a letter ends.
+ * With no signature configured the rule inverts rather than disappearing, and
+ * that is the point of the empty setting. A fixed block is one line of English
+ * bolted under a reply that may be in Japanese, and a desk that would rather
+ * not have that has two ways to avoid it: sign nothing, or let the letter end
+ * itself in the language it was written in. The second is what a person does.
+ * So the model is asked for the closing here instead — one of them, in the
+ * customer's language, because nothing is being added below it.
  */
 export function signOffRule(signature: string): string {
-  if (!signature) return '';
+  if (signature) {
+    return (
+      '\nDo not write a sign-off, a closing line or a signature. One is added ' +
+      'below your reply automatically, and a second one is what makes a reply ' +
+      'look machine-written.\n'
+    );
+  }
   return (
-    '\nDo not write a sign-off, a closing line or a signature. One is added ' +
-    'below your reply automatically, and a second one is what makes a reply ' +
-    'look machine-written.\n'
+    '\nEnd the reply the way a letter ends: one closing line and the name of ' +
+    'the desk, written in the same language as the reply — not an English ' +
+    'sign-off under a reply in another language. Nothing is added below what ' +
+    'you write, so exactly one closing, and no placeholder for a personal ' +
+    'name nobody is going to fill in.\n'
   );
 }
 
@@ -298,7 +311,7 @@ JSON only, no prose around it:
   "cause": "system_bug | known_limitation | ux_issue | user_error | not_a_problem",
   "suggestedActions": ["what a human may need to do outside this reply, if anything, in ${operatorLanguage()}"],
   "subject": "the subject line to answer under, in their language — say what the reply contains, e.g. 'Your refund has been issued'. Leave it empty to keep theirs.",
-  "draft": "the reply itself, ready to send${workspace.signature ? '' : ' — no signature'}"
+  "draft": "the reply itself, ready to send"
 }`;
 }
 
