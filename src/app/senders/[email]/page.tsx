@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
+import { BillingCard } from '../../billing-card';
 import { requirePage } from '@/lib/auth/guard';
+import { stripeConfigured } from '@/lib/billing/stripe';
 import { t } from '@/lib/i18n';
 import { listTasks } from '@/lib/tasks/store';
 import { deskedAt } from '@/lib/tasks/types';
@@ -56,14 +58,33 @@ export default async function SenderPage({
         ) : (
           <>
             {t('sender.summary', { total: tasks.length, replied: replied.length })}
-            {' · '}
             {/* The question that follows "what did we tell them" is almost
                 always "and what are they worth to us", so it has an answer on
-                the page that raises it. */}
-            <Link href={`/billing/${encodeURIComponent(email)}`}>{t('sender.billing')}</Link>
+                the page that raises it.
+
+                Only where the card below is not already carrying it. That card
+                answers this question in four facts and then offers the same
+                link, so on a desk with Stripe configured this sentence was the
+                second door to one screen — and the weaker of the two, because
+                it says nothing until it is followed. `stripeConfigured` is the
+                same check `BillingCard` opens with and touches no network, so
+                the two cannot disagree about which of them is speaking. */}
+            {!stripeConfigured() && (
+              <>
+                {' · '}
+                <Link href={`/billing/${encodeURIComponent(email)}`}>{t('sender.billing')}</Link>
+              </>
+            )}
           </>
         )}
       </p>
+
+      {/* Above the correspondence rather than under it. This page is opened to
+          read a thread back, and the thing that changes how the *next* reply
+          reads — a lapsed subscription, a refund already given — belongs before
+          the reading rather than after it. Renders nothing at all on a desk with
+          no Stripe key; see `BillingCard`. */}
+      <BillingCard email={email} />
 
       {tasks.length > 0 && (
         // A line rather than a list of cards. This page is opened to read a

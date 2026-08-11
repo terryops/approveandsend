@@ -12,6 +12,7 @@ import { remoteImageUrl, remoteImagesAllowed } from '@/lib/mail/remote-images';
 import { REPLY_FORMATS, previewHtml, type ReplyFormat } from '@/lib/mail/render';
 import { MAX_UPLOAD_BYTES } from '@/lib/mail/uploads';
 
+import { BillingCard } from '../../billing-card';
 import { DismissOnEscape } from '../../dismiss-on-escape';
 import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
@@ -1344,6 +1345,22 @@ export default async function TaskPage({
           </div>
           );
         })}
+
+        {/* And who they are to Stripe, which is the other half of the question
+            the cards above answer: what we have told them before, and what they
+            are worth to us. It reads at render time rather than out of the
+            enrichment job — see `BillingCard` — so it is here on a task the
+            queue enriched before billing was switched on, and on one it never
+            enriched at all.
+
+            Not where `stripeSource` has already said it. A desk running both
+            would otherwise carry two Stripe boxes down one column saying nearly
+            the same thing in two voices, and the one the model was actually
+            given is the one worth keeping — a reviewer checking whether a reply
+            is right needs to see what it was written from. */}
+        {!context.some(block => block.sourceId === 'stripe') && (
+          <BillingCard email={task.fromAddress} />
+        )}
 
         </div>
         <div className="reply-side">
