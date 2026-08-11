@@ -1,17 +1,8 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 
-import {
-  DASHBOARD,
-  day,
-  findCustomer,
-  listCharges,
-  listSubscriptions,
-  money,
-  netPaid,
-  planOf,
-  stripeConfigured,
-} from '@/lib/billing/stripe';
+import { DASHBOARD, day, money, netPaid, planOf, stripeConfigured } from '@/lib/billing/stripe';
+import { customerSummary } from '@/lib/billing/summary';
 import { t } from '@/lib/i18n';
 
 /**
@@ -75,9 +66,14 @@ export function BillingCard({ email }: { email: string }) {
 }
 
 async function Customer({ email }: { email: string }) {
-  let customer;
+  // One read, and remembered for a minute — see `customerSummary`. `?confirm=1`
+  // is a flag on this same route, so pressing Preview re-renders this card
+  // underneath the scrim on a panel that has nothing to do with billing; asking
+  // Stripe again for what it said two seconds ago was holding that press open
+  // for a whole round trip.
+  let summary;
   try {
-    customer = await findCustomer(email);
+    summary = await customerSummary(email);
   } catch (error) {
     // A card that renders a stack trace is a card people learn to scroll past.
     // Say which system is unreachable and leave the screen usable — every other
@@ -100,6 +96,7 @@ async function Customer({ email }: { email: string }) {
   // The sentence is the billing page's own, and it is careful for a reason: not
   // "they never paid us", because they may well have, under the address on
   // their card rather than the one they write from.
+  const { customer, subscriptions, charges } = summary;
   if (!customer) {
     return (
       <div className="card">
@@ -108,15 +105,6 @@ async function Customer({ email }: { email: string }) {
       </div>
     );
   }
-
-  const [subscriptions, charges] = await Promise.all([
-    listSubscriptions(customer.id),
-    // `listCharges`'s own default, which is what `/billing/<address>` reads.
-    // The context source takes 20 and is right to — it is writing a sentence
-    // for a model. This number is a link away from the list it summarises, and
-    // a total that disagrees with the page it opens is worse than no total.
-    listCharges(customer.id),
-  ]);
 
   const net = netPaid(charges);
   // The one they are on. More than one is rare and the card is not the place
