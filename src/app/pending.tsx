@@ -1,7 +1,7 @@
 'use client';
 
 import Link, { useLinkStatus } from 'next/link';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 
 /**
@@ -182,13 +182,55 @@ export function TaskLink({
  * `display: contents` on the wrapper, so a stack of tabs is still a stack of
  * tabs: the span has no box of its own and the button it holds sits in the
  * flex row exactly where it did before.
+ *
+ * `draft` is the other half of the same idea, and it is what makes an option tab
+ * quick rather than merely honest about being slow. A lit tab says the press
+ * landed; the reply under it still says what it said a moment ago, and on the
+ * one press people make three times in a row — A, then B, then C — that gap is
+ * the whole of what "slow" means here. Nothing has to be fetched to close it:
+ * the option's text was read out of the database by the render that drew the
+ * strip, so it can go in the box on the click.
+ *
+ * The order below is the whole of it, and it is the reason this is a DOM write
+ * rather than an `useOptimistic` value. The box is the one uncontrolled node on
+ * this screen — server-rendered, keyed on the text, with no client state to be
+ * optimistic *with* — and it is also the field the press is about to post.
+ *
+ * So: post first, write second. `requestSubmit` dispatches the submit event
+ * synchronously and React builds the `FormData` inside it, which means the post
+ * carries what the reviewer had in the box rather than what this is about to put
+ * there. Write first and every switch posts the option as if somebody had typed
+ * it, `keepEdits` files a version under their name, and the drafts panel fills
+ * with edits nobody made. `preventDefault` is for the browser's own submit,
+ * which would otherwise follow this same click and post the form a second time.
+ *
+ * What arrives a round trip later is the same text. `useAlternative` writes the
+ * option to the row, the page re-renders from it, and the box is keyed on that
+ * text — so the remount replaces the value with the value already on screen and
+ * nothing moves.
+ *
+ * A refusal is the case that remount cannot answer, and it is why the old value
+ * is kept. `useAlternative` writes nothing to a task that has been sent or is
+ * being sent, and the screen that comes back is drawn from `finalReply` — which
+ * is, on nearly every task, the same text the draft already held. Same text,
+ * same key, no remount, and this guess would have been left sitting under the
+ * heading "what went out", claiming the mail said something it did not. So when
+ * the post settles with the box still standing and still holding the guess, the
+ * guess is taken back out. A box that was replaced has already been answered by
+ * the server and is left alone.
+ *
+ * And with JavaScript off none of this exists: the button is a submit button in
+ * a form, the server does every part of the work, and the prop has only ever
+ * been in the business of removing a wait.
  */
-export function Pressable({ children }: { children: ReactNode }) {
+export function Pressable({ draft, children }: { draft?: string; children: ReactNode }) {
   // Form-scoped: true while *any* button in this form is posting. Which one it
   // was is the part only the click knows, and that is the state below.
   const { pending } = useFormStatus();
   const [armed, setArmed] = useState(false);
   const posting = useRef(false);
+  /** The box this press wrote over, and what it said before. */
+  const swapped = useRef<{ box: HTMLTextAreaElement; before: string } | null>(null);
 
   // Disarmed on the falling edge, not on `!pending`. The click and the
   // submission are two renders, and in the first of them this component has
@@ -196,15 +238,42 @@ export function Pressable({ children }: { children: ReactNode }) {
   // posting — clearing on a bare `!pending` would clear it there, half a frame
   // before the state it exists to show.
   useEffect(() => {
-    if (posting.current && !pending) setArmed(false);
+    if (posting.current && !pending) {
+      setArmed(false);
+
+      // And the guess is taken back, unless the answer has already replaced it.
+      // A box still in the document holding exactly what this press put there is
+      // a box the server did not write to; see the note above for the refusal
+      // that gets here. `isConnected` is the whole test, because the agreeing
+      // case remounts and leaves this node detached.
+      const swap = swapped.current;
+      swapped.current = null;
+      if (swap && swap.box.isConnected && swap.box.value === draft) swap.box.value = swap.before;
+    }
     posting.current = pending;
-  }, [pending]);
+  }, [pending, draft]);
+
+  const press = (event: MouseEvent<HTMLSpanElement>) => {
+    setArmed(true);
+    if (draft === undefined) return;
+
+    // The button this wrapper exists for, and the form and the box it belongs
+    // to. Anything missing — a tab outside the reply form, a box gone read-only
+    // because the mail has left — and this returns having done nothing, which
+    // leaves the plain submit underneath to do the whole job as before.
+    const button = event.currentTarget.querySelector('button');
+    const form = button?.form;
+    const box = form?.elements.namedItem('draft');
+    if (!button || !form || !(box instanceof HTMLTextAreaElement) || box.readOnly) return;
+
+    event.preventDefault();
+    form.requestSubmit(button);
+    swapped.current = { box, before: box.value };
+    box.value = draft;
+  };
 
   return (
-    <span
-      className={`pressable${armed && pending ? ' pressing' : ''}`}
-      onClick={() => setArmed(true)}
-    >
+    <span className={`pressable${armed && pending ? ' pressing' : ''}`} onClick={press}>
       {children}
     </span>
   );

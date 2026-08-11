@@ -1306,9 +1306,17 @@ export default async function TaskPage({
                     is in the air — the switch is a round trip, and until it
                     lands the row you chose is indistinguishable from the two you
                     did not. See `Pressable`, and note that the action stays
-                    named here rather than handed down as a prop. */}
+                    named here rather than handed down as a prop.
+
+                    And the option's own text goes down with it, which is what
+                    makes the press land on the box rather than only on the tab.
+                    It is already here — `listAlternatives` read the body along
+                    with the label — so the reply can be swapped on the click and
+                    the round trip spent confirming it rather than performing it.
+                    See `Pressable` again for the ordering that keeps a
+                    reviewer's editing in the post. */}
                 {alternatives.map(option => (
-                  <Pressable key={option.id}>
+                  <Pressable key={option.id} draft={option.body}>
                     <button
                       type="submit"
                       formAction={useAlternative.bind(null, option.id)}
