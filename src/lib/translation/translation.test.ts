@@ -15,7 +15,7 @@ import {
 import { completeJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
 import { cardsSource, parseCards, renderCard } from './cards';
-import { clearTranslations, getTranslation, hasTranslation, saveTranslation } from './store';
+import { clearTranslations, getTranslation, isSameLanguage, saveTranslation } from './store';
 import {
   repliesNeedRendering,
   reviewLanguage,
@@ -390,7 +390,7 @@ describe('the translation job', () => {
     expect(getTranslation(id, 'draft', 'Draft version', 'Chinese', db)).toBeNull();
   });
 
-  it('stores nothing for a message already in the reviewer language', async () => {
+  it('writes down that a message already in the reviewer language needs nothing', async () => {
     const id = task('您好，我需要帮助', '好的，马上处理');
     queued.push('SAME', 'SAME');
 
@@ -401,7 +401,29 @@ describe('the translation job', () => {
 
     expect(result.translated).toEqual([]);
     expect(result.alreadyInLanguage).toEqual(['body', 'draft']);
-    expect(hasTranslation(id, 'body', '您好，我需要帮助', 'Chinese', db)).toBe(false);
+
+    // This used to store nothing at all, and the absence was unreadable: "no
+    // row" meant "nothing needed" exactly as often as it meant "not done yet",
+    // so a Chinese desk answering Chinese mail carried a line under every reply
+    // promising a translation that was never coming.
+    const stored = getTranslation(id, 'body', '您好，我需要帮助', 'Chinese', db);
+    expect(stored?.content).toBe('');
+    expect(isSameLanguage(stored)).toBe(true);
+    expect(isSameLanguage(getTranslation(id, 'draft', '好的，马上处理', 'Chinese', db))).toBe(true);
+  });
+
+  it('does not ask twice about a message it has already called the same language', async () => {
+    const id = task('您好，我需要帮助', '好的，马上处理');
+    queued.push('SAME', 'SAME');
+    await translateTaskHandler({ taskId: id }, context());
+    expect(prompts).toHaveLength(2);
+
+    await translateTaskHandler({ taskId: id }, context());
+
+    // The bill this was costing: every edit, every view that queued a job, for
+    // the life of a desk whose replies were never going to be in another
+    // language.
+    expect(prompts).toHaveLength(2);
   });
 
   it('keeps the half that worked, and still fails so the other half is retried', async () => {

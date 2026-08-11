@@ -102,7 +102,28 @@ export function getTranslation(
   };
 }
 
-/** True when this exact text already has a current translation — skip the call. */
+/**
+ * Whether the model has already said this text needs no rendering.
+ *
+ * An empty stored row is that answer, and it is stored so that the answer
+ * exists at all. `translateForReview` returns null when the text is already in
+ * the reviewer's language, and for a long time nothing was written for it — so
+ * "no row" meant "nothing needed" exactly as often as it meant "not done yet",
+ * and the screen could only say the pessimistic one. A desk answering Chinese
+ * mail in Chinese to Chinese-reading reviewers therefore carried a line under
+ * every reply announcing a missing translation that was never going to arrive,
+ * and the queue re-asked for it on every edit forever.
+ *
+ * The cards have always done this — see `cardsAwaitingRendering`, which says
+ * their no-op is a stored rendering identical to the card. The mail halves
+ * store the empty string instead, because a copy of the reply filed as its own
+ * translation is a thing a screen might one day render beside itself.
+ */
+export function isSameLanguage(row: StoredTranslation | null): boolean {
+  return row !== null && row.content === '';
+}
+
+/** True when this exact text already has a current answer — skip the call. */
 export function hasTranslation(
   taskId: string,
   kind: TranslationKind,

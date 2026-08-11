@@ -45,7 +45,7 @@ import { listVersions } from '@/lib/tasks/versions';
 import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { cardsSource, parseCards, renderCard } from '@/lib/translation/cards';
-import { getTranslation, saveTranslation } from '@/lib/translation/store';
+import { getTranslation, isSameLanguage, saveTranslation } from '@/lib/translation/store';
 import {
   repliesNeedRendering,
   reviewLanguage,
@@ -283,14 +283,26 @@ async function DraftReading({
   language: string;
 }) {
   let rendered: string | null = null;
+  /** Whether the model answered at all. A thrown call has said nothing. */
+  let asked = false;
   try {
     rendered = await translateForReview(text, language);
+    asked = true;
   } catch {
     // A translator that is down must not stop somebody sending mail. The note
     // below says plainly that there is no rendering rather than pretending.
   }
 
-  if (!rendered) return <p className="meta">{t('task.noTranslation', { language })}</p>;
+  // Null is not a failure. It is the model having been shown the reply and
+  // having said it is already in the target language — so it is written down
+  // as such, and neither this panel nor the next one asks again. An unwritten
+  // "nothing to do" is what made a desk answering its own language pay for this
+  // question on every draft it ever edited. A thrown translator writes nothing
+  // and is asked again, which is the correct difference between the two.
+  if (!rendered) {
+    if (asked) saveTranslation(taskId, 'draft', language, text, '');
+    return <p className="meta">{t('task.noTranslation', { language })}</p>;
+  }
 
   saveTranslation(taskId, 'draft', language, text, rendered);
 
@@ -545,8 +557,25 @@ export default async function TaskPage({
 
   const language = reviewLanguage();
   const bodyText = task.body || '';
-  const incoming = language ? getTranslation(task.id, 'body', bodyText, language) : null;
-  const outgoing = language ? getTranslation(task.id, 'draft', body, language) : null;
+  /*
+   * Three states, not two, and the third is why a Chinese desk answering
+   * Chinese mail carried a line under every reply promising a translation that
+   * was never coming.
+   *
+   * A row with content is a rendering. No row is a question nobody has asked
+   * yet. An *empty* row is the model having been asked and having answered that
+   * the text is already in the language the reviewer reads — see
+   * `isSameLanguage`, and the note there for why that answer had to start being
+   * written down before any screen could act on it.
+   *
+   * `stored` keeps the row so the pair below can tell the last two apart;
+   * `incoming`/`outgoing` are the ones with something to show, which is what
+   * every rendering site below actually wants.
+   */
+  const incomingStored = language ? getTranslation(task.id, 'body', bodyText, language) : null;
+  const outgoingStored = language ? getTranslation(task.id, 'draft', body, language) : null;
+  const incoming = isSameLanguage(incomingStored) ? null : incomingStored;
+  const outgoing = isSameLanguage(outgoingStored) ? null : outgoingStored;
   // And whether the panel should wait for one that is not stored yet.
   //
   // Only the panel. This is a model call, and the review screen behind it is
@@ -557,7 +586,11 @@ export default async function TaskPage({
   // `repliesNeedRendering` is what keeps it from asking a question the config
   // already answers: a desk answering in the language its reviewers read gets
   // the note below instead, having spent nothing.
-  const reading = Boolean(language) && !outgoing && body.trim() !== '' && repliesNeedRendering();
+  // `outgoingStored` and not `outgoing`: an empty row is the model having
+  // already answered "nothing to do", and asking it again every time the panel
+  // opens is the bill this whole distinction exists to stop.
+  const reading =
+    Boolean(language) && !outgoingStored && body.trim() !== '' && repliesNeedRendering();
   // And the cards, which are in whatever language their source was written in
   // — English, for the built-in ones and for most config files. Rendered into
   // the interface language instead of the review language, because a card is
@@ -795,8 +828,15 @@ export default async function TaskPage({
                 note saying there is none under a boundary that is fetching one
                 is the assumption this sentence exists to prevent, made by the
                 sentence itself. `DraftReading` says it there if the answer
-                turns out to be nothing. */}
-            {language && !outgoing && !reading && (
+                turns out to be nothing.
+
+                And not when the answer is that there is nothing to render:
+                `outgoingStored` is set and `outgoing` is not on a reply already
+                in the reviewer's language, which is every reply on a desk that
+                answers its own mail in its own language. A line announcing a
+                missing translation of a sentence they can read is the whole of
+                what that desk got out of this feature. */}
+            {language && !outgoingStored && !reading && (
               <p className="meta confirm-notes">{t('task.noTranslation', { language })}</p>
             )}
 
@@ -835,7 +875,16 @@ export default async function TaskPage({
                     {t('task.learns.scale', { added: edit.added, removed: edit.removed })}
                   </span>
                 </p>
-                <p className="meta">{t('task.learns.willLearn')}</p>
+                {/* The paragraph that used to sit here explained that the
+                    learning job reads the edit and proposes a rule in its own
+                    words. It is a true sentence and this is the fourth time the
+                    screen has said it: the sidebar on the review page says it at
+                    length, the heading above says it in five words, and the
+                    checkbox below offers the way out of it. On the panel that
+                    exists to be read in the second before Send, three lines
+                    about a background job is exactly the kind of block people
+                    learn to skip — which costs the checkbox its readers too.
+                    The heading, the scale, the switch. */}
                 <label className="skip">
                   <input type="checkbox" name="skipLearning" value="1" />
                   {t('task.confirm.skipLearning')}
@@ -1825,7 +1874,9 @@ export default async function TaskPage({
               </details>
             )}
           </div>
-          {language && !outgoing && body.trim() !== '' && (
+          {/* `outgoingStored`, so a reply the model has already said needs no
+              rendering says nothing here at all. See the note by the pair. */}
+          {language && !outgoingStored && body.trim() !== '' && (
             <p className="meta">{t('task.noTranslation', { language })}</p>
           )}
           {/* Shown, not asked for — the same decision the confirmation panel

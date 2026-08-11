@@ -133,6 +133,12 @@ export const translateTaskHandler: JobHandler = async (payload, context) => {
     try {
       const content = await translateForReview(part.text, language);
       if (content === null) {
+        // Written down rather than skipped. "Already in the reviewer's
+        // language" is an answer, and one nothing used to record — so the
+        // screen could not tell it from "not translated yet", and this job
+        // asked again on the next edit, and the one after that. See
+        // `isSameLanguage`.
+        saveTranslation(taskId, part.kind, language, part.text, '', context.db);
         sameLanguage.push(part.kind);
         continue;
       }

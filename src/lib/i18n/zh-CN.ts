@@ -39,7 +39,7 @@ export const zhCN: Dictionary = {
   "inbox.signOut": "退出登录",
   "inbox.emptyTitle": "这里空着。收取邮件，把收件箱拉进来。",
   "inbox.emptyFilter": "“{tab}”里没有邮件。",
-  "inbox.emptyFilterAll": "看桌上全部 →",
+  "inbox.emptyFilterAll": "看全部 →",
   "inbox.loadSampleData": "载入示例数据",
   "inbox.noSubject": "（无主题）",
   "inbox.unread": "（{count} 封未读）",
