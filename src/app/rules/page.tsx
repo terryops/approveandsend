@@ -8,6 +8,7 @@ import { STARTER_RULES } from '@/lib/rules/starter';
 import { getMeta } from '@/lib/db/meta';
 import { getRule, listRules } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
+import { day } from '@/lib/time';
 
 import { addRule, addStarterRules, approveProposedRule, askTidy, removeRule, tidyRulebook } from '../actions';
 import { DismissOnEscape } from '../dismiss-on-escape';
@@ -141,7 +142,7 @@ export default async function RulesPage({
             <p className="meta">
               {t('rules.tidyAsk.scope', {
                 n: active,
-                when: gate.since === 'never' ? t('rules.tidyAsk.never') : gate.since.slice(0, 10),
+                when: gate.since === 'never' ? t('rules.tidyAsk.never') : day(gate.since),
               })}
             </p>
             <p>{t('rules.tidyAsk.what')}</p>

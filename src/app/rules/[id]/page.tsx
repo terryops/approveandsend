@@ -6,6 +6,7 @@ import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { t } from '@/lib/i18n';
 import { getRule, revisionsByRule } from '@/lib/rules/store';
 import { RULE_CATEGORIES } from '@/lib/rules/types';
+import { stamp } from '@/lib/time';
 
 import { editRule, removeRule, toggleRule } from '../../actions';
 import { TopicPicker } from '../topic-picker';
@@ -150,7 +151,7 @@ export default async function RulePage({
           {history.slice(0, HISTORY_SHOWN).map((revision) => (
             <div key={revision.id}>
               <p className="meta" style={{ margin: 0 }}>
-                {revision.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
+                {stamp(revision.createdAt)} ·{' '}
                 {t(`rules.historyReason.${revision.reason}`)}
                 {revision.actor ? ` · ${t('rules.historyBy', { who: revision.actor })}` : ''}
               </p>

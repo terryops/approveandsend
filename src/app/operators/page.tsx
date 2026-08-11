@@ -2,6 +2,7 @@ import { currentOperator, requireAdminPage } from '@/lib/auth/guard';
 import { adminPassword } from '@/lib/auth/session';
 import { t } from '@/lib/i18n';
 import { listOperators } from '@/lib/operators/store';
+import { day } from '@/lib/time';
 
 import {
   addOperator,
@@ -116,7 +117,7 @@ export default async function OperatorsPage({
             </strong>
             <span className="meta">
               {operator.lastSeenAt
-                ? t('operators.lastSeen', { when: operator.lastSeenAt.slice(0, 10) })
+                ? t('operators.lastSeen', { when: day(operator.lastSeenAt) })
                 : t('operators.neverSignedIn')}
             </span>
           </div>

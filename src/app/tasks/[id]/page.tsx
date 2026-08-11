@@ -46,6 +46,7 @@ import { listRules } from '@/lib/rules/store';
 import { getWorkspaceConfig } from '@/lib/config/workspace';
 import { cardsSource, parseCards, renderCard } from '@/lib/translation/cards';
 import { getTranslation, isSameLanguage, saveTranslation } from '@/lib/translation/store';
+import { stamp } from '@/lib/time';
 import {
   repliesNeedRendering,
   reviewLanguage,
@@ -1273,7 +1274,7 @@ export default async function TaskPage({
                 so that column is null and this heading used to end at the
                 address — an address, a gap, and nothing to say when the letter
                 is from. See the note on the helper. */}
-            {` · ${deskedAt(task).slice(0, 16).replace('T', ' ')}`}
+            {` · ${stamp(deskedAt(task))}`}
             {' · '}
             {/* Said as the question it answers rather than left as a bare
                 address. "Have we talked to this person before, and what did we
@@ -1309,7 +1310,7 @@ export default async function TaskPage({
                 <div className="meta">
                   {m.direction === 'outbound' ? t('task.threadUs') : t('task.threadCustomer')}
                   {m.fromAddress ? ` · ${m.fromAddress}` : ''}
-                  {` · ${m.receivedAt.slice(0, 16).replace('T', ' ')}`}
+                  {` · ${stamp(m.receivedAt)}`}
                 </div>
                 {/* The whole thread is in the customer's language, both directions: a
                     reply is written in the language the letter arrived in, which
@@ -2075,7 +2076,7 @@ export default async function TaskPage({
           )}
           {sent && task.sentAt && (
             <p className="meta">
-              {t('task.sentAt', { time: task.sentAt.slice(0, 16).replace('T', ' ') })}
+              {t('task.sentAt', { time: stamp(task.sentAt) })}
               {/* The byline reads from the operators table rather than a name
                   copied onto the task, so a retired colleague still resolves —
                   which is the whole reason that table never deletes rows. */}
@@ -2158,7 +2159,7 @@ export default async function TaskPage({
                   <input type="hidden" name="versionId" value={version.id} />
                   <div className="row version-head">
                     <span className="meta grow">
-                      {version.createdAt.slice(0, 16).replace('T', ' ')} ·{' '}
+                      {stamp(version.createdAt)} ·{' '}
                       {t(`task.versionBy.${version.source}`)}
                       {version.notes ? ` · ${version.notes}` : ''}
                     </span>
@@ -2199,7 +2200,7 @@ export default async function TaskPage({
               {history.map(event => (
                 <li key={event.id}>
                   <span className="meta">
-                    {event.createdAt.slice(0, 16).replace('T', ' ')}
+                    {stamp(event.createdAt)}
                   </span>{' '}
                   {t(`task.event.${event.action}`)}
                   {event.actor ? ` · ${who(event.actor)}` : ''}

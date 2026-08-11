@@ -74,6 +74,16 @@ export interface WorkspaceConfig {
   /** Appended verbatim. Empty means no signature. */
   signature: string;
   /**
+   * The zone every date on screen is printed in — an IANA name, e.g.
+   * `Asia/Shanghai`. Empty follows the machine the desk runs on.
+   *
+   * One zone for the whole install, not one per reader: a queue where two
+   * people see different arrival times is a queue they cannot talk about. Set
+   * it when the desk and its server are in different places, which is most
+   * hosted ones.
+   */
+  timeZone: string;
+  /**
    * `match` replies in whatever language the customer wrote in. An ISO code
    * forces one language regardless.
    */
@@ -169,6 +179,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
   voice: 'Warm, direct and specific. No filler apologies, no corporate padding.',
   facts: [],
   signature: '',
+  timeZone: '',
   replyLanguage: 'match',
   reviewLanguage: '',
   language: '',
@@ -364,6 +375,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
     voice: asString(process.env.AAS_VOICE) ?? asString(fromFile.voice) ?? DEFAULT_WORKSPACE.voice,
     facts: asStringArray(fromFile.facts) ?? DEFAULT_WORKSPACE.facts,
     signature: asString(process.env.AAS_SIGNATURE) ?? asString(fromFile.signature) ?? DEFAULT_WORKSPACE.signature,
+    timeZone: asString(process.env.AAS_TIMEZONE) ?? asString(fromFile.timeZone) ?? DEFAULT_WORKSPACE.timeZone,
     replyLanguage:
       asString(process.env.AAS_REPLY_LANGUAGE) ??
       asString(fromFile.replyLanguage) ??

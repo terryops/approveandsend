@@ -283,6 +283,7 @@ describe('workspace config', () => {
       voice: 'Terse.',
       facts: ['Refunds take 5-10 business days.'],
       signature: '',
+      timeZone: '',
       replyLanguage: 'match',
       reviewLanguage: '',
     language: 'en',

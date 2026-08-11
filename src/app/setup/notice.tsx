@@ -1,6 +1,7 @@
 import { getMeta } from '@/lib/db/meta';
 import { t } from '@/lib/i18n';
 import { type Checkable } from '@/lib/setup/checks';
+import { stamp } from '@/lib/time';
 
 export type Query = Record<string, string | string[] | undefined>;
 
@@ -63,7 +64,7 @@ export function LastCheck({ step, anchor = step }: { step: Checkable; anchor?: s
   }
 
   const when = parsed.at ? new Date(parsed.at) : null;
-  const stamp = when && !Number.isNaN(when.getTime()) ? when.toISOString().slice(0, 16).replace('T', ' ') : '';
+  const shown = when && !Number.isNaN(when.getTime()) ? stamp(when.toISOString()) : '';
 
   return (
     // Named after its step rather than `result`: on the settings screen every
@@ -75,7 +76,7 @@ export function LastCheck({ step, anchor = step }: { step: Checkable; anchor?: s
     >
       <strong>{parsed.ok ? t('setup.notice.checkOk') : t('setup.notice.checkFailed')}</strong>{' '}
       {parsed.detail}
-      {stamp && <span className="meta"> {t('setup.notice.checkedAt', { stamp })}</span>}
+      {shown && <span className="meta"> {t('setup.notice.checkedAt', { stamp: shown })}</span>}
     </p>
   );
 }

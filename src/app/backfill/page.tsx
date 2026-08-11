@@ -8,6 +8,7 @@ import {
 } from '@/lib/backfill/store';
 import { DEFAULT_SCAN_LIMIT } from '@/lib/backfill/scan';
 import { t } from '@/lib/i18n';
+import { day } from '@/lib/time';
 
 import { askBackfill, clearBackfillHistory, startBackfill, stopBackfill } from '../actions';
 import { DismissOnEscape } from '../dismiss-on-escape';
@@ -77,9 +78,7 @@ function askedWindow(params: Record<string, string | string[] | undefined>): {
 }
 
 function when(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+  return day(iso);
 }
 
 export default async function BackfillPage({

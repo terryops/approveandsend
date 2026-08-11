@@ -4,6 +4,7 @@ import { requireAdminPage } from '@/lib/auth/guard';
 import { t } from '@/lib/i18n';
 import { listJobs, queueStats, type QueueStats } from '@/lib/queue';
 import { readQueue } from '@/lib/queue/verdict';
+import { stamp } from '@/lib/time';
 
 import { deleteJobNow, releaseJobNow, retryJobNow, runQueue, sweepNow } from '../actions';
 
@@ -120,7 +121,7 @@ export default async function QueuePage({
                   <td>
                     {job.attempts}/{job.maxAttempts}
                   </td>
-                  <td className="meta">{job.createdAt.slice(0, 16).replace('T', ' ')}</td>
+                  <td className="meta">{stamp(job.createdAt)}</td>
                   <td className="meta">{job.error ?? ''}</td>
                   <td className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
                     {/* Offered only where they mean something. A retry button

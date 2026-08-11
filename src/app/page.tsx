@@ -10,6 +10,7 @@ import { t, topicName, topicNameMap, type MessageKey } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
 import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
 import { deskedAt, isTaskStatus, TASK_STATUSES, type Task, type TaskStatus } from '@/lib/tasks/types';
+import { day, daysAgo, split } from '@/lib/time';
 
 import { bulkDelete, bulkDismiss, bulkReopen, loadDemo, syncNow } from './actions';
 import { TaskLink } from './pending';
@@ -80,27 +81,26 @@ function labels(): Record<TaskStatus | 'all', string> {
  * wider, which is what lets it sit at the end of every row without pushing the
  * subject around.
  *
- * All of it in UTC, like every other date this app renders. Not a compromise
- * to dodge a hydration warning — there is no client to hydrate — but the same
- * choice the rest of the app makes: one clock, the server's, so two people in
+ * All of it on the desk's clock, like every other date this app renders — one
+ * clock for the whole install rather than each reader's own, so two people in
  * two places reading the same queue are reading the same thing. The full
  * timestamp rides along in a `title` for anyone who needs the real number.
  */
 function when(iso: string | null): { label: string; full: string } | null {
   if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
+  const parts = split(iso);
+  if (!parts) return null;
 
-  const full = date.toISOString().slice(0, 16).replace('T', ' ');
-  const day = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  const now = new Date();
-  const days = Math.round((day(now) - day(date)) / 86_400_000);
+  const full = `${parts.date} ${parts.time}`;
+  const days = daysAgo(iso) ?? 0;
 
-  if (days <= 0) return { label: full.slice(11), full };
+  if (days <= 0) return { label: parts.time, full };
   if (days === 1) return { label: t('inbox.timeYesterday'), full };
   if (days < 7) return { label: t('inbox.timeDaysAgo', { count: days }), full };
-  if (date.getUTCFullYear() === now.getUTCFullYear()) return { label: full.slice(5, 10), full };
-  return { label: full.slice(0, 10), full };
+  if (parts.date.slice(0, 4) === day(new Date().toISOString()).slice(0, 4)) {
+    return { label: parts.date.slice(5), full };
+  }
+  return { label: parts.date, full };
 }
 
 /**

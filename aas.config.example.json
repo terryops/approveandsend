@@ -30,6 +30,7 @@
     "delivery dates for unreleased features"
   ],
   "signature": "— The Acme team",
+  "timeZone": "Europe/Berlin",
   "replyLanguage": "match",
   "reviewLanguage": "",
   "language": "en"

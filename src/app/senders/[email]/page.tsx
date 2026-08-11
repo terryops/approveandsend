@@ -6,6 +6,7 @@ import { stripeConfigured } from '@/lib/billing/stripe';
 import { t } from '@/lib/i18n';
 import { listTasks } from '@/lib/tasks/store';
 import { deskedAt } from '@/lib/tasks/types';
+import { stamp } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +25,7 @@ export const dynamic = 'force-dynamic';
  */
 
 function when(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 16).replace('T', ' ');
+  return stamp(iso);
 }
 
 export default async function SenderPage({
