@@ -1476,6 +1476,20 @@ header.top nav a.active:hover {
   font-weight: inherit;
 }
 
+/* Preview, waiting for the panel it opens.
+ *
+ * The tabs above change colour on the press because the thing they are waiting
+ * for is a change to the box beside them, and the guess is worth showing. This
+ * one has nothing to guess: what is coming is a whole screen the server has to
+ * draw. So it keeps its own colour and only steps back — the same fade and the
+ * same cursor as the tabs, which is this desk's one word for "heard you, still
+ * working", and which lands here on the one press that used to answer with
+ * nothing at all. */
+.review-actions .pressable.pressing > button.primary {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 /*
  * A message rendered as paragraphs rather than as preformatted text.
  *

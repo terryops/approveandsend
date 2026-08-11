@@ -1728,10 +1728,27 @@ export default async function TaskPage({
               contract. See review-keys.tsx. */}
           {!sent && !sending && (
             <div className="actions review-actions">
+              {/* "Preview", because that is what pressing it does. It was
+                  "Approve & send", which named the whole journey and not the
+                  step: what it opens is a panel that shows the letter and then
+                  asks, and the words it asked with — "Yes, send it" — were an
+                  answer to a question the button had already appeared to ask.
+                  The phrase has moved inward to the button that does put mail on
+                  the wire, where approving and sending are the same press.
+
+                  Wrapped, because it is the one button on this screen whose
+                  press had nothing at all to show for itself. Every tab above it
+                  goes dim under the hand; this posted the form, waited out a
+                  round trip and then replaced the screen — which reads as a hang
+                  and then a jump, and is the press people make twice. No `draft`
+                  prop: there is no box for a guess to go in, and the panel it is
+                  waiting for is the server's to draw. See `Pressable`. */}
               {sendable && (
-                <button className="primary" type="submit">
-                  {t('task.approveAndSend')} <kbd>⌘↵</kbd>
-                </button>
+                <Pressable>
+                  <button className="primary" type="submit">
+                    {t('task.preview')} <kbd>⌘↵</kbd>
+                  </button>
+                </Pressable>
               )}
               <button type="submit" data-key="save" formAction={saveDraft}>
                 {t('task.save')} <kbd>S</kbd>
