@@ -15,6 +15,8 @@ interface TaskRow {
   message_id: string | null;
   thread_id: string | null;
   message_id_header: string | null;
+  external_id: string | null;
+  source: string | null;
   subject: string;
   from_address: string;
   from_name: string | null;
@@ -109,6 +111,8 @@ function mapTask(row: TaskRow): Task {
     messageId: row.message_id,
     threadId: row.thread_id,
     messageIdHeader: row.message_id_header,
+    externalId: row.external_id,
+    source: row.source,
     subject: row.subject,
     fromAddress: row.from_address,
     fromName: row.from_name,
@@ -157,12 +161,25 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
     if (existing) return { task: mapTask(existing), existed: true };
   }
 
+  // The same bargain one column over, for the callers that are not a mailbox.
+  // A program handing in work has no message id and cannot be asked to remember
+  // what it has already sent — the crontab that runs it does not know either,
+  // and the honest implementation of "sync my reviews" re-reads all of them
+  // every time. So the second call is answered with the first call's task.
+  if (input.externalId) {
+    const existing = db.prepare('SELECT * FROM tasks WHERE external_id = ?').get(input.externalId) as
+      | TaskRow
+      | undefined;
+    if (existing) return { task: mapTask(existing), existed: true };
+  }
+
   const row = db
     .prepare(
       `INSERT INTO tasks (id, status, origin, priority, message_id, thread_id, message_id_header,
+                          external_id, source, scope,
                           subject, from_address, from_name, received_at, body, body_html,
                           created_at, updated_at)
-       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .get(
@@ -172,6 +189,9 @@ export function createTask(input: NewTask, db: Db = getDb()): CreateTaskResult {
       input.messageId ?? null,
       input.threadId ?? null,
       input.messageIdHeader ?? null,
+      input.externalId ?? null,
+      input.source ?? null,
+      input.scope ?? null,
       input.subject ?? '',
       input.fromAddress ?? '',
       input.fromName ?? null,

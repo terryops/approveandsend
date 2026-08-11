@@ -256,3 +256,60 @@ describe('deskedAt', () => {
     expect(deskedAt(task)).toBe(task.createdAt);
   });
 });
+
+/*
+ * A program handing work in cannot be asked to remember what it has already
+ * handed in: the honest implementation of "sync my reviews" re-reads the whole
+ * list on every run, and the crontab that runs it knows nothing at all. So the
+ * uniqueness lives here, where the mailbox's own duplicates are already caught.
+ */
+describe('createTask by external id', () => {
+  it('answers a repeated hand-in with the task it made the first time', () => {
+    const first = createTask(
+      { origin: 'composed', externalId: 'review:8412', source: 'store-reviews', fromAddress: 'a@x.com', body: 'Two stars.' },
+      db,
+    );
+    const second = createTask(
+      { origin: 'composed', externalId: 'review:8412', source: 'store-reviews', fromAddress: 'a@x.com', body: 'Two stars, again.' },
+      db,
+    );
+
+    expect(first.existed).toBe(false);
+    expect(second.existed).toBe(true);
+    expect(second.task.id).toBe(first.task.id);
+    // The first hand-in's words, not the second's. A row a reviewer may already
+    // be reading is not rewritten by a sync running behind them.
+    expect(second.task.body).toBe('Two stars.');
+  });
+
+  it('keeps the label and the topic the caller sent', () => {
+    const { task } = createTask(
+      { origin: 'composed', externalId: 'review:1', source: 'store-reviews', scope: 'billing', fromAddress: 'a@x.com' },
+      db,
+    );
+
+    expect(task.source).toBe('store-reviews');
+    expect(task.scope).toBe('billing');
+    // The desk does not learn what a store review is. It only knows these rows
+    // came in together.
+    expect(task.externalId).toBe('review:1');
+  });
+
+  it('leaves both null for the two ways a task arrived before intake existed', () => {
+    const mail = createTask({ messageId: 'm1', fromAddress: 'a@x.com' }, db).task;
+    const composed = createTask({ origin: 'composed', fromAddress: 'a@x.com' }, db).task;
+
+    expect(mail.externalId).toBeNull();
+    expect(mail.source).toBeNull();
+    expect(composed.externalId).toBeNull();
+    expect(composed.source).toBeNull();
+  });
+
+  it('does not collide two callers that both have an id of 1', () => {
+    createTask({ origin: 'composed', externalId: 'reviews:1', fromAddress: 'a@x.com' }, db);
+    const other = createTask({ origin: 'composed', externalId: 'forms:1', fromAddress: 'b@x.com' }, db);
+
+    expect(other.existed).toBe(false);
+    expect(listTasks({}, db).map(t => t.externalId).sort()).toEqual(['forms:1', 'reviews:1']);
+  });
+});

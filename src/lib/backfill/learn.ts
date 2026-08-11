@@ -72,6 +72,11 @@ function syntheticTask(item: BackfillItem, incoming: MailMessageDetail, body: st
     replyFormat: 'markdown',
     threadId: incoming.threadId ?? null,
     messageIdHeader: incoming.messageIdHeader ?? null,
+    // Nobody handed this in. It came out of the mailbox, months ago, and was
+    // answered by a person — which is the whole reason it is worth learning
+    // from.
+    externalId: null,
+    source: null,
     subject: incoming.subject,
     replySubject: null,
     fromAddress: incoming.from.address,

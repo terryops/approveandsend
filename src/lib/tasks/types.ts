@@ -132,6 +132,22 @@ export interface Task {
   threadId: string | null;
   messageIdHeader: string | null;
 
+  /**
+   * The handing-in system's own id for whatever this task is about.
+   *
+   * Unique where present, which is what makes an intake call safe to repeat:
+   * see migration 32. Null for mail and for anything composed at the desk.
+   */
+  externalId: string | null;
+  /**
+   * Which program handed it in, in that program's own words.
+   *
+   * Never interpreted here — it is a label to group and filter by, not a kind
+   * of task. Null means nobody handed this in: it arrived in the mailbox, or
+   * somebody here wrote it.
+   */
+  source: string | null;
+
   subject: string;
   fromAddress: string;
   fromName: string | null;
@@ -218,6 +234,10 @@ export interface NewTask {
   body?: string;
   bodyHtml?: string | null;
   priority?: number;
+  externalId?: string;
+  source?: string;
+  /** The topic the reply is written against, when the caller already knows it. */
+  scope?: string;
 }
 
 export function isSentiment(value: unknown): value is Sentiment {

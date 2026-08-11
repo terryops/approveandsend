@@ -970,6 +970,46 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 32,
+    name: 'intake',
+    up: db => {
+      // Two columns for the mail this desk sends that nobody asked for and
+      // nobody here typed either: a task handed in by a program.
+      //
+      // Composing already exists and already lands in the review queue, but its
+      // only door is a form. Everything a desk might want to write to somebody
+      // about — a review left on a store page, a failed payment, a form
+      // submission, a row that appeared in a CRM — lives in a system that is not
+      // this one, and the only way to get from there to here was for a person to
+      // read it and retype it. So the door is widened to admit a caller with a
+      // token; see `POST /api/tasks`.
+      //
+      // `external_id` is that caller's own id for the thing, and the unique
+      // index is the entire deduplication story: the sender may hand in the same
+      // review every five minutes for a week and get the same task back. It is a
+      // separate column rather than a reuse of `message_id`, which already has
+      // such an index and was the obvious shortcut. `message_id` is the mail
+      // provider's handle for a message, and `send` passes it as
+      // `inReplyToProviderId` — a foreign id in that column is not a duplicate
+      // key, it is a reply threaded against a message that does not exist.
+      //
+      // `source` is a free string, and it is free on purpose. The desk does not
+      // know what a "bad review" is and must not learn: it knows only that these
+      // rows came in together and can be counted and filtered as a group. What
+      // the group means is the sender's business, and the day this file contains
+      // a list of the kinds of things one particular company imports is the day
+      // the next company has to fork it. NULL is every task that arrived the two
+      // ways that predate this: a mailbox, and somebody at the desk.
+      db.exec(`
+        ALTER TABLE tasks ADD COLUMN external_id TEXT;
+        ALTER TABLE tasks ADD COLUMN source TEXT;
+
+        CREATE UNIQUE INDEX idx_tasks_external ON tasks(external_id)
+          WHERE external_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
