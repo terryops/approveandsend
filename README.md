@@ -49,9 +49,10 @@ The only thing that costs money is the AI model — and if you already pay for a
 ChatGPT or Claude subscription, or you run a model on your own hardware, that is
 already covered too.
 
-> **Status: v0.1.** Complete end to end and running in production nowhere. The
-> private tool it grew out of has handled 929 emails and learned 213 rules; this
-> rewrite has been used by nobody but its author.
+> **Status: v0.1.** It runs one real support desk — the author's — where since
+> 2026-08-07 it has read 961 emails, filed 50 of them as junk without asking,
+> learned 514 rules, and had every reply it sent read by a person first. One
+> desk and one author is still the honest number; you would be the second.
 
 ## Getting it running
 

@@ -67,12 +67,9 @@ Priya`,
       }),
       draft: `Hi Priya,
 
-Thanks for being straightforward about it — an upgrade you have not used is an
-easy one. I have started the refund for the annual plan.
+Thanks for being straightforward about it — an upgrade you have not used is an easy one. I have started the refund for the annual plan.
 
-Refunds are processed within 5-10 business days, though the exact timing is
-your bank's rather than ours. You will get a confirmation email as soon as it
-leaves our side.
+Refunds are processed within 5-10 business days, though the exact timing is your bank's rather than ours. You will get a confirmation email as soon as it leaves our side.
 
 — The Acme team`,
     },
@@ -102,15 +99,11 @@ This is blocking a handover due Friday.`,
       }),
       draft: `Hi Martin,
 
-An export that reports success and hands you nothing is worse than one that
-fails, and I am sorry it landed on a week with a handover in it.
+An export that reports success and hands you nothing is worse than one that fails, and I am sorry it landed on a week with a handover in it.
 
-I can see exports running on oduya-studio. To find yours: could you send me the
-id from the top of any of today's export rows? That gets me straight to the
-job rather than guessing which one.
+I can see exports running on oduya-studio. To find yours: could you send me the id from the top of any of today's export rows? That gets me straight to the job rather than guessing which one.
 
-I will come back to you today either way, even if the answer is only how far I
-have got.
+I will come back to you today either way, even if the answer is only how far I have got.
 
 — The Acme team`,
     },
@@ -135,11 +128,9 @@ the free plan, or do we need to be on a paid one to try it?`,
       }),
       draft: `Hi Sam,
 
-It is not — API access starts on the paid plans. The free plan is the full app
-otherwise, so it is a fair way to judge everything except the integration side.
+It is not — API access starts on the paid plans. The free plan is the full app otherwise, so it is a fair way to judge everything except the integration side.
 
-If you want to test the API before committing, reply here and I will turn it on
-for your workspace for a couple of weeks.
+If you want to test the API before committing, reply here and I will turn it on for your workspace for a couple of weeks.
 
 — The Acme team`,
     },
@@ -183,24 +174,18 @@ will look again.`,
       // exactly what the rule below was learned from.
       draft: `Hi Tom,
 
-I am really sorry to see you go! Shared folders are absolutely on our roadmap
-and should be landing in the next quarter — I would love for you to stay and
-see them. In the meantime, would you consider a discount on the next three
-months while you wait?
+I am really sorry to see you go! Shared folders are absolutely on our roadmap and should be landing in the next quarter — I would love for you to stay and see them. In the meantime, would you consider a discount on the next three months while you wait?
 
 If you do decide to leave, we would really appreciate a review.
 
 — The Acme team`,
       finalReply: `Hi Tom,
 
-That is a fair reason to leave, and six months is a long time to wait for
-something you were counting on.
+That is a fair reason to leave, and six months is a long time to wait for something you were counting on.
 
-Shared folders are being worked on. I am not going to give you a date, because
-the last one we gave was wrong. When they ship I will email you personally.
+Shared folders are being worked on. I am not going to give you a date, because the last one we gave was wrong. When they ship I will email you personally.
 
-Your access runs to the end of the month and your data stays exportable
-throughout.
+Your access runs to the end of the month and your data stays exportable throughout.
 
 — The Acme team`,
       reviewerNotes: 'No date, no discount pitch, no review ask from someone who just left.',
