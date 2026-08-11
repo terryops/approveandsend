@@ -3235,6 +3235,9 @@ header.top nav a.active:hover {
   inset: 0;
   z-index: 20;
   display: flex;
+  /* Start, and the panel's own `margin: auto` is what centres it. See there:
+     this pair is the one arrangement that centres a short panel *and* keeps a
+     tall one reachable. */
   align-items: flex-start;
   justify-content: center;
   padding: var(--s5) 20px;
@@ -3255,7 +3258,24 @@ header.top nav a.active:hover {
      this width the line gets too long to track back to — but it buys each half a
      measure it can actually hold a paragraph in. */
   max-width: 1120px;
-  margin: 0;
+  /* Centred in what is left of the screen, top and bottom.
+   *
+   * It used to be pinned to the top by the scrim's `align-items: flex-start`,
+   * which put a short panel — Redraft's one question, Dismiss's one box, a
+   * preview of a two-line reply — up under the header with the rest of the
+   * screen empty below it. A dialog sitting off-centre reads as a dialog that
+   * has not finished loading.
+   *
+   * `margin: auto` and not `align-items: center`, and the difference is the tall
+   * panel. A flex item centred by alignment overflows *both* ends when it does
+   * not fit, and the top end of a scroll container is the one you cannot scroll
+   * back to: the confirmation on a long thread would have had its own heading
+   * and its risk banner cut off above the viewport with no way to reach them.
+   * Auto margins are specified to collapse to zero when the free space runs out
+   * — flexbox §8.1, overflowing boxes ignore them and overflow towards the end —
+   * so the same one line centres what fits and leaves what does not exactly
+   * where the old rule had it. */
+  margin: auto;
   /* `.compare` splits into two columns on a container query, and the container
      it looks for is `.detail-main` — which this panel is not inside. Without
      its own context the two panes stack, and the one screen whose entire job is

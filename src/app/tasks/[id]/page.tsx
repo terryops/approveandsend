@@ -13,6 +13,7 @@ import { REPLY_FORMATS, previewHtml, type ReplyFormat } from '@/lib/mail/render'
 import { MAX_UPLOAD_BYTES } from '@/lib/mail/uploads';
 
 import { DismissOnEscape } from '../../dismiss-on-escape';
+import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
 import { TaskPoller } from '../../task-poller';
 import { AttachTile } from './attach-tile';
@@ -640,7 +641,17 @@ export default async function TaskPage({
           that the send empties, which lets attaching happen where answering
           happens and leaves this panel doing only what it is for. */}
       {confirming && (
-        <div className="confirm-scrim">
+        /* `Scrim` rather than the bare div its three siblings still use, and the
+           difference is a press on the dark part putting you back on the review
+           screen. It is the one panel here with nothing typed into it — the note
+           and the draft are boxes on the screen behind, already written to the
+           row — so a stray click costs a reviewer the scroll position of a panel
+           they can reopen and nothing else. Redraft and Dismiss each hold a
+           sentence somebody is part way through and keep to Escape, which is
+           harder to press by accident than the whole of the rest of the screen.
+           `Scrim` renders the Escape handler too; see it for why the press is
+           measured at both ends. */
+        <Scrim href={`/tasks/${task.id}`}>
           {/* Named as a dialog because it is one to anybody who cannot see the
               scrim, and Escape closes it the way the shape promises. */}
           {/* `banded`: this is the one panel built out of full-width sections
@@ -654,7 +665,6 @@ export default async function TaskPage({
             role="dialog"
             aria-labelledby="confirm-title"
           >
-            <DismissOnEscape href={`/tasks/${task.id}`} />
             <input type="hidden" name="taskId" value={task.id} />
             <input type="hidden" name="subject" value={task.replySubject ?? ''} />
             <input type="hidden" name="draft" value={body} />
@@ -856,7 +866,7 @@ export default async function TaskPage({
                   decision. */}
             </div>
           </form>
-        </div>
+        </Scrim>
       )}
 
       {/* The model is writing, and the reviewer is watching it happen.
