@@ -1079,6 +1079,28 @@ header.top nav a.active:hover {
     padding: var(--s5);
   }
 
+  /*
+   * Except when the card is shut, where 26 above and 26 below is the note three
+   * rules up coming true.
+   *
+   * "A collapsed 'earlier drafts' is one 26px line in a box a thousand pixels
+   * wide, and 18 above it and 18 below do not make that a region — they make it
+   * a horizontal rule with a border on it." The answer taken from that was to
+   * give this column *more* air, which is right for a card with a letter in it
+   * and is what turned the two shut ones into 80px bands: a 22px summary with
+   * 58px of nothing keeping it company, twice, stacked, between the pair above
+   * and the blocks below.
+   *
+   * A shut `details` is not a region. It is one line offering to become one, and
+   * the padding it wants is the padding of a line. The horizontal 26 stays, so
+   * the summary starts on the same vertical as every other first character in
+   * this column, and opening it restores the full inset — `[open]` does not
+   * match this rule, so the card underneath is the card it always was.
+   */
+  .detail-main details.card:not([open]) {
+    padding: var(--s3) var(--s5);
+  }
+
   /* Roomier than it was, and still shorter than a card of text beside it: what
      is inside this one is 42px of control rather than a line of prose, and
      giving it the cards' 26 would make the one box that is pinned to the bottom
@@ -4684,12 +4706,47 @@ dl.facts > div.wrong dd {
        and it would be 83px of nothing between the reply and this. */
     margin-top: 0;
     /* And with a full width under them, one 288px card centred in it would look
-       like a mistake. Laid across instead, at the same rhythm as the pair
-       above. */
+       like a mistake. Laid across instead, on the pair's own two tracks.
+     *
+     * The same two tracks, and not "two tracks that come out about the same
+     * width". `auto-fit` with a 280px floor asked a different question — how
+     * many 280s fit — and answered it in tracks the pair knows nothing about:
+     * at a 1320 column it laid four, collapsed the two nobody filled, and left
+     * the two survivors 654px each against the pair's 651, split on a 12px
+     * gutter against the pair's 18. Three pixels out on each inner edge, on a
+     * page whose whole shape is two columns, which is exactly the kind of wrong
+     * that reads as untidy without ever looking broken enough to report.
+     *
+     * It also changed shape with the task rather than with the window. Two
+     * blocks came out half and half; a third — an analysis, the rules and the
+     * learns panel all at once — turned the row into three narrower cells and
+     * moved both inner edges again, so the bottom of the screen was laid out
+     * differently on two tasks opened one after the other.
+     *
+     * Explicit tracks answer the question this row is actually asking, which is
+     * not "how many of these fit" but "where are this page's two columns". A
+     * third block wraps to a second row underneath the first, in the left
+     * column, where the grid's own row gap spaces it — hence `gap` in both
+     * directions rather than `column-gap` alone. */
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
-    gap: var(--s3);
+    gap: var(--s4);
+  }
+
+  /*
+   * And the same inset as the cards above them.
+   *
+   * `.side-block` is padded for the 288px aside it is in the other reading,
+   * where 12/18 is right and the cards' 26 would eat a fifth of the column. Down
+   * here it is 651px — the same width as the letter — and the two tightest
+   * numbers in the app were putting the first character of the bottom-left block
+   * 8px inside the first character of the letter directly above it. Two boxes
+   * with the same left edge and their text on two different lines is the one
+   * thing a reader notices without being able to say what they noticed.
+   */
+  .detail-compare .side-block {
+    padding: var(--s4) var(--s5);
   }
 
   /* What they wrote on the left, what is going back on the right, equal width.
@@ -4698,7 +4755,26 @@ dl.facts > div.wrong dd {
   .detail-compare .review-pair {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: start;
+    /*
+     * Stretch, which is the promise this whole reading is made of.
+     *
+     * It was `start`, and `start` is what a stack of cards wants: each box the
+     * height of what is in it, the next one directly under it. Two of them
+     * beside each other is a different question. A two-line letter against a
+     * written reply came out 241px against 556, so the left half of the screen
+     * was a stub with three hundred pixels of nothing under it — on the one
+     * reading whose entire argument is that the question and the answer can be
+     * held in view together. The note four rules down already says these two
+     * have to end level; it was saying it to `.compare`, which is the pair
+     * *inside* the letter, while the pair the mode is named for was free to end
+     * wherever its shorter side ran out.
+     *
+     * Only row 2 has two cells in it, so this is a rule about the letter and the
+     * reply and about nothing else: the tabs above and the buttons below are
+     * alone in their rows and stretch to their own heights, which is what they
+     * already did.
+     */
+    align-items: stretch;
     column-gap: var(--s4);
     /* And a gap under the whole grid, which nothing else was providing.
      *
@@ -4756,12 +4832,38 @@ dl.facts > div.wrong dd {
        pair inside one of these columns reads the whole page's width, decides it
        has room for two panes, and splits a half-column into two quarters. */
     container-type: inline-size;
-    /* The reply column is always the longer of the two — it carries the tabs,
-       the note and the buttons — so a letter left at the top scrolls away
-       exactly when somebody starts reading the answer to it. Follows down
-       instead, the way the aside does in the other reading. */
-    position: sticky;
-    top: 16px;
+    /*
+     * And the last card in it reaches the bottom of the row.
+     *
+     * `align-items: stretch` above gives this column the row's full height; it
+     * does not give it to the boxes inside, so on its own it bought a taller
+     * invisible wrapper with the same short card at the top of it. A column of
+     * cards where the last one stops level with the card beside it is what
+     * "side by side" was always describing.
+     *
+     * The last one rather than the letter by name, because what ends this
+     * column depends on the task: usually the letter, but a task the model was
+     * given context for ends on a context card instead, and whichever it is is
+     * the box with the bottom edge somebody can see.
+     *
+     * `min-height: 0` because a flex item's floor is its content, and the
+     * letter is the one card here that can be taller than the row — a long
+     * thread against a two-line reply — where the floor would push this column
+     * past the grid area it was told to fill.
+     *
+     * The sticky this replaces was the other answer to the same problem: it let
+     * a short letter travel down with the reading instead of sitting at the top
+     * of its void. That was worth having while the void existed. A card that
+     * fills the row has nowhere to travel to, and the reviewer gets the letter
+     * in front of them at every scroll position rather than at most of them.
+     */
+    display: flex;
+    flex-direction: column;
+  }
+
+  .detail-compare .review-pair > .letter-side > :last-child {
+    flex: 1;
+    min-height: 0;
   }
 
   /*
@@ -4781,10 +4883,25 @@ dl.facts > div.wrong dd {
     container-type: inline-size;
   }
 
-  /* Everything after the card — the buttons, or the byline on a sent task. */
+  /*
+   * Everything after the card — the buttons, or the byline on a sent task —
+   * across both columns.
+   *
+   * It was `grid-column: 2`, on the reasoning that these act on the reply and
+   * the reply is the right-hand column. True of what they do and wrong about
+   * what closes a page: it left a fourth of the screen's width empty for the
+   * height of the bar, directly under a letter that had just been made to reach
+   * the bottom of its row, and then the earlier drafts and the history went back
+   * to full width immediately below it. Three widths in three consecutive rows.
+   *
+   * Full width is also what the bar is: `Approve & send` is the decision about
+   * the task, not an edit to the box above it, and every other thing on this
+   * screen that concerns the whole task — the risk band, the banners — is drawn
+   * across the whole of it.
+   */
   .detail-compare .review-form > .review-actions,
   .detail-compare .review-form > .meta {
-    grid-column: 2;
+    grid-column: 1 / -1;
     grid-row: 3;
   }
 }
