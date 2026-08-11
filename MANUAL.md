@@ -186,6 +186,18 @@ collects approvals for text nobody read, because a textarea that looks full is
 read as full. The exception is a reply quoting the thread it answers, which is
 cut where the quote starts.
 
+**The box shows the reply, and the source on the click.** It used to hold
+Markdown: `**` around the sentence that matters, `- ` in front of the amounts,
+and a reviewer deciding whether the reply is right doing the rendering in their
+head. Reading is what this screen is for — writing is the exception that happens
+a few times a day — so it shows the rendering by default and the source on the
+click that starts an edit. The rendering is the same code that composes the
+mail, imported rather than written twice: a second renderer would be a second
+answer to "what will they receive", which is the one question this screen exists
+to give one answer to. The diff wins where both apply — that is a control
+somebody pressed, and the rendering is merely the state the card is in when
+nobody is typing in it.
+
 **Your own edits are coloured as you make them.** The same diff the learning
 pass runs after the mail has gone, brought forward onto the screen of the person
 making the change — who until now had never once seen it. No model, no request:
@@ -595,6 +607,20 @@ one failure a reviewer in this position could never catch themselves. Empty is
 the default and turns the mail half off: no job, no model call, nothing on
 screen. [docs/review-language.md](docs/review-language.md).
 
+**"Already in your language" is an answer, and it is written down.** A desk
+answering Chinese mail in Chinese, to reviewers who read Chinese, used to carry
+a line under every reply: *no current translation — run the queue to render this
+draft*. Running the queue did not help. The model was asked, it said the reply
+was already in the target language, and nothing was stored for that — so the
+screen still could not tell "nothing needed" from "not done yet", and the next
+edit asked again, forever, on a desk where the answer could never change. Three
+states now, where there were two: a row with content is a rendering, no row is a
+question nobody has asked, and an empty row is that question answered with
+nothing to do. Only the first renders a translation, and only the second shows
+the note. A translator that threw has said nothing and is asked again — which is
+the whole difference between a service that is down and a reply that needs no
+work.
+
 The context cards above the draft are rendered too, and into the *interface*
 language rather than this one — a card is furniture on that screen, not mail, so
 a desk that reads its own post still gets its lookups in its own words. What the
@@ -649,6 +675,32 @@ prompt, because Stripe's own `refunded` flag only turns true on a full refund,
 and reading it alone is how somebody gets told "we have not refunded you" while
 holding half a refund. Nothing on that page can move money; the link to Stripe's
 own dashboard is right at the top.
+
+Four of those facts — who they are, since when, what they are on, and what has
+actually stayed with us after refunds — are now on the two screens that decide:
+the review screen, and the sender's own page. They used to live only at
+`/billing/<address>`, behind a link inside a sentence, far enough that nobody
+follows it while deciding whether to promise a refund, and the whole cost of not
+following it lands in the reply. The number that is shown is what was kept and
+not what was charged, because the gross is what talks a desk into treating
+somebody as a large customer it has already refunded in full.
+
+It is read at render time rather than through `contextSources`. A context source
+runs in the enrichment job, so it answers for tasks the queue has been through
+and says nothing at all on a sender page, which has no task and no job — and it
+has to be switched on, where the default is nothing. Where both are on, the
+review screen shows the source's card and not this one: the model was given that
+one, and a reviewer checking whether a reply is right needs to see what it was
+written from. The lookup sits behind a `Suspense` boundary, because it is three
+HTTPS calls to a third party with an eight-second timeout on screens whose own
+render is a read of a local file; awaited inline, a Stripe outage would be a
+review screen that takes eight seconds to appear. A desk with no key renders no
+card and no placeholder.
+
+**An address with no billing record is said out loud**, rather than left out. A
+card that simply does not appear is indistinguishable from a lookup that never
+ran, and that reading is how somebody promises a refund on an account that does
+not exist.
 
 **Earlier conversations** are built in too, and need nothing at all: how many
 times you have written to this person, when, what about, and whether your
