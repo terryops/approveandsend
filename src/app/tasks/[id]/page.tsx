@@ -1038,6 +1038,33 @@ export default async function TaskPage({
           the letter and the draft were laid into the 236px track meant for the
           queue while the 288px one stood empty, which is a broken screen in
           exactly the state that should look calmest. */}
+      {/* And not at all while the confirmation is up.
+     *
+     * `?confirm=1` is a flag on this route, so raising the panel re-rendered
+     * this entire screen underneath it — and "underneath" is a scrim at 78%
+     * opacity over a 2px blur. The reviewer is reading the panel; what the
+     * second copy buys them is a blurred suggestion of a page they have already
+     * left.
+     *
+     * It is not the render that costs — that is 17ms either way. It is the
+     * wire. A support mail is a receipt with an inline image in it, and the
+     * panel shows the customer's letter beside the reply, so a screen that also
+     * drew the letter behind the scrim sent the whole thing down twice.
+     * Measured on a production build against a 241KB receipt: 554KB for the
+     * review screen, 1071KB for the same screen with the panel over it. Half of
+     * every Preview press was a second copy of a letter nobody could read.
+     *
+     * On a desk running on localhost that is free and this is invisible. Over a
+     * network to a server somewhere it is the whole of the wait, which is why
+     * it survived every measurement taken here until one was taken with a real
+     * letter in it.
+     *
+     * The panels that are *not* full-screen keep their page: Redraft and
+     * Dismiss are a question in a small box, and the screen behind them is
+     * still the context for answering it. This one is a whole screen of its
+     * own — the letter, the reply, the risk, the attachments — and it repeats
+     * everything the page behind it was for. */}
+      {!confirming && (
       <div
         className={`detail${layout === 'compare' ? ' detail-compare' : ''}${
           railed ? ' detail-railed' : ''
@@ -2306,6 +2333,7 @@ export default async function TaskPage({
           )}
         </aside>
       </div>
+      )}
     </>
   );
 }
