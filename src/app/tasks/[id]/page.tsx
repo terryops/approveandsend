@@ -1320,7 +1320,7 @@ export default async function TaskPage({
                 {card.title}
               </h2>
               {block.href && (
-                <a className="meta" href={block.href} target="_blank" rel="noreferrer">
+                <a className="card-open" href={block.href} target="_blank" rel="noreferrer">
                   {t('task.openContext')}
                 </a>
               )}
@@ -1341,7 +1341,10 @@ export default async function TaskPage({
                 </div>
               ))}
             </dl>
-            {card.prompt && <p className="meta">{card.prompt}</p>}
+            {/* `card-note`, not `meta`: this is what the draft was written
+                from, and it spent long enough looking like the caption under a
+                timestamp. See the rule. */}
+            {card.prompt && <p className="card-note">{card.prompt}</p>}
           </div>
           );
         })}

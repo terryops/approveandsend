@@ -4382,25 +4382,114 @@ table.plain th {
   letter-spacing: 0.04em;
 }
 
-/* Looked-up facts about the sender. A definition list because that is what it
-   is, and because it wraps sensibly at any width without a media query. */
+/*
+ * Looked-up facts about the sender. A definition list because that is what it
+ * is, and because it wraps sensibly at any width without a media query.
+ *
+ * Each pair is a tile now, and the reason is what the old version did at three
+ * of them and worse at five. It was a flex row with a 28px gap and nothing else
+ * — the label above its value in the same greys as the paragraph underneath —
+ * so "Plan Credits User / Pro 200 洪藝珊" arrived as six words at two weights
+ * with the gaps doing all the grouping. Which value belongs to which label is
+ * then a question about horizontal distance, and horizontal distance is exactly
+ * what a proportional font varies: a two-character label over a nine-character
+ * value pulls the next pair left until the columns no longer line up under
+ * anything. At five facts the row wraps and the second line's pairs sit under
+ * unrelated ones.
+ *
+ * A tile answers it once. The border is the grouping, so it survives any
+ * combination of label and value lengths, any wrap, and any language — and a
+ * row of them reads as "here are four things known about this person", which is
+ * what the card is for.
+ */
 dl.facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 28px;
-  margin: 10px 0 0;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
+}
+
+dl.facts > div {
+  /* Shrinks but does not stretch: a tile is as wide as what is in it, so the
+     row stays a row of facts rather than a table with one column per fact. */
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--tint);
 }
 
 dl.facts dt {
   color: var(--muted);
-  font-size: var(--t2);
+  font-size: var(--t1);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  /* Wider than the 0.04em elsewhere: at 11px the label is doing the work of a
+     column header, and the extra tracking is what keeps it reading as a label
+     for the number under it rather than as small text in its own right. */
+  letter-spacing: 0.06em;
+  line-height: 1.4;
 }
 
 dl.facts dd {
-  margin: 2px 0 0;
-  font-size: var(--t4);
+  margin: var(--s1) 0 0;
+  font-size: var(--t5);
+  font-weight: 600;
+  /* The one thing on the card at full ink. The value is what the card was
+     opened for; everything around it is there to say what it means. */
+  color: var(--text);
+  line-height: 1.3;
+  /* Deliberately *not* `tabular-nums`. These are standalone figures sitting
+     side by side, not a column that has to align vertically — and tabular gives
+     every digit the width of a `0`, which at 16px semibold makes `314` read
+     loose and typeset rather than said. The queue's tables keep tabular,
+     because a column is the case it is for. */
+}
+
+/* A fact that is a problem, told twice. The colour is the second channel and
+   never the only one: the tile still carries its own label and says what
+   happened in words, so nothing here depends on seeing the difference between
+   two warm inks. */
+dl.facts > div.wrong {
+  border-color: color-mix(in srgb, var(--bad) 40%, var(--line));
+  background: color-mix(in srgb, var(--bad) 7%, var(--panel));
+}
+
+dl.facts > div.wrong dd {
+  color: var(--bad);
+}
+
+/*
+ * The sentence under the tiles — what the model was actually told.
+ *
+ * It was `.meta`, which is the same grey at the same size as a caption, a
+ * timestamp and the note under a button. Four or five lines of it under a row
+ * of facts read as small print, and it is the opposite: the tiles are the
+ * evidence and this is the interpretation the reply was written from. A rule
+ * above it and a step up in ink make it a second half rather than a footnote.
+ */
+.card-note {
+  margin: var(--s4) 0 0;
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--t3);
+  line-height: 1.65;
+}
+
+/* The way out to the system this card came from, in the corner of its header.
+   Accent, because it is a link and it was drawn in the same grey as the label
+   beside it — a destination nobody could see was one. */
+.card-open {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t3);
+  white-space: nowrap;
+}
+
+.card-open:hover {
+  color: var(--accent-hover);
 }
 
 /* ---------------------------------------------------------------------------

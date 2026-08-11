@@ -133,7 +133,12 @@ async function Customer({ email }: { email: string }) {
             *act* — refund, cancel, look at a dispute — and losing the reply they
             were half way through writing to do it would be the second thing
             they learn about this link and the last time they use it. */}
-        <a className="meta" href={`${DASHBOARD}/${customer.id}`} target="_blank" rel="noreferrer">
+        <a
+          className="card-open"
+          href={`${DASHBOARD}/${customer.id}`}
+          target="_blank"
+          rel="noreferrer"
+        >
           {t('billing.card.open')}
         </a>
       </div>
@@ -164,8 +169,13 @@ async function Customer({ email }: { email: string }) {
             <dd>{[...net].map(([currency, amount]) => money(amount, currency)).join(', ')}</dd>
           </div>
         )}
+        {/* The one fact here that is not neutral. A failed payment is the
+            difference between "sorry about the delay" and "your card was
+            declined on the 3rd", and it was sitting in the row at the same
+            weight as the plan name. `wrong` colours it; the label and the
+            sentence are what carry it where colour cannot. */}
         {customer.delinquent && (
-          <div>
+          <div className="wrong">
             <dt>{t('billing.card.status')}</dt>
             <dd>{t('billing.delinquent')}</dd>
           </div>
