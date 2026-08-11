@@ -1360,8 +1360,27 @@ export default async function TaskPage({
             would otherwise carry two Stripe boxes down one column saying nearly
             the same thing in two voices, and the one the model was actually
             given is the one worth keeping — a reviewer checking whether a reply
-            is right needs to see what it was written from. */}
-        {!context.some(block => block.sourceId === 'stripe') && (
+            is right needs to see what it was written from.
+
+            And not on the render that raises the confirmation.
+
+            `?confirm=1` is a flag on this route rather than a route of its own,
+            so opening the panel renders this whole screen again underneath it —
+            and this is the one thing on the screen that leaves the process to be
+            drawn. `customerSummary` remembers the answer for a minute, which
+            makes the repeat cheap; it does not make it not happen, and a memo
+            that has just expired would put a third party's round trip in front
+            of a panel that says nothing about billing. Skipping is the only
+            version of this with no worst case.
+
+            What it costs is a card that is not there while the panel is up. The
+            scrim is 78% opaque over a 2px blur, so what a reviewer can see of it
+            is the column shifting up behind frosted glass for as long as they
+            are reading something else. That is the trade, and it is the right
+            way round: the panel is the one screen on this desk where waiting is
+            unaffordable, and billing is the one thing on the screen behind it
+            that nobody is reading through a blur. */}
+        {!confirming && !context.some(block => block.sourceId === 'stripe') && (
           <BillingCard email={task.fromAddress} />
         )}
 
