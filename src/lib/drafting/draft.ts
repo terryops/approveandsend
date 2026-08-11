@@ -171,6 +171,31 @@ You cannot open these and have not read them. Do not describe or quote their
 contents, and do not ask for a file that is already in this list.`;
 }
 
+/**
+ * Whose job the sign-off is.
+ *
+ * Nothing else in a prompt says it is not the model's, and the model has spent
+ * its whole life ending letters properly. Left unsaid, it writes "Best regards,
+ * <company> Support" and then the desk appends the configured signature under
+ * it — two sign-offs, which reads exactly as machine-written as it sounds.
+ *
+ * Every prompt that ends in text the desk will sign needs this, which is why it
+ * is here rather than in one of them: it went into the drafter when the double
+ * sign-off was noticed there, and composed mail and the alternatives strip —
+ * both of which append the same signature — went on producing it.
+ *
+ * Empty signature, no rule. Then nobody is adding a closing line, so the model
+ * writing one is the reply ending the way a letter ends.
+ */
+export function signOffRule(signature: string): string {
+  if (!signature) return '';
+  return (
+    '\nDo not write a sign-off, a closing line or a signature. One is added ' +
+    'below your reply automatically, and a second one is what makes a reply ' +
+    'look machine-written.\n'
+  );
+}
+
 function buildPrompt(
   task: Task,
   workspace: WorkspaceConfig,
@@ -238,18 +263,7 @@ comes out as literal punctuation in their inbox, so do not write it.
 
 Use them sparingly. A reply where half the sentences are bold is a reply where
 none of them are.
-${
-  // Nothing else in the prompt says the signature is not the drafter's job,
-  // and the drafter has spent its whole life ending letters properly. Left
-  // unsaid, it writes "Best regards, <company> Support" and then the desk
-  // appends its own — two sign-offs, which reads exactly as machine-written as
-  // it sounds.
-  workspace.signature
-    ? '\nDo not write a sign-off, a closing line or a signature. One is added ' +
-      'below your reply automatically, and a second one is what makes a reply ' +
-      'look machine-written.\n'
-    : ''
-}
+${signOffRule(workspace.signature)}
 ## Two languages, and which is which
 The reply goes to the customer, so it is written in the language they wrote in.
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -73,6 +73,13 @@ afterEach(async () => {
   resetWorkspaceConfig();
 });
 
+function writeConfig(value: unknown): void {
+  const path = join(configDir, 'aas.config.json');
+  writeFileSync(path, JSON.stringify(value));
+  process.env.AAS_CONFIG = path;
+  resetWorkspaceConfig();
+}
+
 function task() {
   return createTask(
     {
@@ -110,6 +117,22 @@ describe('suggestAlternatives', () => {
     await suggestAlternatives(task(), 'The draft we already have.', { db });
 
     expect(prompts[0]).toContain('The draft we already have.');
+  });
+
+  it('signs each option once, and says so in the prompt', async () => {
+    // The strip appends the signature to every option it returns, so the same
+    // instruction the drafter gets has to reach this prompt too — otherwise
+    // picking tab B sends a reply with two sign-offs on it.
+    writeConfig({ signature: '— The Acme team' });
+    queued.push(OPTIONS);
+
+    const options = await suggestAlternatives(task(), 'The draft we already have.', { db });
+
+    expect(prompts[0]).toContain('Do not write a sign-off');
+    expect(options[1]?.body.endsWith('— The Acme team')).toBe(true);
+    // Not the draft, which was signed when it was written. Signing it here is
+    // how tab A grows a second one.
+    expect(options[0]?.body).toBe('The draft we already have.');
   });
 
   it('writes the options against the same rules the draft was', async () => {

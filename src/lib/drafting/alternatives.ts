@@ -1,6 +1,6 @@
 import { callAI } from '../ai';
 import { describeWorkspace } from '../config/workspace';
-import { assemble, type DraftOptions } from './draft';
+import { assemble, signOffRule, type DraftOptions } from './draft';
 import { extractJson } from '../json-repair';
 import { operatorLanguage } from '../i18n';
 import type { Task } from '../tasks/types';
@@ -95,7 +95,7 @@ language the mail arrived in. A strip of options named in a language the person
 choosing between them has to decode is a strip they open one at a time — which
 is the entire cost the labels exist to save. Leave product names, error strings
 and identifiers exactly as they appear.
-
+${signOffRule(workspace.signature)}
 JSON only, no prose around it:
 {
   "current": "a few words in ${operatorLanguage()} on what the reply already drafted commits us to",

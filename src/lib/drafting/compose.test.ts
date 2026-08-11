@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -68,6 +68,13 @@ afterEach(async () => {
   resetWorkspaceConfig();
 });
 
+function writeConfig(value: unknown): void {
+  const path = join(configDir, 'aas.config.json');
+  writeFileSync(path, JSON.stringify(value));
+  process.env.AAS_CONFIG = path;
+  resetWorkspaceConfig();
+}
+
 function brief(subject = '') {
   return createTask(
     {
@@ -107,6 +114,29 @@ describe('composeMessage', () => {
     await composeMessage(brief(), { db });
 
     expect(prompts[0]).toContain('This is not a\nreply');
+  });
+
+  it('signs the mail once, and says so in the prompt', async () => {
+    // Both halves, because either alone is the bug. The desk appends the
+    // signature, so the model has to be told to stop writing its own — a
+    // composed mail was the one prompt that appended without saying, and it
+    // went out over "Best regards, SubEasy Support" every time.
+    writeConfig({ signature: '— The Acme team' });
+    queued.push(COMPOSED);
+
+    const composed = await composeMessage(brief(), { db });
+
+    expect(prompts[0]).toContain('Do not write a sign-off');
+    expect(composed?.body.endsWith('— The Acme team')).toBe(true);
+  });
+
+  it('leaves the closing to the model when the desk has no signature', async () => {
+    // Nobody is adding a line, so forbidding one would end the mail mid-air.
+    queued.push(COMPOSED);
+
+    await composeMessage(brief(), { db });
+
+    expect(prompts[0]).not.toContain('Do not write a sign-off');
   });
 
   it('returns null rather than throwing on an unusable response', async () => {

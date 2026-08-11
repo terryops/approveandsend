@@ -1,6 +1,6 @@
 import { callAI } from '../ai';
 import { describeWorkspace } from '../config/workspace';
-import { assemble, type DraftOptions } from './draft';
+import { assemble, signOffRule, type DraftOptions } from './draft';
 import { extractJson } from '../json-repair';
 import type { Task } from '../tasks/types';
 import { clip } from '../thread-context';
@@ -63,7 +63,7 @@ recipient did not ask for. Do not invent a reason for writing, an apology
 nobody authorised, or a commitment that is not in the brief — the rules above
 still bind, and they bind harder here because there is no customer question
 holding the reply to a subject.
-
+${signOffRule(workspace.signature)}
 JSON only, no prose around it:
 {
   "subject": "a subject line that says what the mail is about — no Re:, this starts the conversation",
