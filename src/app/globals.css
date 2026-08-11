@@ -4994,6 +4994,22 @@ header.top .layout-switch {
   height: 29px;
 }
 
+/* And the form each button sits in passes that height through rather than
+   stopping it. The flexbox's items are the two `<form>`s, not the two buttons —
+   the forms stretch to the track's 23px and always did, but a form is a block
+   box, so the button inside it, being `inline-flex` and therefore inline-level,
+   was laid out on a line box and hung from a baseline struck by the form's
+   inherited 16px. Nothing in this control is set in 16px. That half-leading put
+   the pill 2px under the padding at the top and 1.8px through the border at the
+   bottom, which on the lit option — the one drawn with a border and a fill — is
+   visible as a switch screwed on crooked. Made a flex container, the form
+   stretches to 23px and the button stretches with it, which is what the rule
+   below was written to assume. `.theme-switch` has had this since the drawer
+   needed its three options to span the panel. */
+header.top .layout-switch form {
+  display: flex;
+}
+
 /* And the two buttons inside it fill that height rather than setting it. Their
    own `padding-block` is what added up to 34.8 — with the track's height
    declared, vertical padding can only overflow it, so the space above and below
