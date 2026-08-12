@@ -1337,19 +1337,99 @@ header.top nav a.active:hover {
 }
 
 /*
- * The panel that waits for the model.
+ * The wait, at the top of the window and out of the way.
  *
- * Narrow, because it holds two short lines and a way out — a panel the width of
- * the confirmation would be mostly empty space around a sentence.
+ * This replaces a dialog over a scrim, and the whole of the change is in
+ * `position` and `pointer-events`: a redraft is a job that runs whether or not
+ * anybody watches, so the screen underneath stays live and stays clickable. It
+ * floats over the header rather than pushing it down — a bar that reflows the
+ * page every time a draft starts would move the row somebody was about to
+ * click, which is a worse interruption than the one it reports.
+ *
+ * `pointer-events` is off on the strip and back on for each note, so the strip's
+ * empty half of the screen is not an invisible sheet over the nav.
+ *
+ * Clear of the header rather than across it. Centred at `top: 0` it landed on
+ * the nav links and the search box — a notice that says "carry on with
+ * something else" while covering the way to it. 88px is the header's own height
+ * plus its margin, so this hangs just under it and over the page it is not part
+ * of.
  */
-.confirm.working {
-  max-width: 460px;
+.working-strip {
+  position: fixed;
+  inset: 88px 0 auto;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s1);
+  padding: 0 var(--s2);
+  pointer-events: none;
 }
 
-.confirm.working h2 {
+.working-note {
   display: flex;
   align-items: center;
   gap: var(--s2);
+  margin: 0;
+  max-width: min(560px, 92vw);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  color: var(--text);
+  pointer-events: auto;
+}
+
+/* Finished is the one state worth a colour: it is news, and the other is not. */
+.working-note.is-done {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+/* The heading of the pair, so "ready" reads before the subject it is about. */
+.working-note .what {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* And the subject gives way first — a long one must not push the link off. */
+.working-note .which {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.working-note a {
+  flex: none;
+  font-weight: 600;
+}
+
+.working-note button {
+  flex: none;
+  padding: 0 var(--s1);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.working-note button:hover {
+  color: var(--text);
+}
+
+/*
+ * The reason a wait is not ending, in the page rather than over it.
+ *
+ * Same words the dialog carried, and it still only appears when the drafting
+ * job has actually failed an attempt — see the note on the task page.
+ */
+.card.stuck {
+  border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
 }
 
 /*

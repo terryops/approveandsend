@@ -15,6 +15,7 @@ import { logout, setInterfaceLanguage, setReviewLayout, setTheme } from './actio
 import { ReturnTo, ReviewingTaskId, WhileReviewing } from './here';
 import { NavLinks } from './nav';
 import { CarryDraft } from './tasks/[id]/review-keys';
+import { WorkingStrip } from './working';
 
 import './globals.css';
 
@@ -177,6 +178,21 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       className={`${inter.variable} ${serif.variable}`}
     >
       <body>
+        {/* Above everything, and outside the shell, because what it reports is
+            not about the screen underneath it: a draft kicked off on one task
+            lands while the reviewer is three tasks further on. Words translated
+            here — the dictionary is server-only, so a client component gets
+            sentences rather than keys. */}
+        {signedIn && (
+          <WorkingStrip
+            labels={{
+              busy: t('working.busy'),
+              ready: t('working.ready'),
+              open: t('working.open'),
+              dismiss: t('working.dismiss'),
+            }}
+          />
+        )}
         <div className="shell">
           <header className="top">
             {/* The name is the way home. It is the first thing in the header on

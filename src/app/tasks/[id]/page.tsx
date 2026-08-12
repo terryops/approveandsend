@@ -17,6 +17,7 @@ import { DismissOnEscape } from '../../dismiss-on-escape';
 import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
 import { TaskPoller } from '../../task-poller';
+import { WatchTask } from '../../working';
 import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
 import { MarkOpened } from './opened';
@@ -451,13 +452,17 @@ export default async function TaskPage({
   // set than `sendable`: a failed or empty task is exactly the one worth asking
   // the model to try again on.
   const redrafting = query.redraft === '1' && !sent && !sending;
-  // The model is writing. `pending` and `drafting` are the two states the task
-  // passes through between the button and the new reply, so the panel is driven
-  // by the row rather than by the flag alone — it closes itself the moment the
-  // work lands, and a bookmarked `?redrafting=1` on a finished task shows the
-  // task instead of a spinner that will never stop.
+  // A job was just kicked for this row, by this browser — `redrafting` from
+  // Redraft, `queued` from a compose. Both used to be answered here: the first
+  // by a panel over the whole screen and the second by a line under the box.
+  // The panel has gone to the top of the window, where the reviewer can leave
+  // it running and go and do the next task (see `working.tsx`); this flag is
+  // what tells the strip which task to watch. Still gated on the row rather
+  // than on the query alone, so a bookmarked `?redrafting=1` on a finished task
+  // does not start watching a wait that ended last week.
   const working =
-    query.redrafting === '1' && (task.status === 'pending' || task.status === 'drafting');
+    (query.redrafting === '1' || typeof query.queued === 'string') &&
+    (task.status === 'pending' || task.status === 'drafting');
 
   // The machine still has this one — queued, being drafted, or on its way to the
   // mail server.
@@ -946,63 +951,45 @@ export default async function TaskPage({
         </Scrim>
       )}
 
-      {/* The model is writing, and the reviewer is watching it happen.
+      {/* The model is writing, and the reviewer is free to go elsewhere.
 
-          Redraft used to close the panel and drop the reviewer back on the task
-          with the old draft still in the box and a line saying the work was
-          queued — which on an install without the crontab set up was a promise
-          nothing would keep. The work is kicked off directly now (see
-          `redraftTask`), and this is the other half: stay on the step, say what
-          is happening, and let the poller end it. */}
-      {working && (
-        <div className="confirm-scrim">
-          <div
-            className="confirm card stack working"
-            role="dialog"
-            aria-labelledby="working-title"
-            aria-busy="true"
-          >
-            <DismissOnEscape href={`/tasks/${task.id}`} />
-            <TaskPoller />
-            <h2 id="working-title">
-              {/* No spinner once the attempt has already failed. Something
-                  turning says "nearly there", and on a desk with no model
-                  configured it would say that forever. */}
-              {!task.error && <span className="spinner" aria-hidden="true" />}
-              {task.error ? t('task.working.stuckTitle') : t('task.working.title')}
-            </h2>
-            {/* Polite rather than assertive: this updates itself every couple of
-                seconds, and an assertive region would interrupt a screen reader
-                on every one of them. */}
-            <p className="meta" aria-live="polite">
-              {task.error ? t('task.working.stuckBody') : t('task.working.body')}
-            </p>
-            {/* The real reason, said here rather than left behind the panel.
-                A drafting job retries with a backoff, so the task sits at
-                `pending` between attempts and the wait looks identical to one
-                that is going to succeed — which is how "AI_MODEL is required"
-                turned into an endless spinner instead of an answer. */}
-            {task.error && <p className="error">{task.error}</p>}
+          This was a dialog over a scrim: the whole screen dimmed, Escape to
+          leave, a spinner and a paragraph explaining that leaving was allowed.
+          Every word of that was true and the shape was still wrong — a modal is
+          for a decision the app cannot continue without, and this is a job that
+          continues whether or not anybody watches it. It cost the reviewer the
+          half-minute a redraft takes, on the one screen they had just finished
+          with, and the sentence offering to let them go was the interface
+          admitting it had blocked them for nothing.
+
+          What is left is a registration. The strip at the top of the window
+          takes it from here — it says what is cooking on every screen, and when
+          the draft lands it says so and offers the way back. */}
+      {working && <WatchTask id={task.id} />}
+
+      {/* A wait that is not going to end, said in the page rather than over it.
+
+          A drafting job retries with a backoff, so the task sits at `pending`
+          between attempts and the wait looks exactly like one that is about to
+          succeed — which is how "AI_MODEL is required" used to present as a
+          spinner with no end. The strip cannot carry this: it is one line at
+          the top of the window and this is a reason. It has no scrim and no
+          dialog role, because there is nothing here to decide. */}
+      {working && task.error && (
+        <div className="card stack stuck" aria-live="polite">
+          <h2>{t('task.working.stuckTitle')}</h2>
+          <p className="meta">{t('task.working.stuckBody')}</p>
+          <p className="error">{task.error}</p>
+          {/* Offered to the people who can open it. A reviewer is not left with
+              nothing — the line above is the same sentence the queue screen
+              would have shown them, printed right here. */}
+          {admin && (
             <div className="actions">
-              {/* Leaving does not cancel anything — the job is already running,
-                  and the draft will be here whether or not this stays open. */}
-              <Link className="button-link" href={`/tasks/${task.id}`}>
-                {t('task.working.leave')}
+              <Link className="button-link" href="/queue">
+                {t('nav.queue')}
               </Link>
-              {/* Where a wait that is not going to end explains itself. A desk
-                  with no model configured queues this job and fails it on the
-                  first attempt, and the queue screen is where that says so.
-
-                  Offered to the people who can open it. A reviewer is not left
-                  with nothing — `task.error` above is the same sentence the
-                  queue screen would have shown them, printed right here. */}
-              {admin && (
-                <Link className="button-link" href="/queue">
-                  {t('nav.queue')}
-                </Link>
-              )}
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -1254,9 +1241,16 @@ export default async function TaskPage({
             gap back to five seconds instead of leaving a written draft sitting
             behind a minute of patience earned while nothing was happening. See
             the poller. */}
-        {inFlight && !working && (
-          <TaskPoller intervalMs={5000} slowTo={60_000} restartOn={task.status} />
-        )}
+        {inFlight &&
+          (working ? (
+            // A job this browser just started, on the screen it started it
+            // from: seconds away, and every refresh turns the queue as well —
+            // see the `nudgeQueue` above. No backoff, because there is nothing
+            // to be patient about yet.
+            <TaskPoller restartOn={task.status} />
+          ) : (
+            <TaskPoller intervalMs={5000} slowTo={60_000} restartOn={task.status} />
+          ))}
 
         {/* The subject, at the size of the thing it names.
 
