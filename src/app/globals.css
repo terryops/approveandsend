@@ -4315,6 +4315,27 @@ ol.history .detail {
   font-weight: 650;
   color: var(--text);
   margin: 0;
+  cursor: pointer;
+  /* The marker is the only thing saying there is more under this line, and the
+     default one sits too far out to read as part of the sentence. */
+  list-style: none;
+}
+
+.critique .said::-webkit-details-marker {
+  display: none;
+}
+
+.critique .said::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  margin-left: -0.15em;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.critique[open] .said::before {
+  transform: rotate(90deg);
 }
 
 .critique ul {

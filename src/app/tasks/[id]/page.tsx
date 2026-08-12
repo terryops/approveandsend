@@ -349,15 +349,22 @@ function CritiqueNote({ critique }: { critique: Critique }) {
       ? 'task.critique.remarks'
       : 'task.critique.unfixed';
 
+  // Shut, but not silent. The verdict is the summary and is always on the page
+  // — a critic that would not sign the reply off is not something to make
+  // anybody click for. The list of what it found is; most of the time the
+  // reviewer has already read the draft and agrees with it, and three
+  // paragraphs of machine second-guessing between them and the reply is three
+  // paragraphs they learn to scroll past, which is how the one that mattered
+  // gets scrolled past too.
   return (
-    <div className="critique">
-      <p className="said">{t(said)}</p>
+    <details className="critique">
+      <summary className="said">{t(said)}</summary>
       <ul>
         {critique.issues.map((issue, i) => (
           <li key={i}>{issue}</li>
         ))}
       </ul>
-    </div>
+    </details>
   );
 }
 
@@ -1189,10 +1196,9 @@ export default async function TaskPage({
           </div>
         )}
 
-        {/* Under the grade rather than in the sidebar with the analysis, and
-            not folded into a `details`. It is the same argument the banner
-            above it won: a reason that has to be asked for is a reason nobody
-            reads, and this one is about the reply directly below it.
+        {/* Under the grade rather than in the sidebar with the analysis. The
+            verdict shows; the reasons are a click away — see the note on
+            `CritiqueNote` for why that trade went the way it did.
 
             Outside the `risk` condition on purpose. A critic can object to a
             draft the arithmetic still grades `low` — one factor is not two —
