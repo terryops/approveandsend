@@ -66,6 +66,8 @@ export const en = {
   "inbox.timeDaysAgo": "{count}d ago",
   "inbox.alsoFrom": "Also from {name}",
   "inbox.machineSide": "AI Processing",
+  "inbox.binFiltered": "Filtered out",
+  "inbox.binByHand": "Dismissed by hand",
   "inbox.bulkDismiss": "Dismiss",
   "inbox.bulkReopen": "Reopen",
   "inbox.bulkDelete": "Delete",

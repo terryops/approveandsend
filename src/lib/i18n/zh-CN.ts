@@ -48,6 +48,8 @@ export const zhCN: Dictionary = {
   "inbox.timeDaysAgo": "{count} 天前",
   "inbox.alsoFrom": "同样来自 {name}",
   "inbox.machineSide": "AI 处理中",
+  "inbox.binFiltered": "自动过滤",
+  "inbox.binByHand": "人工忽略",
   "inbox.bulkDismiss": "忽略",
   "inbox.bulkReopen": "重新打开",
   "inbox.bulkDelete": "删除",

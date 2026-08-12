@@ -48,6 +48,8 @@ export const de: Dictionary = {
   "inbox.timeDaysAgo": "vor {count} Tagen",
   "inbox.alsoFrom": "Ebenfalls von {name}",
   "inbox.machineSide": "KI-Verarbeitung",
+  "inbox.binFiltered": "Herausgefiltert",
+  "inbox.binByHand": "Manuell verworfen",
   "inbox.bulkDismiss": "Verwerfen",
   "inbox.bulkReopen": "Wieder öffnen",
   "inbox.bulkDelete": "Löschen",

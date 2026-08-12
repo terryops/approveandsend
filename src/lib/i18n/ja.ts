@@ -48,6 +48,8 @@ export const ja: Dictionary = {
   "inbox.timeDaysAgo": "{count}日前",
   "inbox.alsoFrom": "同じ {name} から",
   "inbox.machineSide": "AI 処理中",
+  "inbox.binFiltered": "自動で除外",
+  "inbox.binByHand": "手動で見送り",
   "inbox.bulkDismiss": "見送る",
   "inbox.bulkReopen": "再開",
   "inbox.bulkDelete": "削除",

@@ -50,6 +50,23 @@ const FILTERS: (TaskStatus | 'all')[] = [
 const BIN: readonly TaskStatus[] = ['dismissed'];
 
 /**
+ * Which of the two kinds of dismissal a row is.
+ *
+ * The bin holds two things that arrived by very different routes: mail the
+ * filter threw out on its own — `junk.ts` writes its reason onto `error` — and
+ * mail a person read and put down. Only the first is worth auditing, and it is
+ * the smaller half (fourteen against forty on this desk), so a single list
+ * sorted by date buries exactly the rows somebody opened this tab to check.
+ *
+ * The reason is the discriminator rather than a column of its own, because it
+ * is the same fact: nothing but the filter writes an `error` on a dismissal,
+ * and a filtered row with no reason on it would be a bug worth seeing as one.
+ */
+function filtered(task: Task): boolean {
+  return Boolean(task.error?.trim());
+}
+
+/**
  * The machine's turn.
  *
  * These rows appear under the review queue rather than in it. Mixed in, every
@@ -234,7 +251,13 @@ export default async function InboxPage({
   const counts = countTasksByStatus(searchFilter);
   const unopened = countUnopened();
   const LABELS = labels();
-  const groups = groupBySender(tasks);
+
+  // The bin, split by who did the dismissing. Everywhere else one list is
+  // right; here the two halves answer different questions and the one being
+  // asked is almost always "what did the filter eat".
+  const bin = status === 'dismissed';
+  const groups = groupBySender(bin ? tasks.filter(t => !filtered(t)) : tasks);
+  const filteredGroups = bin ? groupBySender(tasks.filter(filtered)) : [];
   // Read here rather than in the root layout, which is where it used to live.
   //
   // Two things were wrong with that and they pull in opposite directions. It
@@ -370,8 +393,21 @@ export default async function InboxPage({
                       <span className="row-status">{LABELS[task.status] ?? task.status}</span>
                     )}
                   </span>
-                  {!machine && task.analysis?.intent && (
-                    <span className="snippet">{task.analysis.intent}</span>
+                  {/* Why the filter threw it out, on the row, rather than one
+                      click inside each of fifty. Auditing the bin means asking
+                      "would I have answered that" fifty times, and the reason
+                      is what answers it — "carries a List-Unsubscribe header"
+                      settles a newsletter at a glance, and anything that does
+                      not settle at a glance is exactly the row worth opening.
+                      Only on a dismissal: `error` is also where a failed send
+                      writes its stack, and that belongs on the task, not in a
+                      list. */}
+                  {!machine && task.status === 'dismissed' && task.error ? (
+                    <span className="snippet">{task.error}</span>
+                  ) : (
+                    !machine && task.analysis?.intent && (
+                      <span className="snippet">{task.analysis.intent}</span>
+                    )
                   )}
                   {/* The reasons, not a badge. A badge has to be remembered to
                       mean anything; a sentence does not, and `task.risk.factors`
@@ -678,7 +714,27 @@ export default async function InboxPage({
         // count changes row by row is six columns that no longer line up, which
         // is the one thing the fixed widths exist to prevent.
         <form className={`list-form${mixed ? '' : ' no-status'}`}>
-          {renderGroups(groups)}
+          {/* The bin reads as two lists, the filter's and the desk's, with the
+              filter's first — somebody who opens this tab is nearly always
+              checking what got thrown out on its own, and the rows a colleague
+              put down deliberately are not what they came for. Headings on
+              both, because an unlabelled list above a labelled one reads as
+              part of it. */}
+          {bin && filteredGroups.length > 0 && (
+            <div className="bin-side">
+              <h2>{t('inbox.binFiltered')}</h2>
+              {renderGroups(filteredGroups)}
+            </div>
+          )}
+
+          {bin && groups.length > 0 ? (
+            <div className="bin-side">
+              <h2>{t('inbox.binByHand')}</h2>
+              {renderGroups(groups)}
+            </div>
+          ) : (
+            !bin && renderGroups(groups)
+          )}
 
           {/* The rows the model still has, under their own heading and a notch
               quieter. Kept on the screen because "nothing is waiting on me" and

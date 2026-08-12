@@ -7455,6 +7455,27 @@ table.plain tr.failed td {
 }
 
 /* ---------------------------------------------------------------------------
+ * The bin, in two halves
+ *
+ * What the filter threw out on its own, and what a person put down. Same
+ * heading treatment as the machine's half below, and deliberately none of its
+ * dimming: these rows are being audited, which is the one thing you cannot do
+ * to a row drawn in --muted.
+ * ------------------------------------------------------------------------- */
+.bin-side + .bin-side {
+  margin-top: var(--s5);
+}
+
+.bin-side > h2 {
+  margin: 0 0 var(--s2);
+  font-size: var(--t2);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
  * The machine's half of the inbox
  *
  * Queued, drafting and sending, under their own heading below the review queue.
