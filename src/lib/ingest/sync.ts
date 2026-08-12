@@ -4,6 +4,7 @@ import { mailboxAddress, mailProvider } from '../mail/config';
 import type { MailMessage, MailMessageDetail, MailProvider } from '../mail/types';
 import { enqueueForDrafting } from '../queue/handlers/enrich-context';
 import { addAttachment } from '../tasks/attachments';
+import { markHandled } from '../tasks/mark-read';
 import { addMessage } from '../tasks/messages';
 import { createTask, supersedeThread, updateTask } from '../tasks/store';
 import { trimEmailBody } from '../thread-context';
@@ -231,8 +232,21 @@ async function ingest(
 
   // Before the detail fetch and before any job: everything below this line
   // costs either a provider call or a model call.
-  const dismiss = (junk: { reason: string }): 'junk' => {
+  //
+  // The mailbox flag goes with it, the same way every other dismissal clears
+  // it — see `markHandled`. This was the one path that did not: the filter
+  // threw a newsletter out, the desk never showed it again, and it stayed bold
+  // in Zoho forever. Which is the failure that flag has: an inbox with three
+  // hundred unread pitches in it is an inbox where the one real unread
+  // customer cannot be seen, so somebody clears it by hand, and clearing it by
+  // hand means reading three hundred subject lines the filter already read.
+  //
+  // Handed our own provider rather than letting `markHandled` open one: this
+  // runs inside a sync that already holds a connection, and on IMAP a second
+  // one is a second login per newsletter.
+  const dismiss = async (junk: { reason: string }): Promise<'junk'> => {
     updateTask(task.id, { status: 'dismissed', error: junk.reason }, db);
+    await markHandled({ ...task, status: 'dismissed' }, { provider });
     return 'junk';
   };
 

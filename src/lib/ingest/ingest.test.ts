@@ -364,6 +364,41 @@ describe('syncInbox', () => {
     // The two things junk actually costs: a body fetch and three model calls.
     expect(provider.detailFetches).toEqual([]);
     expect(listJobs({}, db)).toEqual([]);
+
+    // And it does not cost a bold line in the mailbox. A filter that hides
+    // three hundred pitches from the desk but leaves all three hundred unread
+    // in Zoho has moved the pile, not cleared it — and the one unread mail
+    // that is a real customer is invisible in a pile that size.
+    expect(provider.marked).toEqual(['m1']);
+  });
+
+  it('clears the flag for bulk mail caught on the second look too', async () => {
+    // The late verdict runs after the detail fetch, on a different code path
+    // from the early one, and it used to be the only dismissal in the app that
+    // left the mailbox untouched.
+    const news = message('m1', { from: { address: 'hello@vendor.example' } });
+    const provider = new FakeMailbox([news]);
+    const original = provider.getMessage.bind(provider);
+    provider.getMessage = async (id: string) => ({
+      ...(await original(id)),
+      headers: { precedence: 'bulk' },
+    });
+
+    await syncInbox({ provider, db, skipAnswered: false });
+
+    expect(provider.marked).toEqual(['m1']);
+  });
+
+  it('syncs on when the mailbox will not clear the flag', async () => {
+    // Best-effort, like every other `markHandled` caller: a newsletter that
+    // stays bold is cosmetic, a sync that stops on it is mail nobody sees.
+    const news = message('m1', { headers: { 'list-unsubscribe': '<https://x.example/u>' } });
+    const provider = new FakeMailbox([news]);
+    provider.failMarkAsRead = 'IMAP said no';
+
+    const result = await syncInbox({ provider, db, skipAnswered: false });
+
+    expect(result).toMatchObject({ created: 0, junk: 1, failures: [] });
   });
 
   it('catches the bulk mail whose headers only arrive with the body', async () => {
