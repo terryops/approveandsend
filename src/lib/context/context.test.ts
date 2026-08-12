@@ -233,6 +233,28 @@ describe('the prompt block', () => {
     expect(text).not.toContain('{');
   });
 
+  it('spends tokens on the card values too, not only on the prose', () => {
+    const text = describeContext([
+      {
+        title: 'Account',
+        fields: [
+          { label: 'Plan', value: 'Free' },
+          { label: 'User', value: 'ChSey' },
+          // Nothing to say, and nothing to pay for saying it.
+          { label: 'Company', value: '' },
+        ],
+        prompt: 'They registered on July 14, 2026.',
+        taskId: 't',
+        sourceId: 'a',
+        label: 'Account',
+        createdAt: '',
+      },
+    ]);
+
+    expect(text).toContain('Plan: Free · User: ChSey\nThey registered on July 14, 2026.');
+    expect(text).not.toContain('Company');
+  });
+
   it('leaves out display-only blocks', () => {
     const text = describeContext([
       { title: 'Ticket', fields: [{ label: 'ID', value: 'T-1' }], prompt: '', taskId: 't', sourceId: 'a', label: 'T', createdAt: '' },

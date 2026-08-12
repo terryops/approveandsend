@@ -82,8 +82,31 @@ export function describeContext(blocks: StoredContext[]): string {
   return (
     '\n\n## What we already know about this person\n' +
     'From our own records, not from their email. Treat it as true, and do not repeat it back to them unprompted.\n' +
-    usable.map(block => `\n### ${block.title}\n${block.prompt}`).join('')
+    usable.map(block => `\n### ${block.title}\n${describeFields(block.fields)}${block.prompt}`).join('')
   );
+}
+
+/**
+ * The card's own values, on the line above its prose.
+ *
+ * A source writes a sentence for the model and a handful of labelled values
+ * for the reviewer, and until now only the sentence was spent tokens on. That
+ * held as long as the two said the same thing, and they do not: the account
+ * card names the customer, and a drafter that greeted them by that name was
+ * marked down for inventing it, because the name was on the card and not in
+ * the paragraph. A source should not have to write every value twice to get it
+ * read.
+ *
+ * Cheap, because these are already short — a name, a plan, a number of
+ * credits. One line, in the order the source chose, which is the order it
+ * considered them worth.
+ */
+function describeFields(fields: StoredContext['fields']): string {
+  const said = fields
+    .filter(field => field.label.trim() !== '' && field.value.trim() !== '')
+    .map(field => `${field.label.trim()}: ${field.value.trim()}`);
+
+  return said.length === 0 ? '' : `${said.join(' · ')}\n`;
 }
 
 export function contextForPrompt(taskId: string, db: Db = getDb()): string {
