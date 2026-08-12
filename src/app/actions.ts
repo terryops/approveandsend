@@ -44,7 +44,7 @@ import {
   cardsAwaitingRendering,
   createWorker,
   enqueueBackfillScan,
-  enqueueCompose,
+  enqueueContextThenCompose,
   enqueueConsolidateRules,
   enqueueForDrafting,
   enqueueForTranslation,
@@ -922,7 +922,7 @@ export async function composeEmail(form: FormData): Promise<void> {
     priority: 3,
   });
 
-  enqueueCompose(task.id);
+  await enqueueContextThenCompose(task.id);
   // Turned now rather than left for whenever a cron happens to fire.
   //
   // The same call Redraft makes, against the same hole and for the same reason:

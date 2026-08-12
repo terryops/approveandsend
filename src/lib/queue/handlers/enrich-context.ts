@@ -4,6 +4,7 @@ import { getDb, type Db } from '../../db';
 import { getTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
+import { enqueueCompose } from './compose-message';
 import { enqueueDraftReply } from './draft-reply';
 import { enqueueTriage } from './triage';
 
@@ -24,14 +25,25 @@ import { enqueueTriage } from './triage';
 
 export const ENRICH_CONTEXT = 'enrich-context';
 
+/**
+ * What runs once the lookups are in.
+ *
+ * A composed task has no letter to answer, so sending it down the reply path
+ * would produce a reply to mail nobody sent. Carried on the payload rather
+ * than read off the task's origin, because the job is what knows why it was
+ * queued and a task's origin is not always the same question.
+ */
+export type ContextThen = 'draft' | 'compose';
+
 export function enqueueEnrichContext(
   taskId: string,
-  options: { priority?: number; db?: Db } = {},
+  options: { priority?: number; db?: Db; then?: ContextThen } = {},
 ): EnqueueResult {
+  const then: ContextThen = options.then ?? 'draft';
   return enqueue(
     ENRICH_CONTEXT,
     {
-      payload: { taskId },
+      payload: { taskId, then },
       dedupeKey: `${ENRICH_CONTEXT}:${taskId}`,
       // Ahead of drafting, which is priority 5: this is the thing drafting is
       // waiting for, and a queue drain that ran them the other way round would
@@ -63,6 +75,25 @@ export async function enqueueContextThenDraft(
 }
 
 /**
+ * The same, for mail the desk is starting rather than answering.
+ *
+ * A composed task was skipping the lookups entirely: whoever handed the brief
+ * in got a draft written with nothing but the brief, and the reviewer opened a
+ * screen with no card on it — while the identical address arriving as an email
+ * got both. Nothing about a source cares which door the address came through,
+ * so neither does this.
+ */
+export async function enqueueContextThenCompose(
+  taskId: string,
+  options: { db?: Db } = {},
+): Promise<EnqueueResult> {
+  const db = options.db ?? getDb();
+  return (await hasContextSources())
+    ? enqueueEnrichContext(taskId, { db, then: 'compose' })
+    : enqueueCompose(taskId, { db });
+}
+
+/**
  * Get a freshly-ingested task moving.
  *
  * Triage first, which may end the task here — see `handlers/triage`. Reopening
@@ -89,17 +120,23 @@ export const enrichContextHandler: JobHandler = async (payload, context) => {
     return { skipped: task.status };
   }
 
+  const then: ContextThen = value.then === 'compose' ? 'compose' : 'draft';
+  const write = () =>
+    then === 'compose'
+      ? enqueueCompose(taskId, { db: context.db })
+      : enqueueDraftReply(taskId, { db: context.db });
+
   let result;
   try {
     result = await gatherContext(task, { db: context.db });
   } catch (error) {
     // gatherContext already swallows per-source failures, so reaching here
     // means the registry itself is broken. Draft anyway and say so.
-    enqueueDraftReply(taskId, { db: context.db });
+    write();
     throw error;
   }
 
-  enqueueDraftReply(taskId, { db: context.db });
+  write();
 
   return {
     found: result.found,

@@ -9,8 +9,10 @@ import { resetWorkspaceConfig } from '../config/workspace';
 import { openDb, type Db } from '../db';
 import { listJobs } from '../queue/store';
 import {
+  COMPOSE_MESSAGE,
   DRAFT_REPLY,
   ENRICH_CONTEXT,
+  enqueueContextThenCompose,
   enqueueContextThenDraft,
   enqueueForDrafting,
   TRIAGE,
@@ -389,6 +391,53 @@ describe('the enrichment job', () => {
 
     expect(result).toEqual({ skipped: 'sent' });
     expect(listJobs({ type: DRAFT_REPLY }, db)).toHaveLength(0);
+  });
+
+  it('looks the sender up before mail the desk is starting too', async () => {
+    // The composed path used to skip this entirely: the same address arriving
+    // as a review handed in over the API got a blank screen, and arriving as
+    // an email got a card.
+    setContextSources([source('a', BLOCK)]);
+    const t = task();
+    await enqueueContextThenCompose(t.id, { db });
+
+    expect(listJobs({ type: ENRICH_CONTEXT }, db)).toHaveLength(1);
+    expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(0);
+  });
+
+  it('hands a composed task back to composing, not to replying', async () => {
+    setContextSources([source('a', BLOCK)]);
+    const t = task();
+
+    await enrichContextHandler(
+      { taskId: t.id, then: 'compose' },
+      { db, job: { id: 'j', type: ENRICH_CONTEXT } as never },
+    );
+
+    // Down the reply path it would answer a letter nobody sent.
+    expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(1);
+    expect(listJobs({ type: DRAFT_REPLY }, db)).toHaveLength(0);
+  });
+
+  it('composes anyway when every lookup failed', async () => {
+    setContextSources([source('a', null, 'boom')]);
+    const t = task();
+
+    await enrichContextHandler(
+      { taskId: t.id, then: 'compose' },
+      { db, job: { id: 'j', type: ENRICH_CONTEXT } as never },
+    );
+
+    expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(1);
+  });
+
+  it('composes directly when no sources are configured', async () => {
+    setContextSources([]);
+    const t = task();
+    await enqueueContextThenCompose(t.id, { db });
+
+    expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(1);
+    expect(listJobs({ type: ENRICH_CONTEXT }, db)).toHaveLength(0);
   });
 
   it('rejects a payload with no task id, permanently', async () => {

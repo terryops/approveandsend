@@ -3,7 +3,7 @@ import { after } from 'next/server';
 import { requireMachine } from '@/lib/auth/guard';
 import { normaliseTopicSlug } from '@/lib/config/workspace';
 import { isValidEmail } from '@/lib/mail/address';
-import { enqueueCompose } from '@/lib/queue/handlers/compose-message';
+import { enqueueContextThenCompose } from '@/lib/queue/handlers/enrich-context';
 import { nudgeQueue } from '@/lib/queue/nudge';
 import { createTask } from '@/lib/tasks/store';
 
@@ -110,7 +110,7 @@ export async function POST(request: Request): Promise<Response> {
   // person can see it. Re-enqueuing on every sync would rewrite a draft a
   // reviewer is halfway through editing.
   if (!existed) {
-    enqueueCompose(task.id);
+    await enqueueContextThenCompose(task.id);
     // The queue is turned by cron every few minutes, which is fine for mail
     // that arrived on its own. This is a caller that will be looking for a
     // result, so it gets the same kick the compose form gives itself; the guard

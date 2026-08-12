@@ -1,7 +1,11 @@
 import { getDb, type Db } from '../db';
 import { t } from '../i18n';
-import { COMPOSE_MESSAGE, enqueueCompose } from '../queue/handlers/compose-message';
-import { ENRICH_CONTEXT, enqueueForDrafting } from '../queue/handlers/enrich-context';
+import { COMPOSE_MESSAGE } from '../queue/handlers/compose-message';
+import {
+  ENRICH_CONTEXT,
+  enqueueContextThenCompose,
+  enqueueForDrafting,
+} from '../queue/handlers/enrich-context';
 import { DRAFT_REPLY } from '../queue/handlers/draft-reply';
 import { recordEvent } from './events';
 import { getTask, updateTask } from './store';
@@ -154,7 +158,7 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
       } else if (getTask(row.id, db)?.origin === 'composed') {
         // Same repair, the other pipeline. Sending this one down the drafting
         // path would produce a reply to an email nobody sent.
-        enqueueCompose(row.id, { db });
+        await enqueueContextThenCompose(row.id, { db });
         result.requeued += 1;
       } else {
         await enqueueForDrafting(row.id, { db });

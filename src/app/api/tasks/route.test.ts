@@ -11,7 +11,8 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined })
 vi.mock('next/server', () => ({ after: () => {} }));
 
 import { openDb, setDb, type Db } from '@/lib/db';
-import { COMPOSE_MESSAGE } from '@/lib/queue/handlers';
+import { resetContextSources, setContextSources } from '@/lib/context/registry';
+import { COMPOSE_MESSAGE, ENRICH_CONTEXT } from '@/lib/queue/handlers';
 import { listJobs } from '@/lib/queue/store';
 import { getTask, listTasks } from '@/lib/tasks/store';
 import { deskTitle } from '@/lib/tasks/types';
@@ -50,6 +51,10 @@ beforeEach(() => {
   // everything through by design — including these tests, which would then
   // pass while asserting nothing.
   process.env.ADMIN_PASSWORD = 'not-the-machine-token';
+  // Whether this install has any lookups configured decides which job the
+  // route queues, and the answer must not come from the config file of
+  // whichever machine is running the tests.
+  setContextSources([]);
 });
 
 afterEach(() => {
@@ -57,6 +62,7 @@ afterEach(() => {
   db.close();
   delete process.env.CRON_TOKEN;
   delete process.env.ADMIN_PASSWORD;
+  resetContextSources();
 });
 
 describe('POST /api/tasks', () => {
@@ -107,6 +113,22 @@ describe('POST /api/tasks', () => {
     // have it rewritten under them by the next run of somebody's crontab.
     expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(1);
     expect(getTask(first.taskId, db)?.body).toContain('two stars');
+  });
+
+  it('looks the sender up first where there is somewhere to look', async () => {
+    setContextSources([
+      { id: 'crm', label: 'CRM', async lookup() { return null; } },
+    ]);
+
+    const payload = (await (await post(REVIEW)).json()) as { taskId: string };
+
+    // A review handed in over the API is the same person as a review that
+    // arrives as email, and the reviewer should open the same card either way.
+    // The compose job is queued by the lookup when it finishes.
+    expect(listJobs({ type: ENRICH_CONTEXT }, db)).toHaveLength(1);
+    expect(listJobs({ type: COMPOSE_MESSAGE }, db)).toHaveLength(0);
+    expect((listJobs({ type: ENRICH_CONTEXT }, db)[0]?.payload as { taskId: string }).taskId)
+      .toBe(payload.taskId);
   });
 
   it('refuses a hand-in nobody could send or write', async () => {
