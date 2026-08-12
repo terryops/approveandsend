@@ -231,6 +231,7 @@ export const fr: Dictionary = {
   "task.optionsLabel": "Autres façons de répondre",
   "task.optionUnlabelled": "une autre approche",
   "task.optionsEdited": "Le texte est désormais le vôtre. Choisissez un onglet pour revenir à une des options : ce que vous avez écrit est conservé dans les brouillons précédents.",
+  "task.optionsComing": "Recherche d’autres façons de répondre…",
   "compose.title": "Rédiger",
   "compose.lead": "Engager une conversation plutôt que la poursuivre. Rédigé avec les mêmes règles, soumis à la même relecture.",
   "compose.to": "À",

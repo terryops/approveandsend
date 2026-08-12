@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { after } from 'next/server';
 import { Suspense } from 'react';
 
-import { nudgeQueue } from '@/lib/queue';
+import { alternativesKey, isQueued, nudgeQueue } from '@/lib/queue';
 
 import { isAdmin, requirePage } from '@/lib/auth/guard';
 import { letterHtml, type InlineImage, type Letter } from '@/lib/mail/incoming';
@@ -666,6 +666,17 @@ export default async function TaskPage({
   // represent has been made.
   const alternatives = sent || sending ? [] : listAlternatives(task.id);
 
+  // Empty because none have been written yet, which is not the same as none.
+  //
+  // A redraft clears the old set — they described a reply that is no longer in
+  // the box — and the new one is a model call behind the draft that triggered
+  // it. So for a few minutes after a redraft lands there is a draft and no
+  // strip, and without this the screen never says otherwise: the task is
+  // `awaiting_review`, nothing is polling, and the options arrive in the
+  // database for a page that will not be rendered again.
+  const optionsComing =
+    !sent && !sending && alternatives.length === 0 && isQueued(alternativesKey(task.id));
+
   // Which tab is lit.
   //
   // Matched on the text rather than stored on the row, and the mismatch case is
@@ -1241,6 +1252,10 @@ export default async function TaskPage({
             gap back to five seconds instead of leaving a written draft sitting
             behind a minute of patience earned while nothing was happening. See
             the poller. */}
+        {/* Not in flight, but still waiting on something: the options. Slower
+            and with a lower ceiling than the draft wait, because what lands is
+            a strip of three buttons rather than the reply itself. */}
+        {!inFlight && optionsComing && <TaskPoller intervalMs={4000} slowTo={20_000} />}
         {inFlight &&
           (working ? (
             // A job this browser just started, on the screen it started it
@@ -1595,6 +1610,15 @@ export default async function TaskPage({
               fault rather than as an answer to "where am I". */}
           {alternatives.length > 0 && !selected && (
             <p className="meta alt-note">{t('task.optionsEdited')}</p>
+          )}
+          {/* Where the strip will be. Said out loud so that "no options" and
+              "options in a minute" are not the same blank space — the reviewer
+              who would have waited for them is the one who cannot tell. */}
+          {optionsComing && (
+            <p className="meta alt-note" aria-live="polite">
+              <span className="spinner" aria-hidden="true" />
+              {t('task.optionsComing')}
+            </p>
           )}
           {/* Whose words these are, and how they will be rendered — the two
               things a reviewer needs to know before reading a single line of the

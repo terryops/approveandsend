@@ -1,6 +1,7 @@
 import { getDb, type Db } from '../../db';
 import { draftReply } from '../../drafting/draft';
 import { listRules } from '../../rules/store';
+import { clearAlternatives } from '../../tasks/alternatives';
 import { recordEvent } from '../../tasks/events';
 import { listMessages } from '../../tasks/messages';
 import { gradeRisk } from '../../tasks/risk';
@@ -132,6 +133,15 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     // Now that both halves exist — their mail and our answer — one job can
     // render the pair for whoever has to read it.
     enqueueForTranslation(taskId, { db: context.db });
+
+    // The set that was on the screen a moment ago belonged to the draft this
+    // one just replaced, and tab A of it *was* that draft. Left in place it
+    // spends the next few minutes — the whole of the new set's model call —
+    // offering the reviewer who pressed Redraft the reply they had just
+    // rejected, labelled as the one in the box. Cleared here rather than when
+    // the job started, so a drafting attempt that fails leaves the options that
+    // still match the draft the reviewer is looking at.
+    clearAlternatives(taskId, context.db);
 
     // The other ways this could have been answered, generated now rather than
     // when somebody asks.

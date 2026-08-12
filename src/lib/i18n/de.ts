@@ -231,6 +231,7 @@ export const de: Dictionary = {
   "task.optionsLabel": "Andere Antwortmöglichkeiten",
   "task.optionUnlabelled": "ein anderes Vorgehen",
   "task.optionsEdited": "Im Feld steht jetzt dein eigener Text. Über einen Tab kommst du zu einer der Optionen zurück; was du geschrieben hast, bleibt in den früheren Entwürfen.",
+  "task.optionsComing": "Andere Möglichkeiten für diese Antwort werden gesucht…",
   "compose.title": "Verfassen",
   "compose.lead": "Ein Gespräch beginnen statt fortsetzen. Nach denselben Regeln entworfen, durch dieselbe Prüfung.",
   "compose.to": "An",

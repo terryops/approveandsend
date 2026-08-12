@@ -231,6 +231,7 @@ export const ja: Dictionary = {
   "task.optionsLabel": "別の答え方",
   "task.optionUnlabelled": "別の対応",
   "task.optionsEdited": "いまの本文はあなたが直したものです。案に戻すには上のタブを選んでください。書いた内容は以前の下書きに残ります。",
+  "task.optionsComing": "他の答え方を考えています…",
   "compose.title": "新規作成",
   "compose.lead": "返信ではなく、こちらから送るメールです。同じルールで下書きされ、同じ審査キューに入ります。",
   "compose.to": "宛先",

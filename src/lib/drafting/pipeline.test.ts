@@ -21,10 +21,12 @@ import {
   DRAFT_REPLY,
   draftReplyHandler,
   SUGGEST_ALTERNATIVES,
+  alternativesKey,
 } from '../queue/handlers';
-import { enqueue, listJobs } from '../queue/store';
+import { enqueue, isQueued, listJobs } from '../queue/store';
 import { createWorker } from '../queue/worker';
 import { createRule, listRules } from '../rules/store';
+import { listAlternatives, replaceAlternatives } from '../tasks/alternatives';
 import { addMessage, countMessages, listMessages } from '../tasks/messages';
 import { countTasksByStatus, createTask, deleteTask, getTask, listTasks, markOpened, updateTask } from '../tasks/store';
 import { listVersions } from '../tasks/versions';
@@ -509,6 +511,50 @@ describe('the reviewer steering a redraft', () => {
     await worker.runOnce();
 
     expect(prompts[1]!).toContain('Answer the second question too');
+  });
+
+  it('drops the options that described the draft it just replaced', async () => {
+    const { task } = createTask(INCOMING, db);
+    // The set as it stands on a redraft: tab A is the reply in the box, which
+    // this run is about to throw away.
+    replaceAlternatives(
+      task.id,
+      [
+        { strategy: 'what we said', body: 'The reply the reviewer just rejected.' },
+        { strategy: 'refund now', body: 'Refunded in full.' },
+      ],
+      db,
+    );
+    enqueueDraftReply(task.id, { critic: false, db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+    queued.push(GOOD_DRAFT);
+    await worker.runOnce();
+
+    expect(listAlternatives(task.id, db)).toEqual([]);
+    // And a fresh set is on its way, so the strip comes back rather than
+    // staying gone.
+    expect(isQueued(alternativesKey(task.id), db)).toBe(true);
+  });
+
+  it('keeps the options when the drafting attempt fails, because the draft they match is still there', async () => {
+    const { task } = createTask(INCOMING, db);
+    replaceAlternatives(task.id, [{ strategy: 'what we said', body: 'Still in the box.' }], db);
+    enqueueDraftReply(task.id, { critic: false, db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+    queued.push('not json at all');
+    await worker.runOnce();
+
+    expect(listAlternatives(task.id, db).map(option => option.body)).toEqual(['Still in the box.']);
   });
 });
 

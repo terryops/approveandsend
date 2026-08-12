@@ -16,6 +16,11 @@ import { PermanentJobError, type JobHandler } from '../types';
 
 export const SUGGEST_ALTERNATIVES = 'suggest-alternatives';
 
+/** One set in flight per task, and the key the review screen watches for it. */
+export function alternativesKey(taskId: string): string {
+  return `${SUGGEST_ALTERNATIVES}:${taskId}`;
+}
+
 export interface SuggestAlternativesPayload {
   taskId: string;
 }
@@ -30,7 +35,7 @@ export function enqueueAlternatives(
       payload: { taskId } satisfies SuggestAlternativesPayload,
       // One set in flight per task, so a redraft that lands while the previous
       // set is still in flight does not pay for two.
-      dedupeKey: `${SUGGEST_ALTERNATIVES}:${taskId}`,
+      dedupeKey: alternativesKey(taskId),
       // Behind drafting, which it used to sit in front of. That was right while
       // this was a button — somebody was on the page waiting for it. Now it
       // runs for every mail automatically and nobody is waiting, so jumping the

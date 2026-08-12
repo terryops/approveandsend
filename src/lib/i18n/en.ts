@@ -256,6 +256,7 @@ export const en = {
   "task.optionsLabel": "Other ways to answer",
   "task.optionUnlabelled": "another approach",
   "task.optionsEdited": "The box is your own text now. Pick a tab to go back to one of the options — what you have written is kept in earlier drafts.",
+  "task.optionsComing": "Working out the other ways this could be answered…",
   "compose.title": "Compose",
   "compose.lead": "Start a conversation instead of continuing one. It is drafted against the same rules and goes to the same review queue.",
   "compose.to": "To",

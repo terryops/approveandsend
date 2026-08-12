@@ -417,6 +417,26 @@ export function hasLiveDuplicate(id: string, db: Db = getDb()): boolean {
 }
 
 /**
+ * Whether a job with this dedupe key is still coming.
+ *
+ * For a screen that has to say "not yet" rather than "none": an empty tab strip
+ * on a task whose options are three minutes into a model call looks exactly
+ * like a task that was never given any, and the reviewer sends the first draft
+ * believing there was nothing else on offer.
+ */
+export function isQueued(dedupeKey: string, db: Db = getDb()): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM jobs
+          WHERE dedupe_key = ? AND status IN ('pending', 'processing')
+          LIMIT 1`,
+      )
+      .get(dedupeKey) !== undefined
+  );
+}
+
+/**
  * Takes a job away from whatever claimed it and puts it back on the queue.
  *
  * For the job that says `processing` and is not: the worker was killed, the

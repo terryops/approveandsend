@@ -231,6 +231,7 @@ export const zhCN: Dictionary = {
   "task.optionsLabel": "其他回复方式",
   "task.optionUnlabelled": "另一种处理方式",
   "task.optionsEdited": "现在框里是你自己改过的内容。想回到某个方案就点上面的标签，你写的会存进「早前的草稿」。",
+  "task.optionsComing": "正在想其他的回复方案…",
   "compose.title": "写邮件",
   "compose.lead": "主动发起一封邮件，而不是回复。同样按规则起草，同样进入审核队列。",
   "compose.to": "收件人",
