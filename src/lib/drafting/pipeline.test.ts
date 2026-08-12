@@ -570,6 +570,14 @@ describe('conversation history in the prompt', () => {
     expect(prompt).toContain("The customer's email");
   });
 
+  it('tells the critic who the mail is from, so a greeting is not read as invented', async () => {
+    queued.push(GOOD_DRAFT, JSON.stringify({ approved: true, issues: [] }));
+
+    await draftReply(createTask(INCOMING, db).task, { db, critic: true });
+
+    expect(prompts[1]).toContain('From: Alex Customer <customer@example.com>');
+  });
+
   it('gives the critic the thread too, so it can catch a contradiction', async () => {
     queued.push(GOOD_DRAFT, JSON.stringify({ approved: true, issues: [] }));
     const { task } = createTask(INCOMING, db);

@@ -611,11 +611,17 @@ async function criticise(
   // already sent.
   filesBlock: string,
 ): Promise<Critique | undefined> {
+  // The sender line is on this prompt for one reason: without it the critic
+  // cannot see the customer's name, and a draft that opens "Hi ChSey" gets
+  // written up as a fabricated name — the one thing on the mail the drafter had
+  // straight from the envelope. A critic that flags what it merely cannot see
+  // costs more than it catches; the reviewer stops reading the issues.
   const prompt = `You are reviewing a support reply before a human sees it. You did not write it.
 
 ${describeWorkspace(workspace)}${catalogueBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
 
 ## The customer's ${threadBlock ? 'latest message' : 'email'}
+From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
 Subject: ${task.subject}
 
 ${clip(htmlToText(task.body), MAX_BODY_CHARS)}${filesBlock}
