@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 
 import { getDb, type Db } from '../db';
-import { recordEvent } from '../tasks/events';
+import { IMPORTED_SEND, recordEvent } from '../tasks/events';
 import { addMessage } from '../tasks/messages';
 import { createTask, updateTask } from '../tasks/store';
 
@@ -310,7 +310,7 @@ function importRow(row: LegacyRow, options: LegacyImportOptions, db: Db): RowOut
   // one that is true. The name on it is the exception: that one does map, and
   // it is the only part of the trail anybody looks up.
   recordEvent(task.id, 'sent', {
-    detail: 'imported from the previous system',
+    detail: IMPORTED_SEND,
     actor: approver(done),
     db,
   });

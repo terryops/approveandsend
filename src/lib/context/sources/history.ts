@@ -1,5 +1,6 @@
 import { getDb, type Db } from '../../db';
 import { tokenize } from '../../rules/similarity';
+import { IMPORTED_SEND } from '../../tasks/events';
 import type { ContextBlock, ContextSource, LookupSubject } from '../types';
 
 /**
@@ -23,6 +24,10 @@ interface PriorRow {
   sent_at: string | null;
   draft: string | null;
   final_reply: string | null;
+  /** 'composed' means we started it. Nobody wrote to us. */
+  origin: string;
+  /** 1 where the send is an archive record rather than something we did. */
+  imported: number;
 }
 
 const LOOKBACK = 6;
@@ -37,6 +42,10 @@ function kept(draft: string, sent: string): number {
   for (const token of after) if (before.has(token)) shared += 1;
 
   return shared / before.size;
+}
+
+function times(count: number): string {
+  return count === 1 ? 'once' : `${count} times`;
 }
 
 function daysSince(iso: string | null): number | null {
@@ -57,17 +66,21 @@ function ago(days: number): string {
 export function priorReplies(email: string, exceptTaskId: string, db: Db = getDb()): PriorRow[] {
   return db
     .prepare(
-      `SELECT id, subject, sent_at, draft, final_reply
-         FROM tasks
-        WHERE status = 'sent'
-          AND id != ?
+      `SELECT t.id, t.subject, t.sent_at, t.draft, t.final_reply, t.origin,
+              EXISTS (
+                SELECT 1 FROM task_events e
+                 WHERE e.task_id = t.id AND e.action = 'sent' AND e.detail = ?
+              ) AS imported
+         FROM tasks t
+        WHERE t.status = 'sent'
+          AND t.id != ?
           -- COLLATE NOCASE rather than LOWER() on both sides: same answer,
           -- but it can use the index, which LOWER(from_address) cannot.
-          AND from_address = ? COLLATE NOCASE
-        ORDER BY COALESCE(sent_at, created_at) DESC
+          AND t.from_address = ? COLLATE NOCASE
+        ORDER BY COALESCE(t.sent_at, t.created_at) DESC
         LIMIT ?`,
     )
-    .all(exceptTaskId, email.trim(), LOOKBACK) as PriorRow[];
+    .all(IMPORTED_SEND, exceptTaskId, email.trim(), LOOKBACK) as PriorRow[];
 }
 
 export function describeHistory(rows: PriorRow[]): ContextBlock | null {
@@ -79,10 +92,38 @@ export function describeHistory(rows: PriorRow[]): ContextBlock | null {
   if (!latest) return null;
 
   const days = daysSince(latest.sent_at);
-  const sentences: string[] = [
-    `We have replied to them ${rows.length === 1 ? 'once' : `${rows.length} times`} before` +
-      (days === null ? '.' : `, most recently ${ago(days)}.`),
-  ];
+
+  // Two things were being counted as one, and both of them overstated the
+  // relationship. A mail the desk started is not a reply — saying "we have
+  // replied to them thrice" about somebody who has never written to us
+  // invites a draft that apologises for going over old ground with a stranger.
+  const started = rows.filter(row => row.origin === 'composed').length;
+  const answered = rows.length - started;
+  const when = days === null ? '' : `, most recently ${ago(days)}`;
+
+  const sentences: string[] = [];
+  if (started === 0) {
+    sentences.push(`We have replied to them ${times(answered)} before${when}.`);
+  } else if (answered === 0) {
+    sentences.push(
+      `We have written to them ${times(started)} before${when} — they did not write to us, we started it.`,
+    );
+  } else {
+    sentences.push(
+      `We have ${rows.length} earlier messages with them${when}: ${times(answered)} answering them, ${times(started)} where we wrote first.`,
+    );
+  }
+
+  // The count is what the database holds, which is not the same as what the
+  // customer received. Records carried over from an older desk say an answer
+  // was approved; whether it was ever delivered is not in them, and a reply
+  // that refers to a mail nobody got reads as a lie about having helped.
+  const imported = rows.filter(row => row.imported).length;
+  if (imported > 0) {
+    sentences.push(
+      `${imported === rows.length ? 'Those are' : `${imported} of those are`} records carried over from the desk that ran before this one, which recorded answers as approved rather than as delivered — so do not tell them what we have already sent, or refer to it as though they read it.`,
+    );
+  }
 
   if (latest.subject.trim()) {
     sentences.push(`That exchange was about "${latest.subject.trim()}".`);
@@ -101,8 +142,22 @@ export function describeHistory(rows: PriorRow[]): ContextBlock | null {
   return {
     title: 'Earlier conversations',
     fields: [
-      { label: 'Replies sent', value: String(rows.length) },
-      ...(days === null ? [] : [{ label: 'Last reply', value: ago(days) }]),
+      { label: started === 0 ? 'Replies sent' : 'Messages sent', value: String(rows.length) },
+      ...(days === null ? [] : [{ label: started === 0 ? 'Last reply' : 'Last message', value: ago(days) }]),
+      // On the card as well as in the prompt: the reviewer is the one who can
+      // go and check the mailbox, and the number is only trustworthy to
+      // whoever knows where it came from.
+      ...(imported === 0
+        ? []
+        : [
+            {
+              label: 'Recorded by',
+              value:
+                imported === rows.length
+                  ? 'the previous desk — approved, delivery unconfirmed'
+                  : `${imported} of ${rows.length} by the previous desk`,
+            },
+          ]),
       ...(latest.subject.trim()
         ? [{ label: 'About', value: latest.subject.trim(), href: `/tasks/${latest.id}` }]
         : []),

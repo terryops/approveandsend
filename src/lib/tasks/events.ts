@@ -34,6 +34,17 @@ export const TASK_ACTIONS = [
 
 export type TaskAction = (typeof TASK_ACTIONS)[number];
 
+/**
+ * The detail on a `sent` event that came out of an archive rather than out of
+ * an actual send.
+ *
+ * A string two modules agree on, because the difference matters downstream: an
+ * imported row says the old desk approved an answer, and approved is not
+ * delivered. Anything that tells the model what this customer has already
+ * heard from us has to be able to tell the two apart.
+ */
+export const IMPORTED_SEND = 'imported from the previous system';
+
 export interface TaskEvent {
   id: string;
   taskId: string;

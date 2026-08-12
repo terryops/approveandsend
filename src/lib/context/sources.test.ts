@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { getWorkspaceConfig, resetWorkspaceConfig } from '../config/workspace';
 import { openDb, setDb, type Db } from '../db';
+import { IMPORTED_SEND, recordEvent } from '../tasks/events';
 import { createTask, updateTask } from '../tasks/store';
 import { listContextSources, resetContextSources } from './registry';
 import { buildDeclarativeSource, fill, readPath, type DeclarativeSpec } from './sources/declarative';
@@ -491,6 +492,15 @@ describe('what we have already said to this person', () => {
     return task.id;
   }
 
+  /** A row as `priorReplies` hands it over: answered, sent by this desk. */
+  function row(over: Partial<Parameters<typeof describeHistory>[0][number]> = {}) {
+    return {
+      id: 't1', subject: 'Refund status', sent_at: daysAgo(3),
+      draft: 'a', final_reply: 'a', origin: 'inbound', imported: 0,
+      ...over,
+    };
+  }
+
   it('says nothing about a first-time sender', async () => {
     const { task } = createTask({ subject: 'Hi', fromAddress: 'new@example.com', body: 'x' }, db);
     // The absence of the card is the message, and it costs no tokens.
@@ -509,8 +519,8 @@ describe('what we have already said to this person', () => {
 
   it('counts the replies and dates the most recent one', () => {
     const block = describeHistory([
-      { id: 't1', subject: 'Refund status', sent_at: daysAgo(3), draft: 'a', final_reply: 'a' },
-      { id: 't2', subject: 'Login trouble', sent_at: daysAgo(40), draft: 'a', final_reply: 'a' },
+      row(),
+      row({ id: 't2', subject: 'Login trouble', sent_at: daysAgo(40) }),
     ])!;
 
     expect(block.prompt).toContain('replied to them 2 times before, most recently 3 days ago');
@@ -520,8 +530,8 @@ describe('what we have already said to this person', () => {
 
   it('warns when this person\'s drafts keep getting rewritten', () => {
     const block = describeHistory([
-      { id: 't1', subject: 'a', sent_at: daysAgo(1), draft: 'the draft we generated', final_reply: 'totally unrelated wording entirely' },
-      { id: 't2', subject: 'b', sent_at: daysAgo(2), draft: 'another generated draft', final_reply: 'something else altogether different' },
+      row({ subject: 'a', sent_at: daysAgo(1), draft: 'the draft we generated', final_reply: 'totally unrelated wording entirely' }),
+      row({ id: 't2', subject: 'b', sent_at: daysAgo(2), draft: 'another generated draft', final_reply: 'something else altogether different' }),
     ])!;
 
     expect(block.prompt).toContain('usually been rewritten before sending (2 of 2)');
@@ -529,11 +539,77 @@ describe('what we have already said to this person', () => {
 
   it('stays quiet when the drafts were sent as written', () => {
     const block = describeHistory([
-      { id: 't1', subject: 'a', sent_at: daysAgo(1), draft: 'the draft we generated', final_reply: 'the draft we generated' },
-      { id: 't2', subject: 'b', sent_at: daysAgo(2), draft: 'the draft we generated', final_reply: 'the draft we generated!' },
+      row({ subject: 'a', sent_at: daysAgo(1), draft: 'the draft we generated', final_reply: 'the draft we generated' }),
+      row({ id: 't2', subject: 'b', sent_at: daysAgo(2), draft: 'the draft we generated', final_reply: 'the draft we generated!' }),
     ])!;
 
     expect(block.prompt).not.toContain('rewritten');
+  });
+
+  it('reads how the mail started and where the record came from, out of the database', () => {
+    // The wording tests above build rows by hand; this one is the wiring —
+    // both facts live in different tables, and one of them in an event.
+    const { task } = createTask(
+      { origin: 'composed', subject: 'Outage', fromAddress: 'pat@example.com', body: 'x' },
+      db,
+    );
+    updateTask(task.id, { status: 'sent', sentAt: daysAgo(2) }, db);
+    recordEvent(task.id, 'sent', { detail: IMPORTED_SEND, db });
+
+    expect(priorReplies('pat@example.com', 'other', db)[0]).toMatchObject({
+      origin: 'composed',
+      imported: 1,
+    });
+  });
+
+  it('does not call a mail we started a reply to them', () => {
+    // The bad case this fixes: a desk that writes to people first — outage
+    // notices, review follow-ups — was told it had "replied 3 times" to
+    // somebody who has never written to us, and drafted accordingly.
+    const block = describeHistory([
+      row({ origin: 'composed' }),
+      row({ id: 't2', origin: 'composed', sent_at: daysAgo(40) }),
+    ])!;
+
+    expect(block.prompt).toContain('We have written to them 2 times before');
+    expect(block.prompt).toContain('they did not write to us, we started it');
+    expect(block.prompt).not.toContain('replied');
+    expect(block.fields).toContainEqual({ label: 'Messages sent', value: '2' });
+  });
+
+  it('counts the two kinds separately when there is one of each', () => {
+    const block = describeHistory([row(), row({ id: 't2', origin: 'composed' })])!;
+
+    expect(block.prompt).toContain('2 earlier messages with them');
+    expect(block.prompt).toContain('once answering them, once where we wrote first');
+  });
+
+  it('says when the record came from the old desk rather than from a send', () => {
+    // An imported row means the previous system approved an answer. Whether it
+    // reached the customer is not in the archive, and roughly a fifth of them
+    // never did — so the model must not write as though they had read it.
+    const block = describeHistory([row({ imported: 1 })])!;
+
+    expect(block.prompt).toContain('carried over from the desk that ran before this one');
+    expect(block.prompt).toContain('do not tell them what we have already sent');
+    expect(block.fields).toContainEqual({
+      label: 'Recorded by',
+      value: 'the previous desk — approved, delivery unconfirmed',
+    });
+  });
+
+  it('counts the imported ones where only some are', () => {
+    const block = describeHistory([row({ imported: 1 }), row({ id: 't2' })])!;
+
+    expect(block.prompt).toContain('1 of those are records carried over');
+    expect(block.fields).toContainEqual({ label: 'Recorded by', value: '1 of 2 by the previous desk' });
+  });
+
+  it('says nothing about provenance for mail this desk sent itself', () => {
+    const block = describeHistory([row()])!;
+
+    expect(block.prompt).not.toContain('carried over');
+    expect(block.fields.map(f => f.label)).not.toContain('Recorded by');
   });
 
   it('needs no credentials, and so is always on', async () => {
