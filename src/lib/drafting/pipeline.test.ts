@@ -405,8 +405,11 @@ describe('the reviewer steering a redraft', () => {
     const prompt = prompts[0]!;
     expect(prompt).toContain('What the reviewer said about the last attempt');
     expect(prompt).toContain('the refund is already on its way');
-    // Precedence stated rather than inferred: a note cannot overrule a rule.
-    expect(prompt).toContain('unless a\nrule above forbids it');
+    // Precedence stated rather than inferred, and it runs the reviewer's way:
+    // the person looking at this customer beats a rule written for the general
+    // case. Without this, a note asking for something the rulebook forbids was
+    // silently dropped and the same draft came back.
+    expect(prompt).toContain('the instruction wins');
     // Last thing before the email, which is what makes it the most specific
     // instruction in the prompt.
     expect(prompt.indexOf('What the reviewer said')).toBeLessThan(
@@ -492,6 +495,19 @@ describe('the reviewer steering a redraft', () => {
     const critic = prompts[1]!;
     expect(critic).toContain('Stop apologising twice');
     expect(critic).toContain('whether it actually did what the reviewer asked for');
+    // And told not to undo it. The critic holds the same rulebook as the
+    // drafter, so without this the second pass edited an honoured note back out
+    // and the reviewer saw the rule win anyway — one pass later.
+    expect(critic).toContain("The reviewer's instruction outranks the rules");
+  });
+
+  it('does not lecture the critic about precedence when there is no note', async () => {
+    queued.push(GOOD_DRAFT, JSON.stringify({ approved: true, issues: [] }));
+    const { task } = createTask(INCOMING, db);
+
+    await draftReply(task, { db, critic: true });
+
+    expect(prompts[1]!).not.toContain("The reviewer's instruction outranks");
   });
 
   it('survives a retry, because it is read off the task and not the payload', async () => {

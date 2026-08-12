@@ -138,10 +138,23 @@ export interface Critique extends StoredCritique {
  *
  * Last in the prompt, immediately before the email, because it is the most
  * specific thing in it: a human who has read this exact draft and said what is
- * wrong with it outranks anything the desk knows in general. It does not
- * outrank the rules — a note asking for something the rulebook forbids is the
- * one case where a reviewer should have to change the rule — and the wording
- * says so, rather than leaving the model to work out the precedence.
+ * wrong with it outranks anything the desk knows in general — the rules
+ * included.
+ *
+ * That precedence was the other way round, and it made Redraft unreliable in
+ * the one case a reviewer most needs it. The rulebook is written for the
+ * general case and a reviewer is looking at the particular one: "say we have
+ * added credits to their account" lost to a rule saying this kind of mail
+ * promises no compensation, three times running, with nothing on the screen to
+ * say why — the desk simply handed back the same draft. A reviewer who has to
+ * go and edit the rulebook to get one sentence into one reply stops using the
+ * button.
+ *
+ * The exchange is real: an instruction typed into that box can now put anything
+ * in a draft. It is bounded by who can type it — the reviewer is the person who
+ * then decides whether to send it — and by the note being kept with the version
+ * it produced, so an override is on the record rather than inferred later from
+ * a draft that broke a rule.
  */
 function buildSteer(steer: string): string {
   const trimmed = steer.trim();
@@ -150,9 +163,10 @@ function buildSteer(steer: string): string {
   return `
 
 ## What the reviewer said about the last attempt
-A human read the previous draft and asked for this. Do what it says, unless a
-rule above forbids it — in which case follow the rule and leave the rest of the
-note honoured:
+A human read the previous draft and asked for this. It is an instruction, not a
+suggestion. Where it contradicts a rule above, the instruction wins — they can
+see this customer and this draft, which the rules cannot — and the rest of the
+rulebook still binds:
 
 ${clip(trimmed, 2000)}`;
 }
@@ -632,7 +646,12 @@ ${draft}
 Check it for: claims that are not supported by the facts above, anything on the
 never-promise list, breaches of the rules, the wrong language, tone that does
 not match${catalogueBlock ? ', any product, plan or price that does not appear exactly as written in the catalogue above — a number that is close is a wrong number' : ''}${threadBlock ? ', and anything that contradicts or repeats what we already said in this thread' : ''}${steerBlock ? ', and whether it actually did what the reviewer asked for' : ''}${filesBlock ? ', and whether it asks for a file they already attached' : ''}. Ignore matters of taste — a reply you would have phrased
-differently is not a problem.
+differently is not a problem.${steerBlock ? `
+
+The reviewer's instruction outranks the rules and the never-promise list. Doing
+what it says is not an issue to raise and not something to edit back out, even
+where a rule above forbids it: that call has been made by the person who decides
+whether this reply goes. Judge the rest of the draft as usual.` : ''}
 
 ## Two languages, and which is which
 The reply is for the customer and stays in their language, so \`revised\` is
