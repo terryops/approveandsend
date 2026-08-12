@@ -255,9 +255,16 @@ describe('the prompt block', () => {
     expect(text).not.toContain('Company');
   });
 
-  it('leaves out display-only blocks', () => {
+  it('reads a block that is all values and no prose', () => {
     const text = describeContext([
       { title: 'Ticket', fields: [{ label: 'ID', value: 'T-1' }], prompt: '', taskId: 't', sourceId: 'a', label: 'T', createdAt: '' },
+    ]);
+    expect(text).toContain('### Ticket\nID: T-1');
+  });
+
+  it('leaves out a block with nothing in it either way', () => {
+    const text = describeContext([
+      { title: 'Ticket', fields: [], prompt: '', taskId: 't', sourceId: 'a', label: 'T', createdAt: '' },
     ]);
     expect(text).toBe('');
   });

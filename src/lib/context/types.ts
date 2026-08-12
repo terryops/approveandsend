@@ -42,8 +42,9 @@ export interface ContextBlock {
    *
    * "Pro subscriber since March 2024, renews 12 August, has paid $418 in
    * total" beats the JSON it came from, and costs fewer tokens than it too.
-   * Return an empty string to show the reviewer something without spending
-   * prompt on it.
+   * Empty is fine where the `fields` already say it plainly — they are in the
+   * prompt as well, and a sentence that only restates them is one both a
+   * reviewer and a model read twice.
    */
   prompt: string;
   /** Opens the record itself. */

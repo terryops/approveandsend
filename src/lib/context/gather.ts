@@ -71,18 +71,22 @@ export async function gatherContext(task: Task, options: GatherOptions = {}): Pr
 /**
  * The block of the drafting prompt that says who this person is.
  *
- * Sources that returned display-only fields contribute nothing here, which is
- * the point of them being separable: an internal ticket id is worth showing a
- * human and worth no tokens at all.
+ * A source contributes whatever it has: its values, its prose, or both. A card
+ * with values and no sentence still says something — "Plan: Free, registered in
+ * July" is a fact whether or not the source felt like writing it out — and a
+ * source should not have to pad a paragraph into existence to get its values
+ * read. Only a source that returned nothing at all costs nothing at all.
  */
 export function describeContext(blocks: StoredContext[]): string {
-  const usable = blocks.filter(block => block.prompt.trim() !== '');
-  if (usable.length === 0) return '';
+  const said = blocks
+    .map(block => ({ title: block.title, body: describeFields(block.fields) + block.prompt.trim() }))
+    .filter(block => block.body.trim() !== '');
+  if (said.length === 0) return '';
 
   return (
     '\n\n## What we already know about this person\n' +
     'From our own records, not from their email. Treat it as true, and do not repeat it back to them unprompted.\n' +
-    usable.map(block => `\n### ${block.title}\n${describeFields(block.fields)}${block.prompt}`).join('')
+    said.map(block => `\n### ${block.title}\n${block.body}`).join('')
   );
 }
 

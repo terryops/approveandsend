@@ -329,8 +329,10 @@ export default {
         { label: 'Owner', value: account.owner, href: `https://crm.example/u/${account.owner}` },
         { label: 'Open tickets', value: String(account.openTickets) },
       ],
-      // Interpreted, not dumped. Return '' to show the reviewer something
-      // without spending any prompt on it.
+      // Interpreted, not dumped: say what `tier: 2` means rather than leaving
+      // the model to guess. The fields above go into the prompt too, so a
+      // sentence that only restates them earns nothing — return '' and let
+      // them speak for themselves.
       prompt: `Enterprise account with ${account.openTickets} open tickets; their account manager is ${account.owner}.`,
     };
   },
