@@ -232,6 +232,7 @@ export const es: Dictionary = {
   "task.optionUnlabelled": "otro enfoque",
   "task.optionsEdited": "Ahora el cuadro es tu propio texto. Elige una pestaña para volver a una de las opciones; lo que has escrito se guarda en los borradores anteriores.",
   "task.optionsComing": "Buscando otras formas de responder a esto…",
+  "task.optionRedrafted": "tu reescritura",
   "compose.title": "Redactar",
   "compose.lead": "Inicia una conversación en lugar de continuarla. Se redacta con las mismas reglas y pasa por la misma revisión.",
   "compose.to": "Para",

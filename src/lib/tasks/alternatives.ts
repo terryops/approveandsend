@@ -111,6 +111,63 @@ export function getAlternative(id: string, db: Db = getDb()): Alternative | null
   return row ? mapAlternative(row) : null;
 }
 
+/**
+ * Rewrite one option in place, keeping its letter.
+ *
+ * For a redraft, which is a rewrite of the option in the box and not a request
+ * for a different set: the reviewer sitting on B who asks for it shorter wants
+ * B shorter, and expects to find it under B afterwards — with A and C where
+ * they left them.
+ */
+export function updateAlternativeBody(
+  id: string,
+  body: string,
+  db: Db = getDb(),
+): Alternative | null {
+  const row = db
+    .prepare(`UPDATE draft_alternatives SET body = ? WHERE id = ? RETURNING *`)
+    .get(body.trim(), id) as AlternativeRow | undefined;
+  return row ? mapAlternative(row) : null;
+}
+
+/**
+ * Add one more, under the next free letter.
+ *
+ * The case is a redraft of something that is not on the strip — the reviewer
+ * edited by hand, or asked for a rewrite of a reply that predates the set. The
+ * result is a genuine fourth approach, and dropping it would leave the strip
+ * claiming to hold every version of this reply while the one in the box is
+ * missing. Null when the letters run out; five is already more than anybody
+ * chooses between.
+ */
+export function addAlternative(
+  taskId: string,
+  option: { strategy: string; body: string },
+  db: Db = getDb(),
+): Alternative | null {
+  const body = option.body.trim();
+  if (!body) return null;
+
+  const taken = new Set(listAlternatives(taskId, db).map(existing => existing.label));
+  const label = LABELS.find(candidate => !taken.has(candidate));
+  if (!label) return null;
+
+  const row: AlternativeRow = {
+    id: randomUUID(),
+    task_id: taskId,
+    label,
+    strategy: option.strategy.trim(),
+    body,
+    created_at: new Date().toISOString(),
+  };
+  db.prepare(
+    `INSERT INTO draft_alternatives (id, task_id, label, strategy, body, created_at)
+     VALUES (@id, @task_id, @label, @strategy, @body, @created_at)`,
+  ).run(row);
+
+  return mapAlternative(row);
+}
+
 /** Used when the reply goes out: nobody needs the roads not taken after that. */
 export function clearAlternatives(taskId: string, db: Db = getDb()): void {
   db.prepare(`DELETE FROM draft_alternatives WHERE task_id = ?`).run(taskId);

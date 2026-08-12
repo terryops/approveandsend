@@ -513,18 +513,18 @@ describe('the reviewer steering a redraft', () => {
     expect(prompts[1]!).toContain('Answer the second question too');
   });
 
-  it('drops the options that described the draft it just replaced', async () => {
+  it('folds a redraft back into the option it was a rewrite of, and leaves the others alone', async () => {
     const { task } = createTask(INCOMING, db);
-    // The set as it stands on a redraft: tab A is the reply in the box, which
-    // this run is about to throw away.
     replaceAlternatives(
       task.id,
       [
-        { strategy: 'what we said', body: 'The reply the reviewer just rejected.' },
+        { strategy: 'answer it now', body: 'The reply the reviewer just rejected.' },
         { strategy: 'refund now', body: 'Refunded in full.' },
       ],
       db,
     );
+    // The box holds option A, which is what pressing Redraft on it means.
+    updateTask(task.id, { draft: 'The reply the reviewer just rejected.' }, db);
     enqueueDraftReply(task.id, { critic: false, db });
 
     const worker = createWorker({
@@ -535,10 +535,47 @@ describe('the reviewer steering a redraft', () => {
     queued.push(GOOD_DRAFT);
     await worker.runOnce();
 
-    expect(listAlternatives(task.id, db)).toEqual([]);
-    // And a fresh set is on its way, so the strip comes back rather than
-    // staying gone.
-    expect(isQueued(alternativesKey(task.id), db)).toBe(true);
+    const options = listAlternatives(task.id, db);
+    expect(options.map(option => [option.label, option.body])).toEqual([
+      ['A', 'We have escalated this and will update you shortly.'],
+      ['B', 'Refunded in full.'],
+    ]);
+    // Its label stays with it, so the tab the reviewer was on is still the tab
+    // they are on.
+    expect(options[0]!.strategy).toBe('answer it now');
+    // And no fresh set: they asked for one option changed, not for the other
+    // two to be replaced by approaches they have not read.
+    expect(isQueued(alternativesKey(task.id), db)).toBe(false);
+  });
+
+  it('adds the redraft as a further option when the reviewer had edited by hand', async () => {
+    const { task } = createTask(INCOMING, db);
+    replaceAlternatives(
+      task.id,
+      [
+        { strategy: 'answer it now', body: 'As generated.' },
+        { strategy: 'refund now', body: 'Refunded in full.' },
+      ],
+      db,
+    );
+    updateTask(task.id, { draft: 'Something I typed myself.' }, db);
+    enqueueDraftReply(task.id, { critic: false, db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+    queued.push(GOOD_DRAFT);
+    await worker.runOnce();
+
+    const options = listAlternatives(task.id, db);
+    expect(options.map(option => option.label)).toEqual(['A', 'B', 'C']);
+    expect(options[2]!.body).toBe('We have escalated this and will update you shortly.');
+    expect(options.map(option => option.body).slice(0, 2)).toEqual([
+      'As generated.',
+      'Refunded in full.',
+    ]);
   });
 
   it('keeps the options when the drafting attempt fails, because the draft they match is still there', async () => {
