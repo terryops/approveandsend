@@ -107,6 +107,12 @@ export interface DraftOptions {
    */
   steer?: string;
   /**
+   * The reply as it currently stands. '' drafts as if there were none.
+   *
+   * Defaults to the task's draft, which is what a redraft is starting from.
+   */
+  previous?: string;
+  /**
    * Override the attached filenames. '' says they attached nothing.
    *
    * Set by the backfill, which learns rules from archived replies: the files
@@ -149,6 +155,44 @@ rule above forbids it — in which case follow the rule and leave the rest of th
 note honoured:
 
 ${clip(trimmed, 2000)}`;
+}
+
+/**
+ * The reply as it stands, on a redraft.
+ *
+ * Without this, Redraft went back to the first version every time: the prompt
+ * was built from the mail, the rules and the note, and nothing in it had ever
+ * seen the draft on the screen. A reviewer who had fixed three sentences by
+ * hand, or picked option B off the strip, and then asked for one more change
+ * got a reply written as though none of that had happened — so the only way to
+ * keep an edit was to stop asking the model for help, which is the product not
+ * working.
+ *
+ * What it is told to do with it depends on whether there is a note. With one,
+ * this is the text to revise and the note says how. Without one, the reviewer
+ * read it and pressed Redraft anyway, which is a verdict: hand back a genuinely
+ * different attempt rather than the same reply with the words moved around.
+ */
+function buildPrevious(previous: string, steered: boolean): string {
+  const trimmed = previous.trim();
+  if (!trimmed) return '';
+
+  const instruction = steered
+    ? `Revise this. It may have been edited by hand or swapped for another
+option, so treat every word of it as chosen on purpose: change what the note
+below asks for and what a rule above requires, and leave the rest alone. Do not
+start over unless the note says to.`
+    : `Somebody read this and asked for it to be written again without saying
+why, which means it did not work. Write a different attempt — a different
+approach or a different structure, not this one reworded. Keep whatever it gets
+right about the facts.`;
+
+  return `
+
+## The reply already on the table
+${instruction}
+
+${clip(trimmed, 4000)}`;
 }
 
 /**
@@ -222,6 +266,8 @@ function buildPrompt(
   threadBlock: string,
   /** What the reviewer asked for on the retry; '' on a first generation. */
   steerBlock: string,
+  /** The draft being replaced; '' on a first generation. */
+  previousBlock: string,
   /** Filenames the customer attached; '' when they attached nothing. */
   filesBlock: string,
 ): string {
@@ -245,7 +291,7 @@ function buildPrompt(
   // prices above the rules, which is the order they are read in: a rule about
   // how to discuss pricing is worth nothing to a model that has already decided
   // what the price is.
-  return `${describeWorkspace(workspace)}${catalogueBlock}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}${steerBlock}
+  return `${describeWorkspace(workspace)}${catalogueBlock}${topicBlock}${rulesBlock}${contextBlock}${threadBlock}${previousBlock}${steerBlock}
 
 ## ${threadBlock ? "The customer's latest message — this is what you are replying to" : "The customer's email"}
 From: ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}
@@ -400,6 +446,7 @@ export interface Assembled {
   contextBlock: string;
   threadBlock: string;
   steerBlock: string;
+  previousBlock: string;
   filesBlock: string;
   /** Rules that went into the prompt. Not yet counted against telemetry. */
   appliedIds: string[];
@@ -437,6 +484,8 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
 
   const appliedIds = [...block.includedIds, ...dropped.rules.map(rule => rule.id)];
 
+  const steer = options.steer ?? task.reviewerNotes ?? '';
+
   return {
     workspace,
     topic: topic || undefined,
@@ -456,7 +505,11 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
     // Read off the task rather than passed in by the caller: a redraft that is
     // retried by the queue, or requeued by the sweep, has to carry the same
     // instruction, and a payload would have lost it on the first retry.
-    steerBlock: buildSteer(options.steer ?? task.reviewerNotes ?? ''),
+    steerBlock: buildSteer(steer),
+    // Read off the task for the same reason the note is: the text a reviewer
+    // is looking at is the one in `draft`, whether the model wrote it, a person
+    // typed it or the alternatives strip put it there.
+    previousBlock: buildPrevious(options.previous ?? task.draft ?? '', steer.trim() !== ''),
     // Names only, and only of the files a person meant to send — see
     // `attachmentSummary`.
     filesBlock: buildFiles(options.files ?? attachmentSummary(listAttachments(task.id, db))),
@@ -471,14 +524,14 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
 export async function draftReply(task: Task, options: DraftOptions = {}): Promise<DraftResult> {
   const db = options.db ?? getDb();
   const {
-    workspace, topic, catalogueBlock, rulesBlock, contextBlock, threadBlock, steerBlock, filesBlock,
-    appliedIds, droppedIds,
+    workspace, topic, catalogueBlock, rulesBlock, contextBlock, threadBlock, steerBlock,
+    previousBlock, filesBlock, appliedIds, droppedIds,
   } = await assemble(task, options);
 
   const raw = await callAI(
     buildPrompt(
       task, workspace, catalogueBlock, rulesBlock, contextBlock, topic,
-      threadBlock, steerBlock, filesBlock,
+      threadBlock, steerBlock, previousBlock, filesBlock,
     ),
     { role: 'drafter' },
   );

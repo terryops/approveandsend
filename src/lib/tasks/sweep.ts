@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { COMPOSE_MESSAGE } from '../queue/handlers/compose-message';
 import {
   ENRICH_CONTEXT,
-  enqueueContextThenCompose,
+  enqueueContextThenWrite,
   enqueueForDrafting,
 } from '../queue/handlers/enrich-context';
 import { DRAFT_REPLY } from '../queue/handlers/draft-reply';
@@ -155,13 +155,13 @@ export async function sweepStuckTasks(options: SweepOptions = {}): Promise<Sweep
           db,
         );
         result.failed += 1;
-      } else if (getTask(row.id, db)?.origin === 'composed') {
-        // Same repair, the other pipeline. Sending this one down the drafting
-        // path would produce a reply to an email nobody sent.
-        await enqueueContextThenCompose(row.id, { db });
-        result.requeued += 1;
       } else {
-        await enqueueForDrafting(row.id, { db });
+        const task = getTask(row.id, db);
+        // Composed work goes down the other pipeline; sending it to the
+        // drafter would produce a reply to an email nobody sent. An inbound
+        // one starts at triage, which is where a freshly-ingested mail starts.
+        if (task?.origin === 'composed') await enqueueContextThenWrite(task, { db });
+        else await enqueueForDrafting(row.id, { db });
         result.requeued += 1;
       }
     } catch (error) {

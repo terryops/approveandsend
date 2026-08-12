@@ -142,6 +142,24 @@ describe('composeMessage', () => {
     expect(prompts[0]).toContain('End the reply the way a letter ends');
   });
 
+  it('carries the note and the mail as it currently stands into a redraft', async () => {
+    // Redraft on a composed mail used to throw both away: the reviewer's edits
+    // and their note went in the box, and the model was handed the original
+    // brief again and wrote the same mail.
+    queued.push(COMPOSED);
+    const task = brief();
+    updateTask(
+      task.id,
+      { draft: 'Sorry about the outage.', reviewerNotes: 'Say what we are doing about it.' },
+      db,
+    );
+
+    await composeMessage(getTask(task.id, db)!, { db });
+
+    expect(prompts[0]).toContain('Sorry about the outage.');
+    expect(prompts[0]).toContain('Say what we are doing about it.');
+  });
+
   it('returns null rather than throwing on an unusable response', async () => {
     queued.push('not json');
 

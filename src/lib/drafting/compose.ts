@@ -37,19 +37,25 @@ export async function composeMessage(
   // The same rulebook the replies are written against. A first-contact mail is
   // where a desk is most likely to promise something it should not: there is
   // no customer question bounding what it can say.
-  const { workspace, catalogueBlock, rulesBlock, contextBlock } = await assemble(task, {
+  const {
+    workspace, catalogueBlock, rulesBlock, contextBlock, steerBlock, previousBlock,
+  } = await assemble(task, {
     ...options,
     // A brief is not a conversation, and there is nothing to classify: what
     // this mail is about is whatever the operator says it is about.
     thread: '',
-    steer: '',
     files: '',
+    // The note and the draft on the table are not blanked, though they were.
+    // A composed mail is reviewed on the same screen as a reply, with the same
+    // box under it and the same Redraft button, and a button that throws away
+    // both what the reviewer typed and what they had edited is a button that
+    // does the wrong thing on half the queue.
   });
 
   const prompt = `You are writing an email on behalf of a support desk. This is not a
 reply — nobody has written to us. Somebody here has decided to get in touch.
 
-${describeWorkspace(workspace)}${catalogueBlock}${rulesBlock}${contextBlock}
+${describeWorkspace(workspace)}${catalogueBlock}${rulesBlock}${contextBlock}${previousBlock}${steerBlock}
 
 ## Who it is going to
 ${task.fromName ? `${task.fromName} <${task.fromAddress}>` : task.fromAddress}

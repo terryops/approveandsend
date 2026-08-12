@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { setContextSources, resetContextSources } from '../context/registry';
 import { openDb, type Db } from '../db';
 import { listJobs } from '../queue';
 
@@ -18,10 +19,14 @@ function task(status: TaskStatus, draft?: string): string {
 
 beforeEach(() => {
   db = openDb(':memory:');
+  // Pinned, so the queue assertions below are about the routing and not about
+  // whichever sources this machine's config happens to declare.
+  setContextSources([]);
 });
 
 afterEach(() => {
   db.close();
+  resetContextSources();
 });
 
 describe('rejectTask', () => {
@@ -121,6 +126,21 @@ describe('reopenTask', () => {
 
     expect(getTask(id, db)?.status).toBe('pending');
     expect(listJobs({}, db)).toHaveLength(1);
+  });
+
+  it('sends a reopened composed mail back to the composer, not the drafter', async () => {
+    // The drafter reads the task body as a letter from the customer. On a
+    // composed task that body is the desk's own brief, so reopening one used
+    // to answer our own instructions in the customer's name.
+    const { task } = createTask(
+      { origin: 'composed', subject: 'Outage', fromAddress: 'sam@example.com', body: 'Tell them it is fixed.' },
+      db,
+    );
+    updateTask(task.id, { status: 'dismissed' }, db);
+
+    await reopenTask(task.id, { db });
+
+    expect(listJobs({}, db)[0]?.type).toBe('compose-message');
   });
 
   it('reopens a failed task and clears the error', async () => {

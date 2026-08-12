@@ -421,6 +421,53 @@ describe('the reviewer steering a redraft', () => {
     expect(prompts[0]!).not.toContain('What the reviewer said');
   });
 
+  it('shows the drafter the reply that is already on the table', async () => {
+    // The bug this fixes: Redraft rebuilt the prompt from the mail and the
+    // rules alone, so a draft somebody had edited by hand — or swapped for an
+    // option off the strip — was written again from the first version, and the
+    // only way to keep an edit was to stop asking for help.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(
+      task.id,
+      { draft: 'We have already refunded you in full.', reviewerNotes: 'Warmer, please.' },
+      db,
+    );
+
+    await draftReply(getTask(task.id, db)!, { db });
+
+    const prompt = prompts[0]!;
+    expect(prompt).toContain('The reply already on the table');
+    expect(prompt).toContain('We have already refunded you in full.');
+    expect(prompt).toContain('Revise this.');
+    // Before the note, which is the thing that says what to do with it.
+    expect(prompt.indexOf('The reply already on the table')).toBeLessThan(
+      prompt.indexOf('What the reviewer said'),
+    );
+  });
+
+  it('asks for a different attempt when the reviewer said nothing', async () => {
+    // Redraft with an empty box is a verdict on the draft, not a request to
+    // keep it: handing back the same reply reworded is the failure.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { draft: 'We have already refunded you in full.' }, db);
+
+    await draftReply(getTask(task.id, db)!, { db });
+
+    expect(prompts[0]!).toContain('Write a different attempt');
+    expect(prompts[0]!).not.toContain('Revise this.');
+  });
+
+  it('says nothing about a previous reply on a first draft', async () => {
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+
+    await draftReply(task, { db });
+
+    expect(prompts[0]!).not.toContain('The reply already on the table');
+  });
+
   it('lets the caller suppress the note', async () => {
     // The backfill's case: an archived reply was not written in response to
     // anybody's review of a draft that did not exist.

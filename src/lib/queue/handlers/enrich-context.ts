@@ -2,6 +2,7 @@ import { gatherContext } from '../../context/gather';
 import { hasContextSources } from '../../context/registry';
 import { getDb, type Db } from '../../db';
 import { getTask } from '../../tasks/store';
+import type { TaskOrigin } from '../../tasks/types';
 import { enqueue, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
 import { enqueueCompose } from './compose-message';
@@ -91,6 +92,23 @@ export async function enqueueContextThenCompose(
   return (await hasContextSources())
     ? enqueueEnrichContext(taskId, { db, then: 'compose' })
     : enqueueCompose(taskId, { db });
+}
+
+/**
+ * Whichever of the two a task is for.
+ *
+ * The two pipelines are picked apart in three places — reopen, redraft and the
+ * sweep — and each of them got it wrong on its own at least once: a composed
+ * task sent down the reply path produces a reply to the brief, addressed to
+ * the customer, as though the desk's own instructions had arrived as mail.
+ */
+export async function enqueueContextThenWrite(
+  task: { id: string; origin: TaskOrigin },
+  options: { db?: Db } = {},
+): Promise<EnqueueResult> {
+  return task.origin === 'composed'
+    ? enqueueContextThenCompose(task.id, options)
+    : enqueueContextThenDraft(task.id, options);
 }
 
 /**

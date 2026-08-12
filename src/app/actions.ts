@@ -45,8 +45,8 @@ import {
   createWorker,
   enqueueBackfillScan,
   enqueueContextThenCompose,
+  enqueueContextThenWrite,
   enqueueConsolidateRules,
-  enqueueForDrafting,
   enqueueForTranslation,
   enqueueSummariseRules,
   deleteJob,
@@ -802,8 +802,8 @@ export async function redraftTask(form: FormData): Promise<void> {
   // queued a drafter, the send then finished and wrote `sent` plus the reply
   // that went out, and the drafting job — still in flight — overwrote that
   // with a draft for a mail the customer had already read.
-  const asked = Boolean(task) && task?.status !== 'sending';
-  if (asked) {
+  const asked = task !== null && task.status !== 'sending';
+  if (task && asked) {
     // Back to pending first, or the job's own guard would see a task that is
     // already awaiting review and the queue would dedupe the request away.
     //
@@ -824,7 +824,12 @@ export async function redraftTask(form: FormData): Promise<void> {
     // Through the enrichment path, not straight to drafting. Someone clicking
     // Redraft is often doing it because the reply was wrong about who this
     // person is, which is the case a stale — or failed — lookup produces.
-    await enqueueForDrafting(id);
+    //
+    // And down whichever pipeline wrote it in the first place. Redraft on a
+    // composed mail used to go to the drafter, which reads the task body as a
+    // customer's letter — so pressing it on a review follow-up answered our
+    // own brief, in a mail addressed to the customer.
+    await enqueueContextThenWrite(task);
     // Started now rather than whenever a cron happens to fire.
     //
     // Nothing in this process turns the queue: jobs move when `/api/worker` is
