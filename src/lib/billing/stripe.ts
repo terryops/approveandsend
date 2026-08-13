@@ -56,6 +56,50 @@ export interface StripeCharge {
   amount_refunded?: number;
   description?: string | null;
   receipt_url?: string | null;
+  /**
+   * The bank was asked to take it back.
+   *
+   * Stays true after the dispute closes, whichever way it went, so this is
+   * "there is a dispute on this charge" and never "the money is gone". Which
+   * of those it is takes the dispute itself.
+   */
+  disputed?: boolean;
+  /** The dispute id, unexpanded. Null on a charge nobody has challenged. */
+  dispute?: string | null;
+}
+
+/**
+ * A chargeback, or the warning that one is coming.
+ *
+ * The one billing fact that changes what a reply is allowed to offer. Every
+ * other read here answers "what is this person owed"; this one answers "is
+ * their bank already taking it", and the answer forbids sentences the rest of
+ * the record would happily support.
+ */
+export interface StripeDispute {
+  id: string;
+  /** The charge id, unexpanded — this is looked up from a charge, not to one. */
+  charge: string;
+  amount: number;
+  currency: string;
+  /** Stripe's code: `fraudulent`, `product_not_received`, `duplicate`, … */
+  reason: string;
+  status: string;
+  created: number;
+  evidence_details?: {
+    /** Epoch seconds. Miss it and the dispute is lost by default. */
+    due_by?: number | null;
+    has_evidence?: boolean;
+    submission_count?: number;
+  } | null;
+  /**
+   * Whether Stripe would still let you refund the charge.
+   *
+   * False on most open disputes, and it is the API saying out loud what a desk
+   * keeps trying to do anyway: refunding a charge whose money the bank is
+   * already reversing is how the same payment leaves twice.
+   */
+  is_charge_refundable?: boolean;
 }
 
 /**
@@ -182,6 +226,63 @@ export async function listCharges(customerId: string, limit = 50): Promise<Strip
   return found.data;
 }
 
+/**
+ * The disputes on a set of charges, newest first.
+ *
+ * Read one at a time off `charge.dispute` rather than from `/v1/disputes`,
+ * because that list has no `customer` filter: answering "has this person been
+ * charged back" from it means paging the whole desk's disputes and matching on
+ * charge ids we already hold. A customer with a dispute usually has exactly
+ * one, so this is normally one extra GET and often none.
+ *
+ * `disputes` is a permission of its own, and one an install granted before this
+ * existed will not have. Rather than fail the lookup, a refusal comes back as
+ * `refused` — the caller still knows a dispute exists, because `charge.disputed`
+ * said so without needing any permission at all, and "there is a chargeback
+ * here, unreadable from this key" is the sentence that keeps a reply safe. A
+ * lookup that threw instead would take the whole billing card down with it and
+ * say nothing.
+ */
+export async function listDisputes(
+  charges: StripeCharge[],
+): Promise<{ disputes: StripeDispute[]; refused: string | null }> {
+  const ids = charges
+    .filter(charge => charge.disputed || charge.dispute)
+    .map(charge => (typeof charge.dispute === 'string' ? charge.dispute : null))
+    .filter((id): id is string => id !== null)
+    // Newest charge first is the order `listCharges` returns, and a cap because
+    // this is one round trip each on the render path of a screen somebody is
+    // waiting for. A customer past ten disputes is a fraud case, not a support
+    // thread, and the tenth one does not change the reply.
+    .slice(0, 10);
+
+  if (ids.length === 0) return { disputes: [], refused: null };
+
+  const found = await Promise.all(
+    ids.map(async id => {
+      try {
+        return { dispute: await get<StripeDispute>(`/disputes/${id}`), error: null as unknown };
+      } catch (error) {
+        return { dispute: null, error };
+      }
+    }),
+  );
+
+  const disputes = found.map(one => one.dispute).filter((one): one is StripeDispute => one !== null);
+  const failure = found.find(one => one.error);
+  // Only worth reporting when it cost us something. One dispute readable and
+  // one not is still a refusal, and the card should say so rather than quietly
+  // showing the half it managed.
+  const refused =
+    failure && disputes.length < ids.length
+      ? failure.error instanceof Error
+        ? failure.error.message
+        : 'Stripe refused the disputes read'
+      : null;
+
+  return { disputes: disputes.sort((a, b) => b.created - a.created), refused };
+}
+
 /** The three lists this app reads, and the three permissions a key needs. */
 export const RESOURCES = ['customers', 'subscriptions', 'charges'] as const;
 export type StripeResource = (typeof RESOURCES)[number];
@@ -197,7 +298,7 @@ export type StripeResource = (typeof RESOURCES)[number];
  * screen with an empty payments list — which reads as "they never paid us".
  * That is the sentence this function exists to stop.
  */
-export async function readable(resource: StripeResource): Promise<void> {
+export async function readable(resource: StripeResource | 'disputes'): Promise<void> {
   await get(`/${resource}?limit=1`);
 }
 

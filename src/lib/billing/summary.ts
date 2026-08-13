@@ -1,14 +1,16 @@
 import {
   findCustomer,
   listCharges,
+  listDisputes,
   listSubscriptions,
   type StripeCharge,
   type StripeCustomer,
+  type StripeDispute,
   type StripeSubscription,
 } from './stripe';
 
 /**
- * The three reads the sender card makes, as one answer it can be given twice.
+ * The reads the sender card makes, as one answer it can be given twice.
  *
  * The card is a server component that asks Stripe while it renders, which is
  * the right shape for it — no job to have run, no config to have switched on,
@@ -56,6 +58,10 @@ export interface CustomerSummary {
   customer: StripeCustomer | null;
   subscriptions: StripeSubscription[];
   charges: StripeCharge[];
+  /** Only the ones a charge pointed at, and only if the key may read them. */
+  disputes: StripeDispute[];
+  /** Stripe's words when it would not hand the disputes over. */
+  disputesRefused: string | null;
 }
 
 /**
@@ -109,7 +115,7 @@ export async function customerSummary(
         customer,
         ...(await twoLists(customer.id)),
       }
-    : { customer: null, subscriptions: [], charges: [] };
+    : { customer: null, subscriptions: [], charges: [], disputes: [], disputesRefused: null };
 
   // Written only once the reads have all succeeded — a half-answer in here
   // would be served for a minute as though it were the whole one.
@@ -121,9 +127,7 @@ export async function customerSummary(
   return summary;
 }
 
-async function twoLists(
-  customerId: string,
-): Promise<{ subscriptions: StripeSubscription[]; charges: StripeCharge[] }> {
+async function twoLists(customerId: string): Promise<Omit<CustomerSummary, 'customer'>> {
   const [subscriptions, charges] = await Promise.all([
     listSubscriptions(customerId),
     // `listCharges`'s own default, which is what `/billing/<address>` reads. The
@@ -132,7 +136,14 @@ async function twoLists(
     // disagrees with the page it opens is worse than no total.
     listCharges(customerId),
   ]);
-  return { subscriptions, charges };
+
+  // A third read, and usually not a read at all: `listDisputes` returns
+  // immediately unless a charge is flagged, which on most customers none is.
+  // It cannot run beside the other two because it is driven by what the
+  // charges say.
+  const { disputes, refused } = await listDisputes(charges);
+
+  return { subscriptions, charges, disputes, disputesRefused: refused };
 }
 
 /** For tests, and for nothing else: there is no correctness reason to clear this. */

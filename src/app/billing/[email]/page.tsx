@@ -1,12 +1,14 @@
 import Link from 'next/link';
 
 import { isAdmin, requirePage } from '@/lib/auth/guard';
+import { analyseDisputes, disputeState, reasonOf } from '@/lib/billing/disputes';
 import {
   DASHBOARD,
   chargeState,
   day,
   findCustomer,
   listCharges,
+  listDisputes,
   listSubscriptions,
   money,
   netPaid,
@@ -108,6 +110,13 @@ export default async function BillingPage({ params }: { params: Promise<{ email:
 
   const net = netPaid(charges);
 
+  // Read here rather than through `customerSummary` for the same reason the
+  // charges are: this is the screen somebody opens to decide whether to give
+  // money back, and a minute-old answer to "is the bank already taking it" is
+  // the wrong kind of nearly right.
+  const { disputes: records, refused } = await listDisputes(charges);
+  const disputes = analyseDisputes(charges, records, refused);
+
   return (
     <>
       {back}
@@ -128,6 +137,54 @@ export default async function BillingPage({ params }: { params: Promise<{ email:
             totals: [...net].map(([currency, amount]) => money(amount, currency)).join(', '),
           })}
         </p>
+      )}
+
+      {/* First, and only when there is one.
+
+          A customer with no chargebacks is nearly all of them, and a permanent
+          empty "Disputes" heading on every billing screen is how the heading
+          stops being read on the screen where it is not empty. Above the
+          subscriptions because it outranks them: the question this page is open
+          to answer is usually "can I refund this", and a live dispute answers it
+          before the plan name is relevant. */}
+      {disputes.headline && (
+        <>
+          <h2>{t('billing.disputes')}</h2>
+          <div className="card">
+            {!disputes.refundSafe && (
+              <p className="wrong" style={{ marginTop: 0 }}>
+                {t('billing.dispute.warning')}
+              </p>
+            )}
+            <ul className="list">
+              {records.map(dispute => (
+                <li key={dispute.id}>
+                  <div className="row">
+                    <span className="subject grow">
+                      {money(dispute.amount, dispute.currency)} · {reasonOf(dispute)}
+                    </span>
+                    <span className="tag">{t(`billing.dispute.state.${disputeState(dispute)}`)}</span>
+                  </div>
+                  <div className="meta">
+                    {t('billing.dispute.filed', { date: day(dispute.created) })}
+                    {/* The date the money is lost by default. Shown whether or
+                        not it has passed — a deadline that went by yesterday is
+                        the reason a reviewer is about to be surprised. */}
+                    {dispute.evidence_details?.due_by
+                      ? ` · ${t('billing.dispute.due', { date: day(dispute.evidence_details.due_by) })}`
+                      : ''}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {disputes.unreadable > 0 && (
+              <p className="meta">
+                {t('billing.dispute.unreadable', { count: String(disputes.unreadable) })}
+                {refused ? ` (${refused})` : ''}
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       <h2>{t('billing.subscriptions')}</h2>
@@ -173,6 +230,13 @@ export default async function BillingPage({ params }: { params: Promise<{ email:
                         refunded" is a different promise from "refunded", and
                         the difference is the money still being held. */}
                     <span className="tag">{t(`billing.state.${state}`)}</span>
+                    {/* A second tag rather than a fifth `ChargeState`. A
+                        disputed charge is still whatever it was — paid, or half
+                        refunded — and folding the dispute into that word would
+                        lose the one the refund decision is made from. */}
+                    {(charge.disputed || charge.dispute) && (
+                      <span className="tag wrong">{t('billing.state.disputed')}</span>
+                    )}
                   </div>
                   <div className="meta">
                     {day(charge.created)}

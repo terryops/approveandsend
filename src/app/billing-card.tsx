@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 
+import { analyseDisputes } from '@/lib/billing/disputes';
 import { DASHBOARD, day, money, netPaid, planOf, stripeConfigured } from '@/lib/billing/stripe';
 import { customerSummary } from '@/lib/billing/summary';
 import { t } from '@/lib/i18n';
@@ -96,7 +97,7 @@ async function Customer({ email }: { email: string }) {
   // The sentence is the billing page's own, and it is careful for a reason: not
   // "they never paid us", because they may well have, under the address on
   // their card rather than the one they write from.
-  const { customer, subscriptions, charges } = summary;
+  const { customer, subscriptions, charges, disputes: raw, disputesRefused } = summary;
   if (!customer) {
     return (
       <div className="card">
@@ -107,6 +108,7 @@ async function Customer({ email }: { email: string }) {
   }
 
   const net = netPaid(charges);
+  const disputes = analyseDisputes(charges, raw, disputesRefused);
   // The one they are on. More than one is rare and the card is not the place
   // for the rest of them — that is what the page behind the link is.
   const plan = subscriptions[0] ? planOf(subscriptions[0]) : null;
@@ -130,6 +132,21 @@ async function Customer({ email }: { email: string }) {
           {t('billing.card.open')}
         </a>
       </div>
+
+      {/* Above the facts, and not one of them.
+
+          Every row below answers "who is this"; this answers "what may this
+          reply not say", which is a different kind of thing and the only one on
+          the card that can cost money by being read late. In the row with the
+          plan name and the total it would sit at the weight of a plan name —
+          and a reviewer scanning four facts for the one they came for is
+          exactly who does not notice a fifth. */}
+      {(disputes.open.length > 0 || disputes.unreadable > 0) && (
+        <p className="wrong" style={{ margin: 0 }}>
+          {t('billing.dispute.banner', { what: disputes.headline ?? '' })}
+          {disputes.dueBy ? ` ${t('billing.dispute.due', { date: day(disputes.dueBy) })}` : ''}
+        </p>
+      )}
 
       {/* The same list the context cards use, so on the review screen this reads
           as one more thing known about the sender rather than as a widget. */}
@@ -166,6 +183,17 @@ async function Customer({ email }: { email: string }) {
           <div className="wrong">
             <dt>{t('billing.card.status')}</dt>
             <dd>{t('billing.delinquent')}</dd>
+          </div>
+        )}
+        {/* Settled ones, which are history rather than a constraint — and
+            history that changes the tone of a reply: somebody who has charged
+            back before is somebody whose next "just refund me" is a threat with
+            a precedent. Only shown when nothing is open, because then the
+            banner above has already said it. */}
+        {disputes.open.length === 0 && disputes.settled.length > 0 && (
+          <div>
+            <dt>{t('billing.card.disputes')}</dt>
+            <dd>{disputes.headline}</dd>
           </div>
         )}
       </dl>

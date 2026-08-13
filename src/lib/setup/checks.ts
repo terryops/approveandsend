@@ -134,7 +134,25 @@ export async function checkStripe(): Promise<CheckResult> {
   const narrow = stripeRestricted()
     ? ''
     : ' This is a full secret key — a restricted key with read on those three would do.';
-  return { ok: true, detail: `Connected in ${where}. Customers, subscriptions and charges all readable.${narrow}` };
+
+  // A fourth permission, and deliberately not a fourth requirement. Without it
+  // the desk still learns from the charge that a chargeback exists — that flag
+  // needs no permission — and still refuses to promise a refund over it. What
+  // it loses is the amount, the reason and the evidence deadline, which is the
+  // difference between a caution and an answer. Worth one sentence here, where
+  // granting it is two clicks away, rather than a failed check on every install
+  // that set this up before disputes were read at all.
+  const disputes = await readable('disputes')
+    .then(() => '')
+    .catch(
+      () =>
+        ' Disputes are not readable with this key; chargebacks will show as a warning without their details.',
+    );
+
+  return {
+    ok: true,
+    detail: `Connected in ${where}. Customers, subscriptions and charges all readable.${disputes}${narrow}`,
+  };
 }
 
 /**

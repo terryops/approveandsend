@@ -1,9 +1,11 @@
+import { analyseDisputes, type DisputeAnalysis } from '../../billing/disputes';
 import {
   DASHBOARD,
   chargeState,
   day,
   findCustomer,
   listCharges,
+  listDisputes,
   listSubscriptions,
   money,
   planOf,
@@ -33,9 +35,17 @@ function describe(
   customer: StripeCustomer,
   subscriptions: StripeSubscription[],
   charges: StripeCharge[],
+  disputes: DisputeAnalysis,
 ): string {
   const lines: string[] = [];
   const active = subscriptions.filter(s => s.status === 'active' || s.status === 'trialing');
+
+  // First, because it is the only part of this paragraph that forbids a
+  // sentence rather than informing one. Buried under three lines about plans
+  // and totals it reads as background; a model that has already decided to
+  // offer a refund by the time it gets here has to change its mind, and
+  // changing its mind is the step that does not reliably happen.
+  lines.push(...disputes.lines);
 
   lines.push(`Customer since ${day(customer.created)}.`);
 
@@ -113,6 +123,13 @@ export const stripeSource: ContextSource = {
       listCharges(customer.id, 20),
     ]);
 
+    // After the charges rather than beside them: a dispute is found by
+    // following `charge.dispute`, so there is nothing to ask for until the
+    // charges are back. Costs nothing on the overwhelming majority of lookups,
+    // where no charge is flagged and no request is made at all.
+    const { disputes: raw, refused } = await listDisputes(charges);
+    const disputes = analyseDisputes(charges, raw, refused);
+
     const active = subscriptions.find(s => s.status === 'active' || s.status === 'trialing');
     const paid = charges.filter(c => chargeState(c) === 'paid');
 
@@ -140,6 +157,19 @@ export const stripeSource: ContextSource = {
     }
     if (customer.delinquent) fields.push({ label: 'Status', value: 'payment failed' });
 
+    // High enough in the card to be read before the reviewer starts typing.
+    // The fields below it are conveniences; this one is the reason the reply
+    // might have to be a different reply.
+    if (disputes.headline) {
+      fields.push({
+        label: 'Dispute',
+        value: disputes.dueBy
+          ? `${disputes.headline} · evidence due ${day(disputes.dueBy)}`
+          : disputes.headline,
+        href: `${DASHBOARD}/${customer.id}`,
+      });
+    }
+
     // The way in to the charge-by-charge screen. A card is a summary by
     // design, and the question that follows a summary in a billing thread is
     // always "which payment, and how much of it came back" — the one thing a
@@ -156,7 +186,7 @@ export const stripeSource: ContextSource = {
       title: 'Billing (Stripe)',
       href: `${DASHBOARD}/${customer.id}`,
       fields,
-      prompt: describe(customer, subscriptions, charges),
+      prompt: describe(customer, subscriptions, charges, disputes),
     };
   },
 };
