@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { analyseDisputes, disputeOpen, disputeState, reasonOf } from './disputes';
-import type { StripeCharge, StripeDispute } from './stripe';
+import { day, type StripeCharge, type StripeDispute } from './stripe';
 
 function charge(over: Partial<StripeCharge> = {}): StripeCharge {
   return {
@@ -77,7 +77,7 @@ describe('reasonOf', () => {
 
 describe('analyseDisputes', () => {
   it('says nothing at all when no charge was ever disputed', () => {
-    const analysis = analyseDisputes([charge(), charge({ id: 'ch_2' })], [], null, NOW);
+    const analysis = analyseDisputes([charge(), charge({ id: 'ch_2' })], [], { now: NOW });
 
     expect(analysis.lines).toEqual([]);
     expect(analysis.headline).toBeNull();
@@ -85,23 +85,23 @@ describe('analyseDisputes', () => {
   });
 
   it('forbids a refund while a chargeback is open', () => {
-    const analysis = analyseDisputes([disputed()], [dispute()], null, NOW);
+    const analysis = analyseDisputes([disputed()], [dispute()], { now: NOW });
 
     expect(analysis.refundSafe).toBe(false);
     expect(analysis.open).toHaveLength(1);
     // The rule the whole module exists for, in the paragraph a model reads.
-    expect(analysis.lines.join(' ')).toContain('do NOT offer, promise or imply a refund');
-    expect(analysis.lines.join(' ')).toContain('withdraw the dispute with their bank');
+    expect(analysis.lines.join(' ')).toContain('do NOT offer to refund it now');
+    expect(analysis.lines.join(' ')).toContain('ask to withdraw the dispute for that amount and date');
   });
 
   it('reports the evidence deadline, and only while it is still ahead', () => {
     const ahead = dispute({ evidence_details: { due_by: NOW / 1000 + 86_400 } });
-    expect(analyseDisputes([disputed()], [ahead], null, NOW).dueBy).toBe(NOW / 1000 + 86_400);
+    expect(analyseDisputes([disputed()], [ahead], { now: NOW }).dueBy).toBe(NOW / 1000 + 86_400);
 
     const gone = dispute({ evidence_details: { due_by: NOW / 1000 - 86_400 } });
     // A date that has passed is not a deadline to work to; the dispute is
     // simply lost by default, and offering it as a target would be a lie.
-    expect(analyseDisputes([disputed()], [gone], null, NOW).dueBy).toBeNull();
+    expect(analyseDisputes([disputed()], [gone], { now: NOW }).dueBy).toBeNull();
   });
 
   it('takes the soonest deadline when several are open', () => {
@@ -111,15 +111,14 @@ describe('analyseDisputes', () => {
     const analysis = analyseDisputes(
       [disputed('dp_1'), charge({ id: 'ch_2', disputed: true, dispute: 'dp_2' })],
       [soon, later],
-      null,
-      NOW,
+      { now: NOW },
     );
 
     expect(analysis.dueBy).toBe(NOW / 1000 + 86_400);
   });
 
   it('does not offer to refund money a lost chargeback already returned', () => {
-    const analysis = analyseDisputes([disputed()], [dispute({ status: 'lost' })], null, NOW);
+    const analysis = analyseDisputes([disputed()], [dispute({ status: 'lost' })], { now: NOW });
 
     // Closed, so a refund on some *other* charge is fine — but the reply must
     // not treat this one as still owed.
@@ -131,8 +130,7 @@ describe('analyseDisputes', () => {
     const analysis = analyseDisputes(
       [disputed()],
       [dispute({ status: 'warning_needs_response' })],
-      null,
-      NOW,
+      { now: NOW },
     );
 
     expect(analysis.refundSafe).toBe(false);
@@ -144,7 +142,7 @@ describe('analyseDisputes', () => {
     // The narrow-key case. `disputed` on the charge needs no permission, so we
     // know a chargeback exists and nothing else — which is exactly the state in
     // which promising money is a coin flip.
-    const analysis = analyseDisputes([disputed()], [], 'no permission', NOW);
+    const analysis = analyseDisputes([disputed()], [], { refused: 'no permission', now: NOW });
 
     expect(analysis.unreadable).toBe(1);
     expect(analysis.refundSafe).toBe(false);
@@ -156,8 +154,7 @@ describe('analyseDisputes', () => {
     const analysis = analyseDisputes(
       [disputed()],
       [dispute({ status: 'under_review', is_charge_refundable: false })],
-      null,
-      NOW,
+      { now: NOW },
     );
 
     expect(analysis.refundSafe).toBe(false);
@@ -167,8 +164,7 @@ describe('analyseDisputes', () => {
     const analysis = analyseDisputes(
       [disputed('dp_1'), charge({ id: 'ch_2', disputed: true, dispute: 'dp_2' })],
       [dispute({ id: 'dp_2', charge: 'ch_2', status: 'lost', created: 1_760_000_000 }), dispute()],
-      null,
-      NOW,
+      { now: NOW },
     );
 
     // One of each. The card has room for one line and it must be the live one.
@@ -178,11 +174,94 @@ describe('analyseDisputes', () => {
   });
 
   it('still mentions a past dispute when nothing is open', () => {
-    const analysis = analyseDisputes([disputed()], [dispute({ status: 'won' })], null, NOW);
+    const analysis = analyseDisputes([disputed()], [dispute({ status: 'won' })], { now: NOW });
 
     expect(analysis.headline).toBe('1 past dispute(s)');
     // Not "we won". They paid and may believe they did not, which is a live
     // grievance whatever the card network decided.
     expect(analysis.lines.join(' ')).toContain('Treat any "I was charged anyway" as sincere');
+  });
+});
+
+describe('the letter an open dispute asks for', () => {
+  /** Everything the analysis says, as one string to read assertions against. */
+  function said(over: Partial<StripeDispute> = {}, charges = [disputed()], options = {}) {
+    return analyseDisputes(charges, [dispute(over)], { now: NOW, ...options }).lines.join(' ');
+  }
+
+  it('asks for the one thing that actually ends a chargeback', () => {
+    // Only the cardholder can withdraw it. A reply that is merely careful
+    // leaves the money, the fee and the customer exactly where they were.
+    const lines = said();
+    expect(lines).toContain('withdraw the dispute themselves');
+    expect(lines).toContain('contact their card issuer');
+  });
+
+  it('promises the refund that pays for the phone call, by default', () => {
+    expect(said()).toContain('as soon as the bank confirms the dispute is withdrawn we will refund');
+  });
+
+  it('drops the promise, not the request, for a desk that defends these', () => {
+    const lines = said({}, [disputed()], { offerRefundOnWithdrawal: false });
+
+    expect(lines).not.toContain('we will refund the payment in full');
+    expect(lines).toContain('this desk defends these');
+    // The ask survives. Switching the offer off is a decision about money, not
+    // about whether to try.
+    expect(lines).toContain('withdraw the dispute themselves');
+  });
+
+  it('still forbids refunding it now, whichever way the offer is set', () => {
+    for (const offerRefundOnWithdrawal of [true, false]) {
+      expect(said({}, [disputed()], { offerRefundOnWithdrawal })).toContain(
+        'do NOT offer to refund it now',
+      );
+    }
+  });
+
+  it('quotes the string they failed to recognise', () => {
+    const lines = said({ reason: 'unrecognized' }, [
+      charge({ disputed: true, dispute: 'dp_1', calculated_statement_descriptor: 'SUBEASY AI' }),
+    ]);
+
+    // The line on their statement is almost never the product's name, and
+    // neither side thinks to compare the two.
+    expect(lines).toContain('"SUBEASY AI"');
+  });
+
+  it('dates the payment, not the filing', () => {
+    // They remember the day they paid. The day their bank got round to it
+    // means nothing to them and reads as a different transaction.
+    const paidOn = charge({ disputed: true, dispute: 'dp_1', created: 1_760_000_000 });
+    expect(said({ created: 1_770_000_000 }, [paidOn])).toContain(day(1_760_000_000));
+  });
+
+  it('opens differently depending on what the bank was told', () => {
+    // An accusation of fraud and "I already cancelled" are not the same letter,
+    // and the difference is the whole of whether it works.
+    expect(said({ reason: 'fraudulent' })).toContain('someone else with access to the card');
+    expect(said({ reason: 'subscription_canceled' })).toContain('a cancellation that did not save');
+  });
+
+  it('uses the deadline as a reason to write today, not as a threat', () => {
+    const lines = said({ evidence_details: { due_by: NOW / 1000 + 86_400 } });
+
+    expect(lines).toContain('never as a threat');
+  });
+
+  it('tells the model to spend the usage another block already fetched', () => {
+    // "Minutes: 412" three lines up goes unused unless something says to use
+    // it, and a specific is what makes a stranger's letter recognisable.
+    expect(said()).toContain('use the specifics');
+  });
+
+  it('asks for none of it on an early warning', () => {
+    // No money has moved and there is nothing to withdraw yet. Asking them to
+    // phone their bank about a chargeback they have not made is how a warning
+    // becomes one.
+    const lines = said({ status: 'warning_needs_response' });
+
+    expect(lines).toContain('early fraud warning');
+    expect(lines).not.toContain('withdraw the dispute themselves');
   });
 });

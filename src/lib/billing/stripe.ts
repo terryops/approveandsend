@@ -66,6 +66,15 @@ export interface StripeCharge {
   disputed?: boolean;
   /** The dispute id, unexpanded. Null on a charge nobody has challenged. */
   dispute?: string | null;
+  /**
+   * What this charge looks like on their bank statement.
+   *
+   * The most useful sentence in a reply to somebody who has disputed a payment
+   * they did not recognise, and one a support desk almost never has to hand:
+   * the customer is looking at a line of capitals that is not the product's
+   * name, and neither party thinks to compare them.
+   */
+  calculated_statement_descriptor?: string | null;
 }
 
 /**

@@ -115,7 +115,7 @@ export default async function BillingPage({ params }: { params: Promise<{ email:
   // money back, and a minute-old answer to "is the bank already taking it" is
   // the wrong kind of nearly right.
   const { disputes: records, refused } = await listDisputes(charges);
-  const disputes = analyseDisputes(charges, records, refused);
+  const disputes = analyseDisputes(charges, records, { refused });
 
   return (
     <>

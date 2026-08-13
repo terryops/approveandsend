@@ -132,6 +132,21 @@ export interface WorkspaceConfig {
   /** Escalate rather than answer when the draft would touch one of these. */
   neverPromise: string[];
   /**
+   * Whether a draft may offer a refund to somebody who withdraws a chargeback.
+   *
+   * True — the default — because it is the only move in an open dispute that
+   * ends well for either side. The money is going back whichever way the bank
+   * decides; going back by agreement keeps the dispute fee, keeps the desk's
+   * win rate out of the card networks' monitoring programmes, and keeps a
+   * customer who would otherwise have been told, correctly and uselessly, that
+   * we cannot help them until their bank has finished.
+   *
+   * False is for a desk that defends chargebacks. It removes the offer from the
+   * letter and leaves the rest of it — never a letter that promises a refund
+   * this desk will not pay, which is worse than either policy.
+   */
+  refundOnDisputeWithdrawal: boolean;
+  /**
    * Whether a rule the learning pass writes goes straight into drafts.
    *
    * True — the default — is the desk teaching itself: an approved reply is
@@ -188,6 +203,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
     'refund amounts or dates that have not been confirmed',
     'delivery dates for unreleased features',
   ],
+  refundOnDisputeWithdrawal: true,
   autoApproveRules: true,
   contextSources: [],
 };
@@ -390,6 +406,8 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
       DEFAULT_WORKSPACE.language,
     topics: asTopicList(fromFile.topics) ?? DEFAULT_WORKSPACE.topics,
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
+    refundOnDisputeWithdrawal:
+      asBoolean(fromFile.refundOnDisputeWithdrawal) ?? DEFAULT_WORKSPACE.refundOnDisputeWithdrawal,
     autoApproveRules:
       asBoolean(process.env.AAS_AUTO_APPROVE_RULES) ??
       asBoolean(fromFile.autoApproveRules) ??

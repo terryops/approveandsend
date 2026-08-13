@@ -108,7 +108,7 @@ async function Customer({ email }: { email: string }) {
   }
 
   const net = netPaid(charges);
-  const disputes = analyseDisputes(charges, raw, disputesRefused);
+  const disputes = analyseDisputes(charges, raw, { refused: disputesRefused });
   // The one they are on. More than one is rare and the card is not the place
   // for the rest of them — that is what the page behind the link is.
   const plan = subscriptions[0] ? planOf(subscriptions[0]) : null;

@@ -30,7 +30,8 @@ screen can do that editing the file by hand cannot, which is the property the
 whole setup screen is built to keep. Leave it unset and Stripe stays out of the
 way entirely: not registered, not called, not shown.
 
-Make it a **restricted** key with read on customers, subscriptions and charges.
+Make it a **restricted** key with read on customers, subscriptions and charges,
+and on disputes too if you want the chargeback handling below.
 Nothing here writes, so nothing here needs write. It uses `/v1/customers?email=`
 rather than `/v1/customers/search`, so the narrowest key Stripe will issue is
 enough.
@@ -66,6 +67,51 @@ And when they have lapsed, it says so in the words that matter:
 No active subscription — the most recent one is canceled, last period ended
 2026-01-14. Do not talk to them as a current subscriber.
 ```
+
+### Chargebacks
+
+Grant `disputes` on the key as well and the paragraph gains a first line, ahead
+of everything else, whenever the bank has been asked to take a payment back.
+It is first because it is the only part that forbids a sentence rather than
+informing one, and a model that has already decided to offer a refund by the
+time it reads it has to change its mind — which is the step that does not
+reliably happen.
+
+Refunding a disputed charge does **not** withdraw the dispute. The money leaves
+twice, the dispute fee is gone either way, and Stripe will usually refuse the
+refund outright. So the reply is not allowed to offer one, and the block says
+so in those words.
+
+Saying only that produces a careful letter that leaves the chargeback exactly
+where it was. The only thing that ends one is the cardholder telling their own
+bank to drop it, so the block also prescribes the letter that asks for that:
+identify the payment by amount and the date it was **taken** (not the date the
+bank filed), quote the statement descriptor back verbatim — that string is what
+they failed to recognise — answer the specific reason the bank recorded, then
+ask them to call their issuer and withdraw the dispute.
+
+And it states what they get for making that call:
+
+```
+Say plainly what they get for it: as soon as the bank confirms the dispute is
+withdrawn we will refund the payment in full, directly, and they do not need
+to chase it.
+```
+
+Set `"refundOnDisputeWithdrawal": false` in `aas.config.json` if your desk
+defends chargebacks instead. The request survives; only the promise goes. What
+never happens is a letter that promises and then does not pay, which is worse
+than either.
+
+An early fraud warning gets none of this — no money has moved, there is nothing
+to withdraw yet, and asking someone to phone their bank about a chargeback they
+have not made is how a warning becomes one.
+
+Without the `disputes` permission the key can still see `charge.disputed`, so
+the block says a chargeback may be open, cannot describe it, and holds the
+refund back until somebody has looked in Stripe. The permission is optional:
+existing keys keep working and the setup test says what is missing rather than
+failing.
 
 ## Earlier conversations, which is always on
 

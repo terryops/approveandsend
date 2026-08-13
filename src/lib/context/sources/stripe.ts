@@ -1,4 +1,5 @@
 import { analyseDisputes, type DisputeAnalysis } from '../../billing/disputes';
+import { getWorkspaceConfig } from '../../config/workspace';
 import {
   DASHBOARD,
   chargeState,
@@ -128,7 +129,14 @@ export const stripeSource: ContextSource = {
     // charges are back. Costs nothing on the overwhelming majority of lookups,
     // where no charge is flagged and no request is made at all.
     const { disputes: raw, refused } = await listDisputes(charges);
-    const disputes = analyseDisputes(charges, raw, refused);
+    const disputes = analyseDisputes(charges, raw, {
+      refused,
+      // The desk's policy, not the model's judgement. Whether a refund may be
+      // offered for a withdrawal is a business decision somebody made once;
+      // leaving it to be inferred from the letter would make it a decision
+      // taken afresh on every draft.
+      offerRefundOnWithdrawal: getWorkspaceConfig().refundOnDisputeWithdrawal,
+    });
 
     const active = subscriptions.find(s => s.status === 'active' || s.status === 'trialing');
     const paid = charges.filter(c => chargeState(c) === 'paid');
