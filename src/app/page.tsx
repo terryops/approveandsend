@@ -2,13 +2,19 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { isAdmin, requirePage } from '@/lib/auth/guard';
-import { topicTone } from '@/lib/config/workspace';
+import { getWorkspaceConfig, topicTone } from '@/lib/config/workspace';
 import { automation } from '@/lib/desk/automation';
 import { deskToday } from '@/lib/desk/today';
 import { deskUntouched } from '@/lib/desk/untouched';
 import { t, topicName, topicNameMap, type MessageKey } from '@/lib/i18n';
 import { shouldOnboard } from '@/lib/setup/state';
-import { countTasksByStatus, countUnopened, listTasks } from '@/lib/tasks/store';
+import { categories, categoryFilter } from '@/lib/tasks/categories';
+import {
+  countTasksByStatus,
+  countTasksBySource,
+  countUnopened,
+  listTasks,
+} from '@/lib/tasks/store';
 import {
   deskedAt,
   deskTitle,
@@ -238,7 +244,20 @@ export default async function InboxPage({
   // So that typing the tag you can see finds the rows wearing it.
   const searchFilter = search ? { search, topicLabels: topicNameMap() } : {};
 
+  // Where the work came from, which is the other half of the question the tabs
+  // answer. Carried alongside the status rather than folded into it: "waiting on
+  // me" and "is a chargeback" are two facts about the same row, and a single row
+  // of tabs can only ever hold one of them.
+  //
+  // Unlike the status tab, this one *is* carried into a search. A search that
+  // ignored it would answer a question nobody asked — you are standing in the
+  // chargebacks because chargebacks are what you are working on, and finding a
+  // newsletter from March does not help.
+  const from = typeof params.from === 'string' ? params.from : 'all';
+  const fromFilter = categoryFilter(from);
+
   const tasks = listTasks({
+    ...fromFilter,
     // A search reaches into the bin; browsing does not. Hiding a dismissed
     // match would mean the search box quietly failing on the mail most likely
     // to be looked up.
@@ -248,9 +267,40 @@ export default async function InboxPage({
   });
   // Counted through the same search, so a tab never advertises rows the list
   // below it will not show.
-  const counts = countTasksByStatus(searchFilter);
+  const counts = countTasksByStatus({ ...fromFilter, ...searchFilter });
   const unopened = countUnopened();
   const LABELS = labels();
+
+  // The source tabs, counted across every status rather than through the one
+  // you are standing in — which is the one place these two rows deliberately do
+  // not agree, and it is worth the inconsistency.
+  //
+  // Scoped to the status, the number under Chargebacks would be what is
+  // awaiting review this second, which for a chargeback is almost always none:
+  // the desk opens it, the model is still drafting it, and the tab reads 0 and
+  // disappears for the hour that matters most. This row answers "what kinds of
+  // work are on this desk", the row beside it answers "how much of it is at
+  // which stage", and only the second is a question about status.
+  //
+  // The bin is left out unless you are standing in it, exactly as the list
+  // leaves it out: a desk with sixty dismissed pitches should not read as a
+  // desk with sixty pieces of mail.
+  const fromCounts = countTasksBySource({
+    ...(status === 'dismissed' ? { status } : { excludeStatuses: BIN }),
+    ...searchFilter,
+  });
+  const sources = categories(fromCounts, getWorkspaceConfig().sourceLabels, from);
+
+  /** Every tab href, so the two rows never drop each other's state. */
+  const href = (next: { status?: string; from?: string }) => {
+    const query = new URLSearchParams();
+    const nextStatus = next.status ?? requested;
+    const nextFrom = next.from ?? from;
+    if (nextStatus) query.set('status', nextStatus);
+    if (nextFrom && nextFrom !== 'all') query.set('from', nextFrom);
+    if (search) query.set('q', search);
+    return `/?${query.toString()}`;
+  };
 
   // The bin, split by who did the dismissing. Everywhere else one list is
   // right; here the two halves answer different questions and the one being
@@ -276,7 +326,7 @@ export default async function InboxPage({
   // answer should not be filed under a subheading.
   const machineGroups =
     requested === 'awaiting_review' && !search
-      ? groupBySender(listTasks({ excludeStatuses: NOT_MACHINE, limit: 100 }))
+      ? groupBySender(listTasks({ ...fromFilter, excludeStatuses: NOT_MACHINE, limit: 100 }))
       : [];
 
   // Whether this desk has ever had anything on it, which is a different
@@ -622,9 +672,8 @@ export default async function InboxPage({
         <div className="filters">
           {FILTERS.map((f) => {
             const n = f === 'all' ? allCount : (counts[f as TaskStatus] ?? 0);
-            const href = search ? `/?status=${f}&q=${encodeURIComponent(search)}` : `/?status=${f}`;
             return (
-              <Link key={f} href={href} className={requested === f ? 'active' : ''}>
+              <Link key={f} href={href({ status: f })} className={requested === f ? 'active' : ''}>
                 {LABELS[f] ?? f}
                 {n > 0 && <span className="n">{n}</span>}
                 {/* Only against awaiting_review, and only when it is not the
@@ -637,6 +686,28 @@ export default async function InboxPage({
           })}
         </div>
       </div>
+
+      {/* Where it came from, on its own line above the queue.
+
+          Only once something other than mail has arrived. On a desk that takes
+          nothing but email — which is most desks, most weeks — this row would be
+          two tabs that always say the same thing and always add up to the row
+          below, so it stays out of the way until there is a second kind of work
+          to tell apart. See `categories`. */}
+      {sources.length > 2 && (
+        <div className="filters sources">
+          {sources.map((category) => (
+            <Link
+              key={category.key}
+              href={href({ from: category.key })}
+              className={from === category.key ? 'active' : ''}
+            >
+              {category.label}
+              {category.count > 0 && <span className="n">{category.count}</span>}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {notice && (
         <p className="banner" style={notice.kind === 'ok' ? { borderColor: 'var(--line)' } : {}}>
@@ -686,7 +757,7 @@ export default async function InboxPage({
                 <p>{t('inbox.emptyFilter', { tab: LABELS[status ?? 'all'] })}</p>
                 {status !== null && (
                   <p>
-                    <Link href="/?status=all">{t('inbox.emptyFilterAll')}</Link>
+                    <Link href={href({ status: 'all' })}>{t('inbox.emptyFilterAll')}</Link>
                   </p>
                 )}
               </>

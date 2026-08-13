@@ -107,6 +107,25 @@ An early fraud warning gets none of this — no money has moved, there is nothin
 to withdraw yet, and asking someone to phone their bank about a chargeback they
 have not made is how a warning becomes one.
 
+#### A chargeback with no email attached to it
+
+Everything above is about the paragraph a *letter* gets when the person who
+disputed has written in. Usually they have not — the first anybody hears of a
+chargeback is a notification from Stripe, and it goes to whoever set up the
+account rather than to the desk.
+
+So `POST /api/disputes` opens the task instead. It reads every open dispute,
+finds the address on the charge (the customer record first, the payment's own
+billing details after), and creates one task per dispute with the analysis
+already in the brief and the deadline in the heading: `9.9 USD · fraudulent ·
+due 2026-09-21`. Idempotent on `stripe-dispute:<id>`, so the hourly run
+re-finds the same disputes for three weeks and creates nothing — which matters
+here more than at the mail intake, where a message only arrives once.
+
+They arrive under **Chargebacks** in the row of tabs above the queue, ahead of
+every other intake however few of them there are. See `docs/deploying.md` for
+the crontab line.
+
 Without the `disputes` permission the key can still see `charge.disputed`, so
 the block says a chargeback may be open, cannot describe it, and holds the
 refund back until somebody has looked in Stripe. The permission is optional:

@@ -75,6 +75,10 @@ export interface StripeCharge {
    * name, and neither party thinks to compare them.
    */
   calculated_statement_descriptor?: string | null;
+  /** The customer this was taken from, unexpanded. Null on a guest checkout. */
+  customer?: string | null;
+  /** What the payer typed at checkout, which is often the only address there is. */
+  billing_details?: { email?: string | null; name?: string | null };
 }
 
 /**
@@ -290,6 +294,63 @@ export async function listDisputes(
       : null;
 
   return { disputes: disputes.sort((a, b) => b.created - a.created), refused };
+}
+
+/**
+ * Every dispute currently open on the whole account, newest first.
+ *
+ * The other direction from `listDisputes`, and it exists for the other
+ * question. That one starts from a person who has written in and asks what is
+ * on their account; this starts from the account and asks who has not written
+ * in — which is nearly all of them, because the ordinary chargeback arrives
+ * with no email at all. Nobody disputes a payment and then writes to support
+ * about it; the bank is the whole of their plan.
+ *
+ * Open only, so a desk that has already won or lost one is not asked about it
+ * again. Stripe's own `?status=` takes one value, so the filter is done here.
+ */
+export async function listOpenDisputes(limit = 100): Promise<StripeDispute[]> {
+  const found = await get<{ data: StripeDispute[] }>(`/disputes?limit=${Math.min(limit, 100)}`);
+  return found.data.filter(disputeIsOpen).sort((a, b) => b.created - a.created);
+}
+
+/**
+ * Which statuses count as still open, kept here rather than imported.
+ *
+ * `lib/billing/disputes.ts` has the reviewer-facing version of this and imports
+ * *from* this module; reaching back the other way would be a cycle. Two lines
+ * of duplication against a circular import is the right trade, and the test
+ * holds the two in agreement.
+ */
+function disputeIsOpen(dispute: StripeDispute): boolean {
+  return !['won', 'lost', 'warning_closed', 'charge_refunded'].includes(dispute.status);
+}
+
+export async function getCharge(id: string): Promise<StripeCharge & { customer?: string | null }> {
+  return get<StripeCharge>(`/charges/${id}`);
+}
+
+/**
+ * The address to write to about a payment.
+ *
+ * Two places hold one, and they disagree more often than you would like: the
+ * customer record is what the account was opened with, and `billing_details` is
+ * what was typed into the checkout form — which on a card somebody else owns is
+ * the only address that reaches the person actually disputing it. Customer
+ * first, because that is the address every other screen here keys on and a
+ * thread should land where the rest of their history is.
+ */
+export async function payerEmail(charge: StripeCharge): Promise<string | null> {
+  if (typeof charge.customer === 'string') {
+    try {
+      const customer = await get<StripeCustomer>(`/customers/${charge.customer}`);
+      if (customer.email?.trim()) return customer.email.trim();
+    } catch {
+      // A deleted customer, or a key without the permission. The billing detail
+      // below is a worse address, not no address.
+    }
+  }
+  return charge.billing_details?.email?.trim() || null;
 }
 
 /** The three lists this app reads, and the three permissions a key needs. */

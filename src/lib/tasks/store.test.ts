@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
-import { countTasksByStatus, createTask, listTasks, updateTask } from './store';
+import {
+  countTasksBySource,
+  countTasksByStatus,
+  createTask,
+  listTasks,
+  updateTask,
+} from './store';
 import { deskedAt } from './types';
 
 let db: Db;
@@ -311,5 +317,56 @@ describe('createTask by external id', () => {
 
     expect(other.existed).toBe(false);
     expect(listTasks({}, db).map(t => t.externalId).sort()).toEqual(['forms:1', 'reviews:1']);
+  });
+});
+
+describe('listTasks by where it came from', () => {
+  function labelled(id: string, source?: string): void {
+    createTask(
+      {
+        origin: 'composed',
+        subject: id,
+        fromAddress: `${id}@example.com`,
+        body: id,
+        ...(source ? { source } : {}),
+      },
+      db,
+    );
+  }
+
+  it('separates the labelled intakes from ordinary mail', () => {
+    seed({ id: 'letter', from: 'a@example.com', at: '2026-08-01T09:00:00Z' });
+    labelled('own-letter');
+    labelled('chargeback', 'dispute');
+    labelled('one-star', 'subeasy-bad-review');
+
+    expect(listTasks({ source: 'dispute' }, db).map(t => t.subject)).toEqual(['chargeback']);
+    // `null` is a question, not the absence of one: both the mail that arrived
+    // and the mail this desk wrote first carry no label, and both are mail.
+    expect(listTasks({ source: null }, db).map(t => t.subject).sort()).toEqual([
+      'letter',
+      'own-letter',
+    ]);
+  });
+
+  it('counts every intake in one pass, so a tab can say how much is behind it', () => {
+    seed({ id: 'letter', from: 'a@example.com', at: '2026-08-01T09:00:00Z' });
+    labelled('chargeback', 'dispute');
+    labelled('another', 'dispute');
+
+    const counts = countTasksBySource({}, db);
+    const disputes = counts.find(row => row.source === 'dispute');
+    expect(disputes?.count).toBe(2);
+    expect(counts.filter(row => !row.source).reduce((sum, row) => sum + row.count, 0)).toBe(1);
+  });
+
+  it('counts through the filter it is given, so the tabs and the list agree', () => {
+    labelled('chargeback', 'dispute');
+    const open = listTasks({ source: 'dispute' }, db)[0]!;
+    updateTask(open.id, { status: 'dismissed' }, db);
+    labelled('live', 'dispute');
+
+    const counts = countTasksBySource({ excludeStatuses: ['dismissed'] }, db);
+    expect(counts.find(row => row.source === 'dispute')?.count).toBe(1);
   });
 });

@@ -40,6 +40,21 @@ CRON_TOKEN=your-token-here
 30 4 * * 1  curl -fsS -m 600 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/consolidate
 ```
 
+A fifth is optional, and only does anything on a desk whose Stripe key carries
+the `disputes` permission:
+
+```cron
+42  * * * * curl -sS -m 120 -X POST -H "Authorization: Bearer $CRON_TOKEN" localhost:3000/api/disputes
+```
+
+It opens a task for every open chargeback, so a dispute lands in the queue with
+its deadline in the heading instead of in a Stripe notification nobody owns.
+`-s` rather than `-fsS` here on purpose: this endpoint answers 200 with an
+`error` field when Stripe is off or the key lacks the permission, which is a
+configuration answer rather than a failure, and `-f` would turn it into a cron
+mail every hour for ever. It is out of the four above for the same reason — the
+settings screen would report it as late on every desk that does not use it.
+
 The first line is not decoration. cron does not read `.env` — it runs each
 command through a shell with the environment the crontab gives it, so without
 that assignment `$CRON_TOKEN` expands to nothing and every call comes back 401.

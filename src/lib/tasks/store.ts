@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { getDb, type Db } from '../db';
 import { recordEvent } from './events';
 import { isRiskFactor, isRiskLevel, type Risk } from './risk';
-import { isCause, isOrigin, isSentiment, isTaskStatus, type Analysis, type Critique, type NewTask, type Task, type TaskStatus } from './types';
+import { isCause, isOrigin, isSentiment, isTaskStatus, type Analysis, type Critique, type NewTask, type Task, type TaskOrigin, type TaskStatus } from './types';
 
 interface TaskRow {
   id: string;
@@ -228,6 +228,21 @@ export interface ListTasksFilter {
    * the caller should not be able to express by accident.
    */
   excludeStatuses?: readonly TaskStatus[];
+  /**
+   * Where the row came from, as the second thing a list can be narrowed by.
+   *
+   * A desk that takes in store reviews and chargebacks alongside its mail has
+   * three jobs interleaved in one list, and they are not the same job: a review
+   * is written to on your own time, a chargeback has a bank's deadline on it,
+   * and an email has somebody waiting. Sorting by date mixes them; this
+   * separates them without hiding anything.
+   */
+  origin?: TaskOrigin;
+  /**
+   * The intake label, exactly as its caller sent it. `null` asks for rows that
+   * carry none — ordinary mail — which is a different question from not asking.
+   */
+  source?: string | null;
   scope?: string;
   /** Everything to or from one correspondent, case-insensitively. */
   fromAddress?: string;
@@ -315,6 +330,19 @@ function buildWhere(filter: ListTasksFilter): { sql: string; params: unknown[] }
     where.push(`status NOT IN (${filter.excludeStatuses.map(() => '?').join(', ')})`);
     params.push(...filter.excludeStatuses);
   }
+  if (filter.origin) {
+    where.push('origin = ?');
+    params.push(filter.origin);
+  }
+  // `undefined` is "did not ask", `null` is "asked for the ones with none".
+  // Collapsing the two would make ordinary mail unaskable-for, since every
+  // inbound row has a null here.
+  if (filter.source === null) {
+    where.push('source IS NULL');
+  } else if (filter.source) {
+    where.push('source = ?');
+    params.push(filter.source);
+  }
   if (filter.scope) {
     where.push('scope = ?');
     params.push(filter.scope);
@@ -389,6 +417,29 @@ export function countTasksByStatus(
     .prepare(`SELECT status, COUNT(*) AS count FROM tasks${sql} GROUP BY status`)
     .all(...params) as { status: string; count: number }[];
   return Object.fromEntries(rows.map(row => [row.status, row.count]));
+}
+
+/**
+ * How many from each place things arrive from.
+ *
+ * Grouped by the two raw columns rather than by a list of known categories,
+ * because this table has no opinion about what a "bad review" is and should not
+ * grow one: a caller that starts posting a new label gets a tab the day it does,
+ * without a migration and without an edit here. Folding the rows into the tabs
+ * a person sees is `lib/tasks/categories.ts`'s job.
+ *
+ * `origin` and `source` are dropped from the filter for the same reason
+ * `countTasksByStatus` drops `status`: narrowing to one of them would leave
+ * every other tab reading zero.
+ */
+export function countTasksBySource(
+  filter: Omit<ListTasksFilter, 'origin' | 'source'> = {},
+  db: Db = getDb(),
+): { origin: string; source: string | null; count: number }[] {
+  const { sql, params } = buildWhere(filter);
+  return db
+    .prepare(`SELECT origin, source, COUNT(*) AS count FROM tasks${sql} GROUP BY origin, source`)
+    .all(...params) as { origin: string; source: string | null; count: number }[];
 }
 
 /**

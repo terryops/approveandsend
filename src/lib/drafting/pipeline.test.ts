@@ -293,6 +293,7 @@ describe('workspace config', () => {
       neverPromise: ['a refund date'],
       autoApproveRules: true,
       refundOnDisputeWithdrawal: true,
+    sourceLabels: {},
       contextSources: [],
     };
 

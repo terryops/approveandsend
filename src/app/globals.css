@@ -3677,6 +3677,41 @@ pre.block {
 }
 
 /*
+ * The other row of tabs: where the work came from, above the one that says
+ * whose turn it is.
+ *
+ * Two identical rows of pills stacked on top of each other read as one wrapped
+ * row, and clicking what you thought was a status tab and landing in a
+ * different queue is the whole cost of that. So this one is drawn quieter —
+ * squared off, no outline until you are standing in it — which also matches
+ * what it is: a heading over the list rather than a control you work through.
+ *
+ * Pulled up under the toolbar, since the tabs above it already end in the
+ * toolbar's own bottom margin and a second full gap would float this row
+ * between the two things it belongs to.
+ */
+.filters.sources {
+  margin-top: calc(-1 * var(--s2));
+  gap: var(--s3);
+}
+
+.filters.sources a {
+  border-color: transparent;
+  border-radius: 6px;
+  padding-left: var(--s2);
+  padding-right: var(--s2);
+  color: var(--muted);
+}
+
+.filters.sources a.active {
+  color: var(--accent);
+  background: none;
+  border-color: transparent;
+  box-shadow: inset 0 -2px 0 var(--accent);
+  border-radius: 0;
+}
+
+/*
  * Mail held as typed: the draft read back, a saved version, the plain-text half
  * of a letter.
  *

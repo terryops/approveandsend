@@ -147,6 +147,16 @@ export interface WorkspaceConfig {
    */
   refundOnDisputeWithdrawal: boolean;
   /**
+   * What to call each intake on the tab that groups it.
+   *
+   * `source` is whatever the program posting the rows called itself, and the
+   * inbox shows that string when nothing better is on offer —
+   * `subeasy-bad-review` reads as "subeasy bad review", which is honest and
+   * ugly. This is where a desk says "差评" instead. Unlisted labels keep the
+   * slug, so a new intake gets a working tab before anybody names it.
+   */
+  sourceLabels: Record<string, string>;
+  /**
    * Whether a rule the learning pass writes goes straight into drafts.
    *
    * True — the default — is the desk teaching itself: an approved reply is
@@ -204,6 +214,7 @@ export const DEFAULT_WORKSPACE: WorkspaceConfig = {
     'delivery dates for unreleased features',
   ],
   refundOnDisputeWithdrawal: true,
+  sourceLabels: {},
   autoApproveRules: true,
   contextSources: [],
 };
@@ -218,6 +229,19 @@ function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter((entry): entry is string => typeof entry === 'string' && entry.trim() !== '');
   return items.map(entry => entry.trim());
+}
+
+/**
+ * A slug-to-name map, with anything that is not a pair of non-empty strings
+ * dropped. A mistyped entry costs that one label rather than the config file,
+ * which is the same bargain every other reader here makes.
+ */
+function asLabelMap(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter((pair): pair is [string, string] => typeof pair[1] === 'string' && pair[1].trim() !== '')
+    .map(([key, label]) => [key.trim(), label.trim()] as const);
+  return Object.fromEntries(entries);
 }
 
 /**
@@ -408,6 +432,7 @@ export function loadWorkspaceConfig(): WorkspaceConfig {
     neverPromise: asStringArray(fromFile.neverPromise) ?? DEFAULT_WORKSPACE.neverPromise,
     refundOnDisputeWithdrawal:
       asBoolean(fromFile.refundOnDisputeWithdrawal) ?? DEFAULT_WORKSPACE.refundOnDisputeWithdrawal,
+    sourceLabels: asLabelMap(fromFile.sourceLabels) ?? DEFAULT_WORKSPACE.sourceLabels,
     autoApproveRules:
       asBoolean(process.env.AAS_AUTO_APPROVE_RULES) ??
       asBoolean(fromFile.autoApproveRules) ??
