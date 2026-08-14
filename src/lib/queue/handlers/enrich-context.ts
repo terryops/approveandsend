@@ -36,15 +36,30 @@ export const ENRICH_CONTEXT = 'enrich-context';
  */
 export type ContextThen = 'draft' | 'compose';
 
+/**
+ * Whether the second opinion runs, carried the length of the chain.
+ *
+ * The decision is made by whoever pressed the button — a redraft turns the
+ * critic off — and the job that acts on it is two hops away, so it travels on
+ * the payload rather than being read off the task. Absent means on, which is
+ * every other caller.
+ */
+type ChainOptions = { db?: Db; critic?: boolean };
+
+/** `{ critic: false }` and nothing at all, since the default is on. */
+function criticFlag(critic: boolean | undefined): { critic?: false } {
+  return critic === false ? { critic: false } : {};
+}
+
 export function enqueueEnrichContext(
   taskId: string,
-  options: { priority?: number; db?: Db; then?: ContextThen } = {},
+  options: { priority?: number; db?: Db; then?: ContextThen; critic?: boolean } = {},
 ): EnqueueResult {
   const then: ContextThen = options.then ?? 'draft';
   return enqueue(
     ENRICH_CONTEXT,
     {
-      payload: { taskId, then },
+      payload: { taskId, then, ...criticFlag(options.critic) },
       dedupeKey: `${ENRICH_CONTEXT}:${taskId}`,
       // Ahead of drafting, which is priority 5: this is the thing drafting is
       // waiting for, and a queue drain that ran them the other way round would
@@ -67,12 +82,12 @@ export function enqueueEnrichContext(
  */
 export async function enqueueContextThenDraft(
   taskId: string,
-  options: { db?: Db } = {},
+  options: ChainOptions = {},
 ): Promise<EnqueueResult> {
   const db = options.db ?? getDb();
   return (await hasContextSources())
-    ? enqueueEnrichContext(taskId, { db })
-    : enqueueDraftReply(taskId, { db });
+    ? enqueueEnrichContext(taskId, { db, ...criticFlag(options.critic) })
+    : enqueueDraftReply(taskId, { db, ...criticFlag(options.critic) });
 }
 
 /**
@@ -104,10 +119,12 @@ export async function enqueueContextThenCompose(
  */
 export async function enqueueContextThenWrite(
   task: { id: string; origin: TaskOrigin },
-  options: { db?: Db } = {},
+  options: ChainOptions = {},
 ): Promise<EnqueueResult> {
+  // The composer has no critic pass to skip, so the flag is dropped rather
+  // than passed to something that would ignore it.
   return task.origin === 'composed'
-    ? enqueueContextThenCompose(task.id, options)
+    ? enqueueContextThenCompose(task.id, { db: options.db })
     : enqueueContextThenDraft(task.id, options);
 }
 
@@ -142,7 +159,7 @@ export const enrichContextHandler: JobHandler = async (payload, context) => {
   const write = () =>
     then === 'compose'
       ? enqueueCompose(taskId, { db: context.db })
-      : enqueueDraftReply(taskId, { db: context.db });
+      : enqueueDraftReply(taskId, { db: context.db, critic: value.critic !== false });
 
   let result;
   try {

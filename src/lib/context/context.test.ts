@@ -394,6 +394,35 @@ describe('the enrichment job', () => {
     expect(listJobs({ type: DRAFT_REPLY }, db)).toHaveLength(1);
   });
 
+  it('carries a redraft’s "no critic" the whole way to the drafter', async () => {
+    // Two hops between the button and the job that acts on it, and the flag
+    // was lost at either of them without this: the reviewer waits the extra
+    // ninety seconds for a second opinion they did not ask for.
+    setContextSources([source('a', BLOCK)]);
+    const t = task();
+    await enqueueContextThenDraft(t.id, { db, critic: false });
+
+    const [enrich] = listJobs({ type: ENRICH_CONTEXT }, db);
+    expect((enrich!.payload as { critic?: boolean }).critic).toBe(false);
+
+    await enrichContextHandler(
+      { taskId: t.id, critic: false },
+      { db, job: { id: 'j', type: ENRICH_CONTEXT } as never },
+    );
+
+    const [draft] = listJobs({ type: DRAFT_REPLY }, db);
+    expect((draft!.payload as { critic?: boolean }).critic).toBe(false);
+  });
+
+  it('leaves the critic on for everybody who did not ask', async () => {
+    setContextSources([]);
+    const t = task();
+    await enqueueContextThenDraft(t.id, { db });
+
+    const [draft] = listJobs({ type: DRAFT_REPLY }, db);
+    expect((draft!.payload as { critic?: boolean }).critic).toBe(true);
+  });
+
   it('still drafts when every lookup failed', async () => {
     setContextSources([source('a', null, 'boom')]);
     const t = task();

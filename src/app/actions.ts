@@ -829,7 +829,23 @@ export async function redraftTask(form: FormData): Promise<void> {
     // composed mail used to go to the drafter, which reads the task body as a
     // customer's letter — so pressing it on a review follow-up answered our
     // own brief, in a mail addressed to the customer.
-    await enqueueContextThenWrite(task);
+    // Without the critic, which is the difference between a redraft and a
+    // first draft rather than an economy on one.
+    //
+    // Two model calls run back to back in the drafting job, and measured on
+    // this desk the second is the larger of them: the drafter takes about a
+    // minute and the critic about ninety seconds, so skipping it is most of a
+    // two-and-a-half minute wait. That wait is the whole cost of the button —
+    // a reviewer is sitting in front of it watching a spinner, which is not
+    // true of the first draft, written before anybody opened the mail.
+    //
+    // And the critic is worth less here than anywhere: it exists to catch the
+    // draft that reads well and quietly breaks a policy, on a desk where
+    // nobody has looked yet. On a redraft somebody has looked, has said what
+    // is wrong in the box, and is about to read the answer. A second model
+    // rewriting that answer against generic rules is as likely to undo the
+    // instruction as to improve on it.
+    await enqueueContextThenWrite(task, { critic: false });
     // Started now rather than whenever a cron happens to fire.
     //
     // Nothing in this process turns the queue: jobs move when `/api/worker` is
