@@ -50,6 +50,37 @@ describe('attachment download', () => {
     expect(response.headers.get('content-disposition')).toMatch(/^inline;/);
   });
 
+  it('shows a screenshot the mailbox refused to name', async () => {
+    // Zoho types nothing: no content type on the listing, and
+    // `application/octet-stream` on every download. Left as it came, every
+    // screenshot on the desk was a grey square that saved itself when clicked.
+    const id = store('\u87a2\u5e55\u64f7\u53d6.png', 'image/png');
+    download.mockResolvedValue({
+      filename: '\u87a2\u5e55\u64f7\u53d6.png',
+      contentType: 'application/octet-stream;charset=UTF-8',
+      content: Buffer.from('bytes'),
+    });
+
+    const response = await get(id);
+
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('content-disposition')).toMatch(/^inline;/);
+  });
+
+  it('still refuses the guess that could run', async () => {
+    const id = store('logo.svg', 'image/svg+xml');
+    download.mockResolvedValue({
+      filename: 'logo.svg',
+      contentType: 'application/octet-stream',
+      content: Buffer.from('<svg/>'),
+    });
+
+    const response = await get(id);
+
+    expect(response.headers.get('content-type')).toBe('application/octet-stream');
+    expect(response.headers.get('content-disposition')).toMatch(/^attachment;/);
+  });
+
   it('refuses to render an SVG in our own origin', async () => {
     // It is a document that can carry script. Rendered here it runs as us,
     // with the reviewer's session sitting right there.

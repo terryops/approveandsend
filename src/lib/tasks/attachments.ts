@@ -78,12 +78,16 @@ export function addAttachment(
   input: NewTaskAttachment,
   db: Db = getDb(),
 ): TaskAttachment {
+  const filename = input.filename ?? '';
   const values = {
     task: taskId,
     message: input.messageId,
     attachment: input.attachmentId,
-    filename: input.filename ?? '',
-    contentType: input.contentType || 'application/octet-stream',
+    filename,
+    // Resolved on the way in, so every reader of the row — the tile, the
+    // drafter, the download route — sees the same answer without each having
+    // to remember to ask the question.
+    contentType: resolveContentType(input.contentType || 'application/octet-stream', filename),
     size: input.size ?? 0,
     inline: input.inline ? 1 : 0,
     contentId: input.contentId || null,
@@ -158,6 +162,49 @@ const RENDERABLE = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'
 
 export function isRenderableImage(contentType: string): boolean {
   return RENDERABLE.has(contentType.split(';')[0]!.trim().toLowerCase());
+}
+
+/**
+ * The extensions worth reading a type off, and only those.
+ *
+ * The same four formats as `RENDERABLE`, deliberately. This is a guess made
+ * from a string the customer chose, so the only guesses allowed are the ones
+ * that cannot become a capability: every type here decodes to pixels, so the
+ * worst a wrong guess does is show a broken image. Nothing that runs — `.svg`,
+ * `.html`, `.pdf` — is inferable here at any price, because that would be us
+ * handing out the exact sniff the download route sets `nosniff` to refuse.
+ */
+const BY_EXTENSION = new Map([
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+]);
+
+/**
+ * What a file really is, when the mailbox would not say.
+ *
+ * Zoho's `attachmentinfo` returns no content type at all and its download
+ * endpoint answers `application/octet-stream` for everything, so a support
+ * desk that runs on screenshots had every screenshot arrive as an anonymous
+ * blob: no thumbnail on the task, and a click that saved the file instead of
+ * showing it. The bytes were always right — only the label was missing.
+ *
+ * So a missing or generic label falls back to the filename, and a real one is
+ * left exactly as it stands. A provider that says `text/html` about a file
+ * named `shot.png` is not being second-guessed; it is the one party here that
+ * looked at the message.
+ */
+export function resolveContentType(declared: string, filename: string): string {
+  const type = declared.split(';')[0]!.trim().toLowerCase();
+  if (type && type !== 'application/octet-stream' && type !== 'binary/octet-stream') {
+    return declared;
+  }
+
+  const match = /\.([A-Za-z0-9]+)$/.exec(filename.trim());
+  const guess = match ? BY_EXTENSION.get(match[1]!.toLowerCase()) : undefined;
+  return guess ?? declared;
 }
 
 /**

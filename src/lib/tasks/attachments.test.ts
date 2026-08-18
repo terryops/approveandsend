@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { openDb, type Db } from '../db';
-import { addAttachment, attachmentSummary, getAttachment, isRenderableImage, listAttachments } from './attachments';
+import {
+  addAttachment,
+  attachmentSummary,
+  getAttachment,
+  isRenderableImage,
+  listAttachments,
+  resolveContentType,
+} from './attachments';
 import { createTask } from './store';
 
 let db: Db;
@@ -122,3 +129,40 @@ describe('isRenderableImage', () => {
   });
 });
 
+
+describe('resolveContentType', () => {
+  it('reads the type off the name when the mailbox would not say', () => {
+    // Zoho, on every attachment it has ever handed back.
+    expect(resolveContentType('application/octet-stream', 'shot.png')).toBe('image/png');
+    expect(resolveContentType('', '0808_1.JPG')).toBe('image/jpeg');
+    expect(resolveContentType('binary/octet-stream', 'a.webp')).toBe('image/webp');
+  });
+
+  it('leaves a provider that did say alone', () => {
+    expect(resolveContentType('text/html', 'invoice.png')).toBe('text/html');
+    expect(resolveContentType('image/png; name=a.png', 'a.png')).toBe('image/png; name=a.png');
+  });
+
+  it('will not guess anything that could run', () => {
+    // The whole point of the guess is that being wrong about it is harmless.
+    expect(resolveContentType('application/octet-stream', 'logo.svg')).toBe(
+      'application/octet-stream',
+    );
+    expect(resolveContentType('application/octet-stream', 'page.html')).toBe(
+      'application/octet-stream',
+    );
+    expect(resolveContentType('application/octet-stream', 'no-extension')).toBe(
+      'application/octet-stream',
+    );
+  });
+
+  it('is applied on the way in, so the tile never has to ask', () => {
+    const saved = addAttachment(
+      taskId,
+      { messageId: 'm', attachmentId: 'a', filename: '\u87a2\u5e55.png' },
+      db,
+    );
+    expect(saved.contentType).toBe('image/png');
+    expect(isRenderableImage(listAttachments(taskId, db)[0]!.contentType)).toBe(true);
+  });
+});

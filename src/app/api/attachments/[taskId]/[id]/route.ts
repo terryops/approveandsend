@@ -1,6 +1,10 @@
 import { hasSession } from '@/lib/auth/guard';
 import { mailProvider } from '@/lib/mail/config';
-import { getAttachment, isRenderableImage } from '@/lib/tasks/attachments';
+import {
+  getAttachment,
+  isRenderableImage,
+  resolveContentType,
+} from '@/lib/tasks/attachments';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +41,15 @@ export async function GET(
       attachment.attachmentId,
     );
 
-    const type = file.contentType || attachment.contentType;
+    const filename = file.filename || attachment.filename || 'attachment';
+    // Resolved here as well as at ingest, because this is the type the browser
+    // acts on and the download is where the generic answer comes from: Zoho
+    // labels every attachment it hands back `application/octet-stream`, which
+    // would otherwise overwrite the type the row already worked out.
+    const type = resolveContentType(
+      file.contentType || attachment.contentType,
+      filename,
+    );
 
     // Downloaded, unless it is a picture. A support desk runs on screenshots,
     // and a screenshot behind a download link is one nobody looks at — so the
@@ -50,7 +62,6 @@ export async function GET(
     // browser left to sniff can decide our "image/png" is really HTML, and
     // then the check above was on a label rather than on the bytes.
     const renderable = isRenderableImage(type);
-    const filename = file.filename || attachment.filename || 'attachment';
 
     return new Response(new Uint8Array(file.content), {
       headers: {

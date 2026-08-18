@@ -1035,6 +1035,40 @@ export const MIGRATIONS: Migration[] = [
       db.exec(`ALTER TABLE tasks ADD COLUMN title TEXT;`);
     },
   },
+  {
+    version: 34,
+    name: 'attachment_types_from_filenames',
+    up: db => {
+      // The screenshots that arrived as anonymous blobs, given their names back.
+      //
+      // Zoho reports no content type on an attachment and answers
+      // `application/octet-stream` when you download one, so every file ever
+      // ingested from it was stored as that — which is the one value the task
+      // screen reads to decide whether it can show a thumbnail. A support desk
+      // whose customers send screenshots had none of them visible: a grey
+      // square reading "PNG", and a click that saved the file rather than
+      // showing it.
+      //
+      // Only the four raster formats, matching the allowlist in
+      // `resolveContentType`, and only rows that never had a type to begin
+      // with. A guess from a filename is safe exactly as far as the guess
+      // cannot run.
+      db.exec(`
+        UPDATE task_attachments
+           SET content_type = CASE
+                 WHEN lower(filename) LIKE '%.png'  THEN 'image/png'
+                 WHEN lower(filename) LIKE '%.jpg'  THEN 'image/jpeg'
+                 WHEN lower(filename) LIKE '%.jpeg' THEN 'image/jpeg'
+                 WHEN lower(filename) LIKE '%.gif'  THEN 'image/gif'
+                 WHEN lower(filename) LIKE '%.webp' THEN 'image/webp'
+               END
+         WHERE content_type IN ('application/octet-stream', 'binary/octet-stream', '')
+           AND (lower(filename) LIKE '%.png' OR lower(filename) LIKE '%.jpg'
+             OR lower(filename) LIKE '%.jpeg' OR lower(filename) LIKE '%.gif'
+             OR lower(filename) LIKE '%.webp');
+      `);
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
