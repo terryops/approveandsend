@@ -3821,6 +3821,51 @@ pre.email {
 }
 
 /*
+ * The picture, full size, over the letter it arrived with.
+ *
+ * Same wash as `.confirm-scrim` and a step above it, because this can open on
+ * top of the confirmation panel — the reviewer checking the screenshot one last
+ * time before pressing send is exactly when it is most wanted.
+ *
+ * `contain` rather than `cover`, the opposite of the tile: down there the
+ * square is a sample of the picture, up here the picture is the point and
+ * cropping it would hide the corner of the screenshot somebody opened it for.
+ */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s4);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(3px);
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 100%;
+  /* Room left under it for the filename, so a tall screenshot does not push the
+     one line saying which screenshot it is off the bottom of the screen. */
+  max-height: calc(100% - 2rem);
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  cursor: default;
+}
+
+.lightbox-name {
+  margin: 0;
+  font-size: var(--t2);
+  color: var(--muted);
+  text-align: center;
+}
+
+/*
  * Taking one back off.
  *
  * On the tile rather than beside it, because at this size a button beside it is

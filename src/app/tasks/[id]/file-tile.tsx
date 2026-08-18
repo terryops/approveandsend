@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { isRenderableImage } from '@/lib/tasks/attachments';
 
+import { ImageThumb } from './image-thumb';
+
 /**
  * One file, as a thumbnail you can press.
  *
@@ -43,22 +45,22 @@ export function FileTile({
 
   return (
     <div className="file-tile">
-      <a className="thumb" href={href} title={label} aria-label={label}>
-        {isRenderableImage(contentType) ? (
-          /* Plain <img>, not next/image — that wants to fetch and cache customer
-             attachments through its own optimiser, which is a copy of exactly
-             the data we have gone out of our way not to keep. The alt is empty
-             because the link above it is already labelled; a screen reader
-             should meet this file once.
-             eslint-disable-next-line @next/next/no-img-element */
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={href} alt="" loading="lazy" />
-        ) : (
+      {/* A picture enlarges over the page; everything else is a file, and a
+          file's link is a download. Only the first of those needs a client
+          component, which is why the two are not one.
+
+          Plain <img> inside it, not next/image — that wants to fetch and cache
+          customer attachments through its own optimiser, which is a copy of
+          exactly the data we have gone out of our way not to keep. */}
+      {isRenderableImage(contentType) ? (
+        <ImageThumb href={href} label={label} />
+      ) : (
+        <a className="thumb" href={href} title={label} aria-label={label}>
           <span className="ext" aria-hidden="true">
             {mark}
           </span>
-        )}
-      </a>
+        </a>
+      )}
       {/* Under the square rather than inside it. Two PDFs are one tile drawn
           twice, and which of them is the invoice is the only thing anybody is
           looking for. Clipped to the tile's width — a filename is identified by
