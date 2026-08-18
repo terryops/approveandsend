@@ -22,6 +22,7 @@ import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
 import { MarkOpened } from './opened';
 import { QueueRail, railTasks } from './queue-rail';
+import { RedraftButtons } from './redraft-buttons';
 import { DiffToggle } from './diff-toggle';
 import { LetterFrame } from './letter-frame';
 import { DraftTools } from './draft-tools';
@@ -1004,11 +1005,15 @@ export default async function TaskPage({
         </div>
       )}
 
-      {/* Redraft, asking what for.
+      {/* Redraft, asking what for and how far.
 
           Same shape as the confirmation above and for the same reason: the
           instruction is the whole of the feature, and a box that is only open
-          when somebody has actually asked to redraft is a box they read. */}
+          when somebody has actually asked to redraft is a box they read.
+
+          Two buttons rather than one because there are two things a reviewer
+          means by "again", and the old panel made them guess which one it had
+          understood. See `RedraftButtons`. */}
       {redrafting && (
         <div className="confirm-scrim">
           <form
@@ -1027,22 +1032,16 @@ export default async function TaskPage({
 
             <h2 id="redraft-title">{t('task.redraftAsk.title')}</h2>
             <p className="meta">{t('task.redraftAsk.intro')}</p>
-            <textarea
-              name="notes"
-              rows={4}
-              autoFocus
-              aria-label={t('task.notesLabel')}
-              defaultValue={task.reviewerNotes ?? ''}
+            <RedraftButtons
+              defaultNote={task.reviewerNotes ?? ''}
+              notesLabel={t('task.notesLabel')}
               placeholder={t('task.redraftAsk.placeholder')}
+              reviseLabel={t('task.reviseAsk.go')}
+              rewriteLabel={t('task.redraftAsk.go')}
+              needNote={t('task.reviseAsk.needNote')}
+              backLabel={t('task.confirm.back')}
+              backHref={`/tasks/${task.id}`}
             />
-            <div className="actions">
-              <button className="primary" type="submit">
-                {t('task.redraftAsk.go')}
-              </button>
-              <Link className="button-link" href={`/tasks/${task.id}`}>
-                {t('task.confirm.back')}
-              </Link>
-            </div>
           </form>
         </div>
       )}

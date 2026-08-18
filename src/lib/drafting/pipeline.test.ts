@@ -466,6 +466,44 @@ describe('the reviewer steering a redraft', () => {
     expect(prompts[0]!).not.toContain('Revise this.');
   });
 
+  it('rewrites when asked to, note or no note', async () => {
+    // The case the inference got backwards. A reviewer who wants a different
+    // approach may still have something to say about which one — "this time
+    // lead with the compensation" — and under the old rule typing that turned
+    // the request into a light edit of the reply they had just rejected.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(
+      task.id,
+      { draft: 'We have already refunded you in full.', reviewerNotes: 'Lead with the credits.' },
+      db,
+    );
+
+    await draftReply(getTask(task.id, db)!, { db, mode: 'rewrite' });
+
+    const prompt = prompts[0]!;
+    expect(prompt).toContain('Write a different attempt');
+    expect(prompt).not.toContain('Revise this.');
+    // The note still goes in. Rewrite is not "ignore the human", it is "do not
+    // treat what they said as a list of edits to the text above".
+    expect(prompt).toContain('Lead with the credits.');
+  });
+
+  it('revises when asked to, even with nothing said', async () => {
+    // The screen stops this combination reaching here, and the server does not:
+    // a reviewer whose browser ran no JavaScript and who pressed the amend
+    // button has hand-edited sentences on the screen, and promoting that to a
+    // rewrite would throw them away. A wasted call is the cheaper failure.
+    queued.push(GOOD_DRAFT);
+    const { task } = createTask(INCOMING, db);
+    updateTask(task.id, { draft: 'We have already refunded you in full.' }, db);
+
+    await draftReply(getTask(task.id, db)!, { db, mode: 'revise' });
+
+    expect(prompts[0]!).toContain('Revise this.');
+    expect(prompts[0]!).not.toContain('Write a different attempt');
+  });
+
   it('says nothing about a previous reply on a first draft', async () => {
     queued.push(GOOD_DRAFT);
     const { task } = createTask(INCOMING, db);

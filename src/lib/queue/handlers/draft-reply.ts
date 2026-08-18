@@ -1,5 +1,5 @@
 import { getDb, type Db } from '../../db';
-import { draftReply } from '../../drafting/draft';
+import { draftReply, type RedraftMode } from '../../drafting/draft';
 import { listRules } from '../../rules/store';
 import { t } from '../../i18n';
 import {
@@ -33,16 +33,27 @@ export interface DraftReplyPayload {
   taskId: string;
   /** Skip the critic pass. */
   critic?: boolean;
+  /**
+   * Amend the draft on the screen, or replace it. See `RedraftMode`.
+   *
+   * Absent on a first draft, which has nothing to amend, and absent on any
+   * requeue that could not know — the drafter falls back to reading the note.
+   */
+  mode?: RedraftMode;
 }
 
 export function enqueueDraftReply(
   taskId: string,
-  options: { critic?: boolean; priority?: number; db?: Db } = {},
+  options: { critic?: boolean; mode?: RedraftMode; priority?: number; db?: Db } = {},
 ): EnqueueResult {
   return enqueue(
     DRAFT_REPLY,
     {
-      payload: { taskId, critic: options.critic ?? true } satisfies DraftReplyPayload,
+      payload: {
+        taskId,
+        critic: options.critic ?? true,
+        ...(options.mode ? { mode: options.mode } : {}),
+      } satisfies DraftReplyPayload,
       // One draft in flight per task. Two syncs noticing the same new mail
       // must not pay for two generations of the same reply.
       dedupeKey: `${DRAFT_REPLY}:${taskId}`,
@@ -81,7 +92,16 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
   updateTask(taskId, { status: 'drafting', error: null }, context.db);
 
   try {
-    const result = await draftReply(task, { critic: value.critic !== false, db: context.db });
+    const result = await draftReply(task, {
+      critic: value.critic !== false,
+      // Only the two it knows. A payload from an older build, or from a caller
+      // that had no reviewer to ask, leaves this undefined and the drafter
+      // infers it from the note the way it always did.
+      ...(value.mode === 'revise' || value.mode === 'rewrite'
+        ? { mode: value.mode as RedraftMode }
+        : {}),
+      db: context.db,
+    });
 
     // Graded here rather than in `draftReply`, because two of the inputs are
     // not the drafter's business: how long the conversation has been running,

@@ -19,6 +19,7 @@ import { syncCatalogFromStripe } from '@/lib/catalog/sync';
 import { normaliseTopicSlug, topicLabel } from '@/lib/config/workspace';
 import { taskIdsWithContext } from '@/lib/context/store';
 import { seedDemoData } from '@/lib/demo/seed';
+import type { RedraftMode } from '@/lib/drafting/draft';
 import { setThemeCookie, type Theme } from '@/lib/desk/theme';
 import { setSessionCookie } from '@/lib/auth/cookie';
 import { COOKIE_NAME, adminPassword, checkPassword, isProtected } from '@/lib/auth/session';
@@ -812,12 +813,20 @@ export async function redraftTask(form: FormData): Promise<void> {
     // where the reviewer already says what is wrong with it, and the drafter
     // reads it from here.
     const instruction = optional(form, 'notes');
+    // Which of the two buttons was pressed. Revise amends the text on the
+    // screen and rewrite replaces it — the panel has both because a reviewer
+    // who wants a different approach may still have something to say about
+    // which one, and inferring the answer from whether they typed anything got
+    // that case backwards every time.
+    //
+    // Anything unrecognised is a rewrite, which is what the single button did.
+    const mode: RedraftMode = field(form, 'mode') === 'revise' ? 'revise' : 'rewrite';
     updateTask(id, {
       status: 'pending',
       error: null,
       ...(instruction === undefined ? {} : { reviewerNotes: instruction || null }),
     });
-    recordEvent(id, 'redraft', {
+    recordEvent(id, mode === 'revise' ? 'revise' : 'redraft', {
       detail: field(form, 'notes'),
       actor: (await currentOperator())?.id ?? null,
     });
@@ -845,7 +854,7 @@ export async function redraftTask(form: FormData): Promise<void> {
     // is wrong in the box, and is about to read the answer. A second model
     // rewriting that answer against generic rules is as likely to undo the
     // instruction as to improve on it.
-    await enqueueContextThenWrite(task, { critic: false });
+    await enqueueContextThenWrite(task, { critic: false, mode });
     // Started now rather than whenever a cron happens to fire.
     //
     // Nothing in this process turns the queue: jobs move when `/api/worker` is

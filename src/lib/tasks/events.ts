@@ -21,6 +21,12 @@ export const TASK_ACTIONS = [
   'drafted',
   'edited',
   'redraft',
+  // The lighter half of the same button: the reviewer kept the reply and asked
+  // for changes to it. Its own line rather than a qualifier on `redraft`,
+  // because "asked for it again from scratch, twice" and "asked for two small
+  // fixes" are the difference between a draft that missed and one that nearly
+  // landed, and that is the question anybody reads this history to answer.
+  'revise',
   // A human overruling the classifier. Worth its own line in the history: it
   // changes which rules the next draft is written against, so a draft that
   // reads differently before and after has a reason on the record.

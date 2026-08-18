@@ -113,6 +113,16 @@ export interface DraftOptions {
    */
   previous?: string;
   /**
+   * How far to go with `previous`: amend it, or replace it.
+   *
+   * Absent means the old inference — a note meant amend, silence meant replace
+   * — which is what every path that cannot carry the reviewer's choice falls
+   * back to. That is the sweep requeueing a stuck task, and it is the right
+   * default there: the note is on the task row and the flag is not, so the only
+   * thing left to read is the note.
+   */
+  mode?: RedraftMode;
+  /**
    * Override the attached filenames. '' says they attached nothing.
    *
    * Set by the backfill, which learns rules from archived replies: the files
@@ -172,7 +182,7 @@ ${clip(trimmed, 2000)}`;
 }
 
 /**
- * The reply as it stands, on a redraft.
+ * The reply as it stands, and what to do with it.
  *
  * Without this, Redraft went back to the first version every time: the prompt
  * was built from the mail, the rules and the note, and nothing in it had ever
@@ -182,24 +192,30 @@ ${clip(trimmed, 2000)}`;
  * keep an edit was to stop asking the model for help, which is the product not
  * working.
  *
- * What it is told to do with it depends on whether there is a note. With one,
- * this is the text to revise and the note says how. Without one, the reviewer
- * read it and pressed Redraft anyway, which is a verdict: hand back a genuinely
- * different attempt rather than the same reply with the words moved around.
+ * Which of the two instructions goes in used to be inferred from whether there
+ * was a note, and the inference was wrong in the case that matters most: a
+ * reviewer who wants a genuinely different attempt *and* has something to say
+ * about which direction to take it — "this time lead with the compensation" —
+ * typed the note and got a light edit of the reply they had just rejected. The
+ * screen now has two buttons and the decision travels with the request, so
+ * saying what you want and choosing how far to go are separate questions.
  */
-function buildPrevious(previous: string, steered: boolean): string {
+export type RedraftMode = 'revise' | 'rewrite';
+
+function buildPrevious(previous: string, mode: RedraftMode): string {
   const trimmed = previous.trim();
   if (!trimmed) return '';
 
-  const instruction = steered
+  const instruction = mode === 'revise'
     ? `Revise this. It may have been edited by hand or swapped for another
 option, so treat every word of it as chosen on purpose: change what the note
 below asks for and what a rule above requires, and leave the rest alone. Do not
 start over unless the note says to.`
-    : `Somebody read this and asked for it to be written again without saying
-why, which means it did not work. Write a different attempt — a different
-approach or a different structure, not this one reworded. Keep whatever it gets
-right about the facts.`;
+    : `Somebody read this and asked for it to be written again, which means it
+did not work. Write a different attempt — a different approach or a different
+structure, not this one reworded. Keep whatever it gets right about the facts.
+A note below, if there is one, says which direction to take instead; it is not
+a list of edits to make to the text above.`;
 
   return `
 
@@ -523,7 +539,10 @@ export async function assemble(task: Task, options: DraftOptions = {}): Promise<
     // Read off the task for the same reason the note is: the text a reviewer
     // is looking at is the one in `draft`, whether the model wrote it, a person
     // typed it or the alternatives strip put it there.
-    previousBlock: buildPrevious(options.previous ?? task.draft ?? '', steer.trim() !== ''),
+    previousBlock: buildPrevious(
+      options.previous ?? task.draft ?? '',
+      options.mode ?? (steer.trim() !== '' ? 'revise' : 'rewrite'),
+    ),
     // Names only, and only of the files a person meant to send — see
     // `attachmentSummary`.
     filesBlock: buildFiles(options.files ?? attachmentSummary(listAttachments(task.id, db))),

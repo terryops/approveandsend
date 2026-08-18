@@ -1,6 +1,7 @@
 import { gatherContext } from '../../context/gather';
 import { hasContextSources } from '../../context/registry';
 import { getDb, type Db } from '../../db';
+import type { RedraftMode } from '../../drafting/draft';
 import { getTask } from '../../tasks/store';
 import type { TaskOrigin } from '../../tasks/types';
 import { enqueue, type EnqueueResult } from '../store';
@@ -44,22 +45,40 @@ export type ContextThen = 'draft' | 'compose';
  * the payload rather than being read off the task. Absent means on, which is
  * every other caller.
  */
-type ChainOptions = { db?: Db; critic?: boolean };
+type ChainOptions = { db?: Db; critic?: boolean; mode?: RedraftMode };
 
 /** `{ critic: false }` and nothing at all, since the default is on. */
 function criticFlag(critic: boolean | undefined): { critic?: false } {
   return critic === false ? { critic: false } : {};
 }
 
+/**
+ * The reviewer's choice between amending the draft and replacing it, travelling
+ * the same two hops as the critic flag and for the same reason: the button is
+ * pressed here and acted on in the drafter.
+ *
+ * Absent on every caller that is not a redraft, which is what the drafter's own
+ * fallback is written for.
+ */
+function modeFlag(mode: RedraftMode | undefined): { mode?: RedraftMode } {
+  return mode ? { mode } : {};
+}
+
 export function enqueueEnrichContext(
   taskId: string,
-  options: { priority?: number; db?: Db; then?: ContextThen; critic?: boolean } = {},
+  options: {
+    priority?: number;
+    db?: Db;
+    then?: ContextThen;
+    critic?: boolean;
+    mode?: RedraftMode;
+  } = {},
 ): EnqueueResult {
   const then: ContextThen = options.then ?? 'draft';
   return enqueue(
     ENRICH_CONTEXT,
     {
-      payload: { taskId, then, ...criticFlag(options.critic) },
+      payload: { taskId, then, ...criticFlag(options.critic), ...modeFlag(options.mode) },
       dedupeKey: `${ENRICH_CONTEXT}:${taskId}`,
       // Ahead of drafting, which is priority 5: this is the thing drafting is
       // waiting for, and a queue drain that ran them the other way round would
@@ -86,8 +105,8 @@ export async function enqueueContextThenDraft(
 ): Promise<EnqueueResult> {
   const db = options.db ?? getDb();
   return (await hasContextSources())
-    ? enqueueEnrichContext(taskId, { db, ...criticFlag(options.critic) })
-    : enqueueDraftReply(taskId, { db, ...criticFlag(options.critic) });
+    ? enqueueEnrichContext(taskId, { db, ...criticFlag(options.critic), ...modeFlag(options.mode) })
+    : enqueueDraftReply(taskId, { db, ...criticFlag(options.critic), ...modeFlag(options.mode) });
 }
 
 /**
@@ -121,8 +140,8 @@ export async function enqueueContextThenWrite(
   task: { id: string; origin: TaskOrigin },
   options: ChainOptions = {},
 ): Promise<EnqueueResult> {
-  // The composer has no critic pass to skip, so the flag is dropped rather
-  // than passed to something that would ignore it.
+  // The composer has no critic pass to skip and no draft to amend, so both
+  // flags are dropped rather than passed to something that would ignore them.
   return task.origin === 'composed'
     ? enqueueContextThenCompose(task.id, { db: options.db })
     : enqueueContextThenDraft(task.id, options);
@@ -159,7 +178,13 @@ export const enrichContextHandler: JobHandler = async (payload, context) => {
   const write = () =>
     then === 'compose'
       ? enqueueCompose(taskId, { db: context.db })
-      : enqueueDraftReply(taskId, { db: context.db, critic: value.critic !== false });
+      : enqueueDraftReply(taskId, {
+          db: context.db,
+          critic: value.critic !== false,
+          ...(value.mode === 'revise' || value.mode === 'rewrite'
+            ? { mode: value.mode as RedraftMode }
+            : {}),
+        });
 
   let result;
   try {

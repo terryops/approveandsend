@@ -414,6 +414,39 @@ describe('the enrichment job', () => {
     expect((draft!.payload as { critic?: boolean }).critic).toBe(false);
   });
 
+  it('carries which of the two buttons was pressed the same distance', async () => {
+    // Same two hops, same failure: the choice is made on the review screen and
+    // acted on in the drafter, and a mode dropped in between silently hands
+    // back the other behaviour — a rewrite where an amendment was asked for
+    // throws away edits somebody typed by hand.
+    setContextSources([source('a', BLOCK)]);
+    const t = task();
+    await enqueueContextThenDraft(t.id, { db, critic: false, mode: 'rewrite' });
+
+    const [enrich] = listJobs({ type: ENRICH_CONTEXT }, db);
+    expect((enrich!.payload as { mode?: string }).mode).toBe('rewrite');
+
+    await enrichContextHandler(
+      { taskId: t.id, critic: false, mode: 'rewrite' },
+      { db, job: { id: 'j', type: ENRICH_CONTEXT } as never },
+    );
+
+    const [draft] = listJobs({ type: DRAFT_REPLY }, db);
+    expect((draft!.payload as { mode?: string }).mode).toBe('rewrite');
+  });
+
+  it('leaves the mode off a draft nobody redrafted', async () => {
+    // Absent rather than defaulted, because absent is what the drafter's own
+    // fallback is written for: a first draft has nothing to amend, and a
+    // payload that claimed a mode would be asserting a choice nobody made.
+    setContextSources([]);
+    const t = task();
+    await enqueueContextThenDraft(t.id, { db });
+
+    const [draft] = listJobs({ type: DRAFT_REPLY }, db);
+    expect((draft!.payload as { mode?: string }).mode).toBeUndefined();
+  });
+
   it('leaves the critic on for everybody who did not ask', async () => {
     setContextSources([]);
     const t = task();
