@@ -37,6 +37,8 @@ export const zhCN: Dictionary = {
   "inbox.searchResults": "“{query}”命中 {count} 封。",
   "inbox.searchNoResults": "没有匹配“{query}”的邮件——已忽略的也翻过了。",
   "inbox.searchClear": "清除搜索",
+  "inbox.sortReceived": "按收信时间",
+  "inbox.sortSent": "按回复时间",
   "inbox.compose": "写邮件",
   "inbox.fetchMail": "收取邮件",
   "inbox.signOut": "退出登录",

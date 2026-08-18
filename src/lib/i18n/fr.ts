@@ -37,6 +37,8 @@ export const fr: Dictionary = {
   "inbox.searchResults": "Résultats pour « {query} » : {count}.",
   "inbox.searchNoResults": "Rien ne correspond à « {query} », pas même dans les archives.",
   "inbox.searchClear": "Effacer la recherche",
+  "inbox.sortReceived": "Reçus en premier",
+  "inbox.sortSent": "Répondus en premier",
   "inbox.compose": "Rédiger",
   "inbox.fetchMail": "Relever le courrier",
   "inbox.signOut": "Se déconnecter",

@@ -55,6 +55,8 @@ export const en = {
   "inbox.searchResults": "{count} match(es) for “{query}”.",
   "inbox.searchNoResults": "Nothing matches “{query}” — in the archive either.",
   "inbox.searchClear": "Clear search",
+  "inbox.sortReceived": "Newest received",
+  "inbox.sortSent": "Newest replied",
   "inbox.compose": "Compose",
   "inbox.fetchMail": "Fetch mail",
   "inbox.signOut": "Sign out",

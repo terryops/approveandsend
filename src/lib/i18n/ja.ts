@@ -37,6 +37,8 @@ export const ja: Dictionary = {
   "inbox.searchResults": "「{query}」に {count} 件一致しました。",
   "inbox.searchNoResults": "「{query}」に一致するメールはありません。アーカイブも探しました。",
   "inbox.searchClear": "検索を解除",
+  "inbox.sortReceived": "受信が新しい順",
+  "inbox.sortSent": "返信が新しい順",
   "inbox.compose": "新規作成",
   "inbox.fetchMail": "メールを取得",
   "inbox.signOut": "サインアウト",

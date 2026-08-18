@@ -37,6 +37,8 @@ export const de: Dictionary = {
   "inbox.searchResults": "{count} Treffer für „{query}“.",
   "inbox.searchNoResults": "Nichts passt zu „{query}“ — auch nicht im Archiv.",
   "inbox.searchClear": "Suche aufheben",
+  "inbox.sortReceived": "Zuletzt empfangen",
+  "inbox.sortSent": "Zuletzt beantwortet",
   "inbox.compose": "Verfassen",
   "inbox.fetchMail": "Mail abrufen",
   "inbox.signOut": "Abmelden",

@@ -251,8 +251,15 @@ export interface ListTasksFilter {
    * chronological, which is the only useful order for one person's history:
    * priority is a claim about what to do next, and nobody reading back through
    * a correspondence wants last March's urgent email at the top.
+   *
+   * `sent` is the same list read from the other end: not when the customer
+   * wrote, but when we answered. The two come apart exactly where it matters —
+   * a mail that sat for three days is near the top by arrival and near the
+   * bottom by reply — and "what went out lately" is not a question the arrival
+   * order can answer. Rows never sent have no place on that clock, so they
+   * fall to the bottom rather than being given a fictional one.
    */
-  order?: 'queue' | 'newest';
+  order?: 'queue' | 'newest' | 'sent';
   /**
    * Free text, matched against everything a person might remember about a
    * task: the subject, who sent it, what they wrote, what the model made of it,
@@ -381,10 +388,15 @@ function buildWhere(filter: ListTasksFilter): { sql: string; params: unknown[] }
 export function listTasks(filter: ListTasksFilter = {}, db: Db = getDb()): Task[] {
   const { sql, params } = buildWhere(filter);
 
+  const arrival = 'COALESCE(received_at, created_at) DESC';
   const order =
     filter.order === 'newest'
-      ? 'COALESCE(received_at, created_at) DESC'
-      : 'priority ASC, COALESCE(received_at, created_at) DESC';
+      ? arrival
+      : filter.order === 'sent'
+        ? // `sent_at IS NULL` first, which sorts 0 before 1: everything sent, in
+          // reply order, then everything unsent in arrival order underneath.
+          `sent_at IS NULL, sent_at DESC, ${arrival}`
+        : `priority ASC, ${arrival}`;
 
   const rows = db
     .prepare(

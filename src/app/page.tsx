@@ -182,6 +182,18 @@ function queueLight(state: ReturnType<typeof deskToday>['queue']): MessageKey {
   return state === 'stalled' ? 'chrome.queueStalled' : 'chrome.queueIdle';
 }
 
+/**
+ * Whether a tab has two dates to be read by.
+ *
+ * "Everything" and "sent" do; the rest are lists of mail nobody has answered
+ * yet, where a reply-date order is a list in no order at all under a column of
+ * blanks. Answered here rather than inline, because the tab you are standing in
+ * and the tab a link opens both have to ask it and they are different tabs.
+ */
+function canSort(status: string): boolean {
+  return status === 'all' || status === 'sent';
+}
+
 function groupBySender(tasks: Task[]): SenderGroup[] {
   const groups = new Map<string, SenderGroup>();
 
@@ -256,8 +268,22 @@ export default async function InboxPage({
   const from = typeof params.from === 'string' ? params.from : 'all';
   const fromFilter = categoryFilter(from);
 
+  // Which clock the list is read by, on the two tabs that hold answered mail.
+  //
+  // Arrival and reply are the same order right up until the desk falls behind,
+  // and then they are the two different questions worth asking: "what came in
+  // lately" is the queue, "what went out lately" is what you check before
+  // telling somebody their reply is on its way. Elsewhere the choice would be
+  // between one date and a column of blanks, so the control does not appear.
+  //
+  // Neither is priority order. That is a claim about what to do next, and both
+  // of these are readings of what already happened.
+  const sortable = canSort(requested);
+  const sort = sortable && params.sort === 'sent' ? 'sent' : 'received';
+
   const tasks = listTasks({
     ...fromFilter,
+    ...(sortable ? { order: sort === 'sent' ? ('sent' as const) : ('newest' as const) } : {}),
     // A search reaches into the bin; browsing does not. Hiding a dismissed
     // match would mean the search box quietly failing on the mail most likely
     // to be looked up.
@@ -292,12 +318,20 @@ export default async function InboxPage({
   const sources = categories(fromCounts, getWorkspaceConfig().sourceLabels, from);
 
   /** Every tab href, so the two rows never drop each other's state. */
-  const href = (next: { status?: string; from?: string }) => {
+  const href = (next: { status?: string; from?: string; sort?: string }) => {
     const query = new URLSearchParams();
     const nextStatus = next.status ?? requested;
     const nextFrom = next.from ?? from;
+    // Only when it is not the default, so the ordinary inbox URL stays the
+    // short one — and judged against the tab being *opened*, not the one being
+    // left. Carried the other way, clicking "awaiting review" from a list read
+    // by reply date would put `sort=sent` in the address of a tab that has no
+    // reply dates in it, where it would sit invisibly and change what the tab
+    // you came from does when you go back to it.
+    const nextSort = next.sort ?? (canSort(nextStatus) ? sort : 'received');
     if (nextStatus) query.set('status', nextStatus);
     if (nextFrom && nextFrom !== 'all') query.set('from', nextFrom);
+    if (nextSort === 'sent') query.set('sort', nextSort);
     if (search) query.set('q', search);
     return `/?${query.toString()}`;
   };
@@ -375,7 +409,13 @@ export default async function InboxPage({
           {group.tasks.map((task, index) => {
             // `deskedAt`, so a composed mail is not the one row in the queue
             // with an empty time column — see the helper.
-            const time = when(deskedAt(task));
+            //
+            // Under the reply order the column shows the reply's date instead,
+            // because a list sorted by one date and stamped with another reads
+            // as a list that is not sorted at all. Unsent rows keep their
+            // arrival date: they sit in their own block at the bottom, and a
+            // blank there says "no date" rather than "not sent yet".
+            const time = when(sort === 'sent' ? (task.sentAt ?? deskedAt(task)) : deskedAt(task));
             const unread = task.status === 'awaiting_review' && !task.openedAt;
             // Worth interrupting for. The whole row changes ground and takes a
             // rule down its left edge, because a pill the size of every other
@@ -706,6 +746,26 @@ export default async function InboxPage({
               {category.count > 0 && <span className="n">{category.count}</span>}
             </Link>
           ))}
+        </div>
+      )}
+
+      {/* Which clock, on its own line under the tabs it applies to.
+
+          Two links rather than a select, for the same reason the tabs are
+          links: each one is a URL somebody can keep, and the pair is small
+          enough that a control which hides one of its two options behind a
+          click would be the more expensive of the two. */}
+      {sortable && tasks.length > 0 && (
+        <div className="filters sorts">
+          <Link
+            href={href({ sort: 'received' })}
+            className={sort === 'received' ? 'active' : ''}
+          >
+            {t('inbox.sortReceived')}
+          </Link>
+          <Link href={href({ sort: 'sent' })} className={sort === 'sent' ? 'active' : ''}>
+            {t('inbox.sortSent')}
+          </Link>
         </div>
       )}
 

@@ -79,6 +79,47 @@ describe('listTasks by sender', () => {
   });
 });
 
+describe('listTasks in reply order', () => {
+  function answered(id: string, received: string, sent: string | null): void {
+    const { task } = createTask(
+      { messageId: id, subject: id, fromAddress: 'lin@example.com', receivedAt: received },
+      db,
+    );
+    if (sent) updateTask(task.id, { status: 'sent', sentAt: sent }, db);
+  }
+
+  it('reads by when we answered, not by when they wrote', () => {
+    // The two orders only come apart once the desk falls behind, which is
+    // exactly when somebody asks what has actually gone out.
+    answered('waited-three-days', '2026-03-01T00:00:00.000Z', '2026-03-04T00:00:00.000Z');
+    answered('same-hour', '2026-03-02T00:00:00.000Z', '2026-03-02T01:00:00.000Z');
+
+    expect(listTasks({ order: 'sent' }, db).map(t => t.subject)).toEqual([
+      'waited-three-days',
+      'same-hour',
+    ]);
+    expect(listTasks({ order: 'newest' }, db).map(t => t.subject)).toEqual([
+      'same-hour',
+      'waited-three-days',
+    ]);
+  });
+
+  it('puts what was never sent underneath, in arrival order', () => {
+    // Rather than at the top, which is where a NULL sorts by default and where
+    // it would push every answered mail off the first screen of a list whose
+    // whole subject is answered mail.
+    answered('replied', '2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z');
+    answered('open-old', '2026-02-01T00:00:00.000Z', null);
+    answered('open-new', '2026-05-01T00:00:00.000Z', null);
+
+    expect(listTasks({ order: 'sent' }, db).map(t => t.subject)).toEqual([
+      'replied',
+      'open-new',
+      'open-old',
+    ]);
+  });
+});
+
 describe('listTasks by free text', () => {
   function mail(input: {
     id: string;

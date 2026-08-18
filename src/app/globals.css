@@ -3712,6 +3712,35 @@ pre.block {
 }
 
 /*
+ * Which date the list is in order of.
+ *
+ * Quieter again than the source row above it, and to the right rather than the
+ * left. It is not a third way of narrowing what is on screen — the same rows
+ * are there either way — so it must not read as another rank of tabs. It reads
+ * as what it is: a note about the column at the far end of every line, sitting
+ * over that column.
+ */
+.filters.sorts {
+  margin-top: calc(-1 * var(--s2));
+  gap: var(--s2);
+  justify-content: flex-end;
+  font-size: var(--t2);
+}
+
+.filters.sorts a {
+  padding: 2px var(--s2);
+  border-color: transparent;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.filters.sorts a.active {
+  color: var(--fg);
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+/*
  * Mail held as typed: the draft read back, a saved version, the plain-text half
  * of a letter.
  *
