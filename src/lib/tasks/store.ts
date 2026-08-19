@@ -218,7 +218,17 @@ export function getTask(id: string, db: Db = getDb()): Task | null {
 }
 
 export interface ListTasksFilter {
-  status?: TaskStatus;
+  /**
+   * One status, or the few that a single screen treats as one thing.
+   *
+   * The list takes several because the review queue is not a status: a draft
+   * waiting to be read and a draft the model never managed to write are the
+   * same job to the person working the desk — both are theirs, and neither is
+   * moving on its own. Filed under two different words in the database, they
+   * would need two queries and two lists to be looked at together, and the one
+   * that got its own tab is the one that gets forgotten.
+   */
+  status?: TaskStatus | readonly TaskStatus[];
   /**
    * Statuses to leave out, which is how "everything" is asked for without
    * asking for the bin. A support address gets more spam than support, so an
@@ -330,9 +340,14 @@ function buildWhere(filter: ListTasksFilter): { sql: string; params: unknown[] }
   const where: string[] = [];
   const params: unknown[] = [];
 
-  if (filter.status) {
-    where.push('status = ?');
-    params.push(filter.status);
+  const asked = filter.status
+    ? typeof filter.status === 'string'
+      ? [filter.status]
+      : filter.status
+    : [];
+  if (asked.length) {
+    where.push(`status IN (${asked.map(() => '?').join(', ')})`);
+    params.push(...asked);
   } else if (filter.excludeStatuses?.length) {
     where.push(`status NOT IN (${filter.excludeStatuses.map(() => '?').join(', ')})`);
     params.push(...filter.excludeStatuses);

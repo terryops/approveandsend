@@ -84,6 +84,23 @@ function filtered(task: Task): boolean {
  */
 const MACHINE: readonly TaskStatus[] = ['pending', 'drafting', 'sending'];
 
+/**
+ * What the first tab is a list of, which is two statuses rather than one.
+ *
+ * A draft the model never managed to write — the API was down, the key had
+ * expired, the last retry gave up — used to leave the queue entirely and wait
+ * in a tab of its own. Nothing else about that email changes: somebody is
+ * still owed an answer, and now nothing at all is going to write it. Filed
+ * behind a tab nobody opens on a good day, that is a customer who never hears
+ * back, and the desk looks finished while it happens.
+ *
+ * So a failure sits in the queue with everything else that is a person's turn,
+ * wearing its status as a badge so it is not mistaken for a draft ready to
+ * read. The `failed` tab stays, because "show me only what broke" is a real
+ * question on a bad morning — it is just no longer the only place to find out.
+ */
+const QUEUE: readonly TaskStatus[] = ['awaiting_review', 'failed'];
+
 /** Its complement, derived rather than typed out — a status added later belongs
     to one side or the other, and it should not take an edit here to say which. */
 const NOT_MACHINE: readonly TaskStatus[] = TASK_STATUSES.filter(s => !MACHINE.includes(s));
@@ -278,6 +295,11 @@ export default async function InboxPage({
   //
   // Neither is priority order. That is a claim about what to do next, and both
   // of these are readings of what already happened.
+  // The statuses this list is actually asking for, which is the tab except on
+  // the queue, where it is the tab plus what failed. See `QUEUE`.
+  const asked: TaskStatus | readonly TaskStatus[] | null =
+    requested === 'awaiting_review' ? QUEUE : status;
+
   const sortable = canSort(requested);
   const sort = sortable && params.sort === 'sent' ? 'sent' : 'received';
 
@@ -287,7 +309,7 @@ export default async function InboxPage({
     // A search reaches into the bin; browsing does not. Hiding a dismissed
     // match would mean the search box quietly failing on the mail most likely
     // to be looked up.
-    ...(status ? { status } : search ? {} : { excludeStatuses: BIN }),
+    ...(asked ? { status: asked } : search ? {} : { excludeStatuses: BIN }),
     ...searchFilter,
     limit: 100,
   });
@@ -530,8 +552,15 @@ export default async function InboxPage({
                     the tab heading repeated forty times — and a queue where
                     every row carries a badge is a queue with no badges. The
                     risk pill went for the same reason one step earlier: the row
-                    it sat on is already coloured and already says why. */}
-                {mixed && (
+                    it sat on is already coloured and already says why.
+
+                    Which is why it is the row that decides and not the tab: the
+                    queue holds one status it does not name — see `QUEUE` — and
+                    a failure that looked exactly like a draft waiting to be read
+                    would be opened expecting one. The machine's rows are exempt
+                    because they already say what they are, in words, beside the
+                    subject. */}
+                {(mixed || (!machine && task.status !== status)) && (
                   <span className="tags">
                     <span className={`tag ${task.status}`}>
                       {LABELS[task.status] ?? task.status}
@@ -711,7 +740,14 @@ export default async function InboxPage({
             behind it is the same fact in one place instead of two. */}
         <div className="filters">
           {FILTERS.map((f) => {
-            const n = f === 'all' ? allCount : (counts[f as TaskStatus] ?? 0);
+            // The queue tab counts both of the statuses it opens, or it would
+            // advertise fewer rows than the list below it holds.
+            const n =
+              f === 'all'
+                ? allCount
+                : f === 'awaiting_review'
+                  ? QUEUE.reduce((sum, s) => sum + (counts[s] ?? 0), 0)
+                  : (counts[f as TaskStatus] ?? 0);
             return (
               <Link key={f} href={href({ status: f })} className={requested === f ? 'active' : ''}>
                 {LABELS[f] ?? f}

@@ -120,6 +120,35 @@ describe('listTasks in reply order', () => {
   });
 });
 
+describe('listTasks by status', () => {
+  function at(id: string, status: 'awaiting_review' | 'failed' | 'sent' | 'dismissed'): void {
+    const { task } = createTask(
+      { messageId: id, subject: id, fromAddress: 'lin@example.com' },
+      db,
+    );
+    updateTask(task.id, { status }, db);
+  }
+
+  it('takes several, because the queue is more than one of them', () => {
+    // A draft nobody has read and a draft that was never written are the same
+    // job to the person at the desk. One query, or the second one gets a tab
+    // of its own and is never opened.
+    at('to-read', 'awaiting_review');
+    at('never-written', 'failed');
+    at('answered', 'sent');
+
+    const queue = listTasks({ status: ['awaiting_review', 'failed'] }, db).map(t => t.subject);
+    expect(queue.sort()).toEqual(['never-written', 'to-read']);
+  });
+
+  it('still takes one on its own', () => {
+    at('to-read', 'awaiting_review');
+    at('never-written', 'failed');
+
+    expect(listTasks({ status: 'failed' }, db).map(t => t.subject)).toEqual(['never-written']);
+  });
+});
+
 describe('listTasks by free text', () => {
   function mail(input: {
     id: string;
