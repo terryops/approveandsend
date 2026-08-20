@@ -10,9 +10,10 @@ import {
   TRANSLATE_TASK,
   cardsAwaitingRendering,
   enqueueForTranslation,
+  replyAwaitingRendering,
   translateTaskHandler,
 } from '../queue/handlers';
-import { completeJob, listJobs } from '../queue/store';
+import { completeJob, failJob, listJobs } from '../queue/store';
 import { createTask, deleteTask, updateTask } from '../tasks/store';
 import { cardsSource, parseCards, renderCard } from './cards';
 import { clearTranslations, getTranslation, isSameLanguage, saveTranslation } from './store';
@@ -704,6 +705,56 @@ describe('rendering the context cards', () => {
     // The state every card is in until the job has run, and the state it stays
     // in if the job could not.
     expect(renderCard(block, null)).toEqual({ title: 'Subeasy Account', fields: [], prompt: 'Pro since April.' });
+  });
+});
+
+describe('deciding whether the reply is still being rendered', () => {
+  it('waits while the job that renders the draft is still on the queue', async () => {
+    const id = task('Bonjour, remboursement?', 'Bien sûr, sous 5 jours.');
+    enqueueForTranslation(id, { db });
+
+    // The half of the wait that never had a name. The task turns
+    // `awaiting_review` the moment the draft exists, and on this desk the text
+    // the reviewer reads is a second job behind it — announcing the draft here
+    // sends them to a reply in French.
+    expect(replyAwaitingRendering(id, db)).toBe(true);
+
+    queued.push('你好，退款？', '当然，5天内。');
+    await translateTaskHandler({ taskId: id }, context());
+    completeJob(listJobs({ type: TRANSLATE_TASK }, db)[0]!.id, undefined, db);
+
+    expect(replyAwaitingRendering(id, db)).toBe(false);
+  });
+
+  it('stops waiting when the rendering job has given up', () => {
+    const id = task('Bonjour, remboursement?', 'Bien sûr, sous 5 jours.');
+    enqueueForTranslation(id, { db });
+    const job = listJobs({ type: TRANSLATE_TASK }, db)[0]!;
+    failJob(job.id, 'the translator is down', { permanent: true }, db);
+
+    // A promise nobody can keep is worse than a missing translation: no job in
+    // flight means the wait is over however it ended, and the reviewer gets the
+    // draft rather than a spinner until they close the tab.
+    expect(replyAwaitingRendering(id, db)).toBe(false);
+  });
+
+  it('has nothing to wait for on a desk that answers in the reviewer language', () => {
+    process.env.AAS_REPLY_LANGUAGE = 'Chinese';
+    resetWorkspaceConfig();
+
+    const id = task('Bonjour, remboursement?', '当然，5天内。');
+    enqueueForTranslation(id, { db });
+
+    // No rendering is coming, because none was ever wanted. Waiting on one
+    // would hold every announcement on this install forever.
+    expect(replyAwaitingRendering(id, db)).toBe(false);
+  });
+
+  it('has nothing to wait for before there is a draft', () => {
+    const id = task('Bonjour, remboursement?');
+    enqueueForTranslation(id, { db });
+
+    expect(replyAwaitingRendering(id, db)).toBe(false);
   });
 });
 

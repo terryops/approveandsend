@@ -32,11 +32,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const KEY = 'aas.working';
 const CHANGED = 'aas:working';
 
-type Row = { id: string; status: string; title: string };
+type Row = { id: string; status: string; title: string; translating?: boolean };
 
-/** Still with the model. The two statuses a draft passes through. */
+/**
+ * Still with the model.
+ *
+ * The two statuses a draft passes through — and the rendering behind it, which
+ * is not a status at all. On a desk that reads its mail in another language the
+ * draft landing is only half of it: the task turns `awaiting_review` while the
+ * translation the reviewer will actually read is still being written, and a
+ * strip that announced the first half sent them to a screen with nothing on it
+ * they could read. One notice, when both have landed.
+ */
 function running(row: Row): boolean {
-  return row.status === 'pending' || row.status === 'drafting';
+  return row.status === 'pending' || row.status === 'drafting' || row.translating === true;
 }
 
 function read(): string[] {

@@ -10,7 +10,7 @@ import {
   translateForReview,
   translationEnabled,
 } from '../../translation/translate';
-import { enqueue, type EnqueueResult } from '../store';
+import { enqueue, isQueued, type EnqueueResult } from '../store';
 import { PermanentJobError, type JobHandler } from '../types';
 
 /**
@@ -90,6 +90,33 @@ export function cardsAwaitingRendering(taskId: string, db: Db = getDb()): boolea
   const cards = listContext(taskId, db);
   if (cards.length === 0) return false;
   return !hasTranslation(taskId, 'context', cardsSource(cards), deskLanguage(), db);
+}
+
+/**
+ * Whether the reply on this task is still waiting to be rendered for review.
+ *
+ * Two database reads, so a poll can ask it on the way past — and the reason it
+ * can ask at all is that a reply's no-op is written down. `translateForReview`
+ * returning "already in that language" is saved as an empty row (see
+ * `isSameLanguage`), so the absence of a row for the draft means "not done
+ * yet" rather than "nothing to do", which is the distinction
+ * `cardsAwaitingRendering` could not make about the mail.
+ *
+ * `isQueued` is the part that keeps this from being a promise nobody can
+ * keep. A translate job that has spent its attempts is not coming back, and a
+ * screen waiting on the strength of a missing row alone would spin until the
+ * tab was closed. No job in flight means the wait is over however it ended.
+ */
+export function replyAwaitingRendering(taskId: string, db: Db = getDb()): boolean {
+  const language = reviewLanguage();
+  if (!language || !repliesNeedRendering()) return false;
+
+  const task = getTask(taskId, db);
+  const text = task?.finalReply ?? task?.draft ?? '';
+  if (!text.trim()) return false;
+  if (hasTranslation(taskId, 'draft', text, language, db)) return false;
+
+  return isQueued(`${TRANSLATE_TASK}:${taskId}`, db);
 }
 
 export const translateTaskHandler: JobHandler = async (payload, context) => {

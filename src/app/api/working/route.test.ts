@@ -17,7 +17,9 @@ vi.mock('@/lib/queue/nudge', () => ({
   },
 }));
 
+import { resetWorkspaceConfig } from '@/lib/config/workspace';
 import { openDb, setDb, type Db } from '@/lib/db';
+import { enqueueForTranslation } from '@/lib/queue/handlers';
 import { createTask, updateTask } from '@/lib/tasks/store';
 
 import { GET } from './route';
@@ -37,8 +39,18 @@ beforeEach(() => {
 
 afterEach(() => {
   db.close();
+  delete process.env.AAS_CONFIG;
+  delete process.env.AAS_REVIEW_LANGUAGE;
+  resetWorkspaceConfig();
   vi.restoreAllMocks();
 });
+
+/** A desk whose reviewer reads the mail in another language. */
+function rendersForReview(): void {
+  process.env.AAS_CONFIG = '/nonexistent/absent.json';
+  process.env.AAS_REVIEW_LANGUAGE = 'Chinese';
+  resetWorkspaceConfig();
+}
 
 function pending(subject: string): string {
   const { task } = createTask({ subject, fromAddress: 'customer@example.com', body: 'Hello' }, db);
@@ -50,7 +62,9 @@ describe('GET /api/working', () => {
     const id = pending('Where is my invoice');
     const body = await (await ask(id)).json();
 
-    expect(body.tasks).toEqual([{ id, status: 'pending', title: 'Where is my invoice' }]);
+    expect(body.tasks).toEqual([
+      { id, status: 'pending', title: 'Where is my invoice', translating: false },
+    ]);
   });
 
   it('turns the queue while something is still being written', async () => {
@@ -64,6 +78,22 @@ describe('GET /api/working', () => {
 
     await ask(id);
     expect(nudged.times).toBe(0);
+  });
+
+  it('is still busy while the reply is being rendered for the reviewer', async () => {
+    rendersForReview();
+    const id = pending('Refund please');
+    updateTask(id, { status: 'awaiting_review', draft: 'Bien sûr, sous 5 jours.' }, db);
+    enqueueForTranslation(id, { db });
+
+    const body = await (await ask(id)).json();
+
+    // The draft is written and the task says so, but the text this reviewer
+    // reads is a second job behind it. One announcement, when both have landed.
+    expect(body.tasks[0].translating).toBe(true);
+    // And the same bargain as the draft wait: asking whether it is done is
+    // what gets it done on an install whose crontab is the only worker.
+    expect(nudged.times).toBe(1);
   });
 
   it('skips an id that is not a task rather than failing the whole answer', async () => {

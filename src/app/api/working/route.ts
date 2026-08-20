@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 
 import { hasSession } from '@/lib/auth/guard';
+import { replyAwaitingRendering } from '@/lib/queue/handlers/translate-task';
 import { nudgeQueue } from '@/lib/queue/nudge';
 import { getTask } from '@/lib/tasks/store';
 import { deskTitle } from '@/lib/tasks/types';
@@ -40,15 +41,32 @@ export async function GET(request: Request): Promise<Response> {
     .filter(id => id !== '')
     .slice(0, MAX_WATCHED);
 
+  // `translating` and not just the status, because `awaiting_review` is set
+  // the moment the draft exists and the rendering the reviewer actually reads
+  // is a second job behind it. Announcing the draft then sent somebody back to
+  // a screen showing a reply in a language they had asked not to be given —
+  // the wait was not over, it had only stopped being visible.
   const tasks = ids.flatMap(id => {
     const task = getTask(id);
-    return task ? [{ id: task.id, status: task.status, title: deskTitle(task) }] : [];
+    if (!task) return [];
+    return [
+      {
+        id: task.id,
+        status: task.status,
+        title: deskTitle(task),
+        translating: replyAwaitingRendering(task.id),
+      },
+    ];
   });
 
   // Only while something is actually waiting on it. A strip with nothing in
   // flight has stopped polling by then anyway, but a browser left open on a
   // stale list must not turn the queue every two seconds for the afternoon.
-  if (tasks.some(task => task.status === 'pending' || task.status === 'drafting')) {
+  if (
+    tasks.some(
+      task => task.status === 'pending' || task.status === 'drafting' || task.translating,
+    )
+  ) {
     after(() => nudgeQueue());
   }
 
