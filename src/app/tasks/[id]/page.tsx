@@ -17,7 +17,7 @@ import { DismissOnEscape } from '../../dismiss-on-escape';
 import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
 import { TaskPoller } from '../../task-poller';
-import { WatchTask } from '../../working';
+import { LandOnDraft, WatchTask } from '../../working';
 import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
 import { MarkOpened } from './opened';
@@ -978,6 +978,13 @@ export default async function TaskPage({
           takes it from here — it says what is cooking on every screen, and when
           the draft lands it says so and offers the way back. */}
       {working && <WatchTask id={task.id} />}
+
+      {/* And the other end of the same journey: the draft this browser asked
+          for has arrived, so put it in front of the person who asked. Only for
+          the tab that pressed the button, and only once — see `LandOnDraft`. */}
+      {!working && !inFlight && task.status === 'awaiting_review' && (
+        <LandOnDraft id={task.id} />
+      )}
 
       {/* A wait that is not going to end, said in the page rather than over it.
 

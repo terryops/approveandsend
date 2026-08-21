@@ -31,6 +31,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /** Where the watched ids live, and the event that says the list moved. */
 const KEY = 'aas.working';
 const CHANGED = 'aas:working';
+/** The task this tab pressed Redraft on and has not yet been shown the answer to. */
+const LANDING = 'aas.landing';
 
 type Row = { id: string; status: string; title: string; translating?: boolean };
 
@@ -82,7 +84,58 @@ export function WatchTask({ id }: { id: string }) {
   useEffect(() => {
     const ids = read();
     if (!ids.includes(id)) write([...ids, id]);
+    // And a note that this tab is waiting to be *shown* the answer, not merely
+    // told it exists. See `LandOnDraft`.
+    try {
+      sessionStorage.setItem(LANDING, id);
+    } catch {
+      /* see `read` — a browser with no storage just does not scroll */
+    }
   }, [id]);
+
+  return null;
+}
+
+/**
+ * Putting the reviewer's eye back on the draft, once there is one.
+ *
+ * The wait is not modal any more — see the note at the top of this file — so
+ * the page under it stays where it was: scrolled to the reply box, with the
+ * redraft panel's scrim over it, or wherever the reviewer had got to reading
+ * the customer's mail. The poller then calls `router.refresh()`, the server
+ * sends back a screen with a new draft on it, and React patches it into place
+ * *without moving the viewport*. The new reply lands somewhere off-screen and
+ * the screen the reviewer is looking at is unchanged, which reads as nothing
+ * having happened — the exact failure the strip was built to fix, one step
+ * further along.
+ *
+ * So: rendered only once the draft is actually on the row, and only for the
+ * task this tab started. A task opened cold from the inbox has no landing note
+ * and does not move, which matters — an unbidden scroll on a page somebody is
+ * reading is worse than no scroll at all.
+ *
+ * The note is cleared before scrolling rather than after, so a screen that
+ * re-renders twice does not fight the reviewer for the scroll position if they
+ * have already dragged away from it.
+ */
+export function LandOnDraft({ id, anchor = 'reply' }: { id: string; anchor?: string }) {
+  useEffect(() => {
+    let waiting: string | null = null;
+    try {
+      waiting = sessionStorage.getItem(LANDING);
+      if (waiting === id) sessionStorage.removeItem(LANDING);
+    } catch {
+      return;
+    }
+    if (waiting !== id) return;
+
+    const target = document.getElementById(anchor);
+    if (!target) return;
+    // Respecting the same preference the rest of the app does: somebody who has
+    // asked their system for no animation gets the jump, not the glide.
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+  }, [id, anchor]);
 
   return null;
 }
