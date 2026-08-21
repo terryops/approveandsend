@@ -1,0 +1,126 @@
+name: Release
+
+# A tag is the only thing that publishes. Pushing to main builds and tests in
+# `ci.yml` but ships nothing: an image that reappears every time somebody fixes
+# a typo is an image nobody can pin to.
+on:
+  push:
+    tags:
+      - 'v*'
+  # For the first one, and for re-running a release whose upload failed after a
+  # green build. Both are real, and neither is worth moving a tag for.
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  # Each architecture builds on its own machine rather than under QEMU.
+  # better-sqlite3 is a native addon compiled during `npm ci`, and emulating
+  # that costs twenty-odd minutes where a native runner spends two. GitHub's
+  # arm64 runners are free for public repositories, which is the only reason
+  # this is a matrix rather than one `platforms:` line.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest rather than by name: two jobs pushing one tag would
+      # race, and the winner would be whichever finished last rather than both.
+      # The manifest job below is what gives these digests a name.
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+
+      # An empty file named for the digest. The name is the payload; the
+      # manifest job needs nothing else from this one.
+      - name: Export the digest
+        run: |
+          digest='${{ steps.build.outputs.digest }}'
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # Slashes are not allowed in an artifact name, and `linux/amd64` has
+          # one. The job index is unique and needs no escaping.
+          name: digest-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # The tags people actually type. Until this runs, both images exist in the
+  # registry with no name on them.
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v1.2.3 publishes 1.2.3, 1.2 and latest. Somebody who wants to stop
+      # worrying pins 1.2 and gets patches; somebody who wants to stop
+      # thinking uses latest. A pre-release tag (v1.2.3-rc1) deliberately does
+      # not move latest.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+
+      - name: Put the two architectures under one name
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE }}@sha256:%s ' *)
+
+      - name: Show what a puller will get
+        run: |
+          docker buildx imagetools inspect \
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
