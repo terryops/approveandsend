@@ -670,7 +670,7 @@ describe('the Stripe source', () => {
 
     expect(block!.prompt).toContain('active subscription (Pro — 19 USD/month)');
     expect(block!.prompt).toContain('renews 2026-03-31');
-    expect(block!.prompt).toContain('Has paid 19 USD across 1 charge(s)');
+    expect(block!.prompt).toContain('Every charge on the account, newest first: 2026-03-01 19 USD paid.');
     expect(block!.fields.map(f => f.label)).toEqual([
       'Customer',
       'Since',
@@ -714,7 +714,53 @@ describe('the Stripe source', () => {
     ]);
 
     const block = await lookup();
-    expect(block!.prompt).toContain('1 of their charges has already been refunded');
+    expect(block!.prompt).toContain('2026-03-01 50 USD refunded in full');
+    // And the total says nothing came of it, rather than counting it as paid.
+    expect(block!.prompt).toContain('kept paying 0 USD');
+  });
+
+  it('gives the model the whole ledger rather than a summary of it', async () => {
+    // Every charge on the account behind the ticket that found this: a monthly
+    // subscription created in July, an August cycle that bounced on the 18th,
+    // the retry that went through on the 20th, and a full refund of that retry
+    // twelve minutes before the reviewer pressed Redraft.
+    //
+    // The paragraph used to be three summaries, and this is the shape that
+    // broke them. The refund took the August charge out of the paid bucket, so
+    // "the most recent" named July — a month before money last moved — and the
+    // failed charge, in no bucket at all, was never mentioned. The model told
+    // the customer their last payment was in July, on a thread about a refund
+    // that had already been paid out.
+    const JUL = Math.floor(Date.parse('2026-07-18T00:00:00Z') / 1000);
+    const AUG_18 = Math.floor(Date.parse('2026-08-18T00:00:00Z') / 1000);
+    const AUG_20 = Math.floor(Date.parse('2026-08-20T00:00:00Z') / 1000);
+    stub({ id: 'cus_1', created: JUL }, [], [
+      { amount: 31_800, currency: 'twd', paid: true, refunded: true, amount_refunded: 31_800, created: AUG_20, status: 'succeeded' },
+      { amount: 31_800, currency: 'twd', paid: false, refunded: false, created: AUG_18, status: 'failed' },
+      { amount: 25_440, currency: 'twd', paid: true, refunded: false, created: JUL, status: 'succeeded' },
+    ]);
+
+    const { prompt } = (await lookup())!;
+
+    expect(prompt).toContain(
+      'Every charge on the account, newest first: 2026-08-20 318 TWD refunded in full; ' +
+        '2026-08-18 318 TWD attempted and failed; 2026-07-18 254.4 TWD paid.',
+    );
+    expect(prompt).toContain('kept paying 254.4 TWD');
+    // No sentence of that shape survives, because no summary of a ledger can
+    // know which charge the letter is going to ask about.
+    expect(prompt).not.toContain('the most recent');
+    expect(prompt).not.toMatch(/across \d+ charge/);
+  });
+
+  it('says in as many words when a refund was only partial', async () => {
+    stub({ id: 'cus_1', created: NOW }, [], [
+      { amount: 5000, currency: 'usd', paid: true, refunded: false, amount_refunded: 2000, created: NOW, status: 'succeeded' },
+    ]);
+
+    const { prompt } = (await lookup())!;
+    expect(prompt).toContain('2026-03-01 50 USD partially refunded (20 USD returned)');
+    expect(prompt).toContain('do not describe a partial refund as a refund');
   });
 
   it('does not divide zero-decimal currencies by a hundred', async () => {

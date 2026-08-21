@@ -9,6 +9,7 @@ import {
   listDisputes,
   listSubscriptions,
   money,
+  netPaid,
   planOf,
   stripeConfigured,
   type StripeCharge,
@@ -28,10 +29,31 @@ import type { ContextBlock, ContextField, ContextSource, LookupSubject } from '.
 /**
  * The paragraph the model reads.
  *
- * Written as claims a person would make, not as a record dump: "lapsed two
- * weeks ago" is actionable, `"status": "canceled"` needs interpreting, and the
- * interpreting is this function's job rather than the model's.
+ * Two kinds of sentence, and the difference between them is the whole design.
+ *
+ * The judgements — "lapsed two weeks ago", "do not talk to them as a current
+ * subscriber", "there is a chargeback here" — are written here, because they
+ * are decisions the desk has already taken and should not be retaken on every
+ * draft. The record is not: charges go in one per line, all of them, dated,
+ * because which charge matters depends on the letter and this function has not
+ * read it.
  */
+/** One dated line per charge, including the ones that failed. */
+function chargeLine(charge: StripeCharge): string {
+  const when = day(charge.created);
+  const amount = money(charge.amount, charge.currency);
+  switch (chargeState(charge)) {
+    case 'paid':
+      return `${when} ${amount} paid`;
+    case 'refunded':
+      return `${when} ${amount} refunded in full`;
+    case 'partial':
+      return `${when} ${amount} partially refunded (${money(charge.amount_refunded ?? 0, charge.currency)} returned)`;
+    default:
+      return `${when} ${amount} attempted and failed`;
+  }
+}
+
 function describe(
   customer: StripeCustomer,
   subscriptions: StripeSubscription[],
@@ -68,28 +90,46 @@ function describe(
     lines.push('Has never had a subscription. Do not assume they are paying for anything.');
   }
 
-  const paid = charges.filter(c => chargeState(c) === 'paid');
-  if (paid.length > 0) {
-    const byCurrency = new Map<string, number>();
-    for (const charge of paid) {
-      byCurrency.set(charge.currency, (byCurrency.get(charge.currency) ?? 0) + charge.amount);
-    }
-    const totals = [...byCurrency].map(([currency, amount]) => money(amount, currency)).join(', ');
-    lines.push(`Has paid ${totals} across ${paid.length} charge(s); the most recent was ${day(paid[0]!.created)}.`);
+  // The record itself, whole, in the order it happened.
+  //
+  // This used to be three summaries — total paid, how many refunded, how many
+  // partially — and between them they lost the one fact a refund thread turns
+  // on: when money last moved. A refunded charge left the paid bucket, so
+  // "the most recent" named the most recent charge *still standing*; on a
+  // monthly subscription whose latest cycle had just been refunded that was a
+  // date from a month ago, and the model duly told the customer their last
+  // payment was in July. A failed charge was in no bucket at all and vanished,
+  // which is how "we tried to bill you on the 18th and it bounced" becomes a
+  // silence on a screen about billing.
+  //
+  // The reviewer has always been able to open `/billing/<address>` and read
+  // every charge and refund; the model was the only party to this conversation
+  // working from a précis. Summarising is the step that dropped the facts, and
+  // no better summary fixes that — every one of them is a guess about which
+  // question the letter is going to ask. So the ledger goes in as a ledger,
+  // and the interpreting happens where the letter is, with all of it visible.
+  //
+  // Uncapped, because `listCharges` is what bounds this and the bound belongs
+  // there: a lookup that quietly stopped at the tenth charge would be the same
+  // bug in a smaller font.
+  if (charges.length > 0) {
+    lines.push(`Every charge on the account, newest first: ${charges.map(chargeLine).join('; ')}.`);
   }
 
-  // Both kinds, and separately. A partial refund described as a refund is how
-  // somebody gets told their money is on the way back when half of it is not,
-  // and it is the single most expensive sentence a support desk can write.
-  const full = charges.filter(c => chargeState(c) === 'refunded');
-  const partial = charges.filter(c => chargeState(c) === 'partial');
-  if (full.length > 0) {
-    lines.push(`${full.length} of their charges has already been refunded in full.`);
+  // What the ledger cannot say, because it is arithmetic across currencies and
+  // an arithmetic mistake here is a sentence about somebody's money.
+  const kept = netPaid(charges);
+  if (kept.size > 0) {
+    const totals = [...kept].map(([currency, amount]) => money(amount, currency)).join(', ');
+    lines.push(`Net of every refund they have kept paying ${totals}.`);
   }
-  if (partial.length > 0) {
-    const given = partial.map(c => money(c.amount_refunded ?? 0, c.currency)).join(', ');
+
+  // Not a fact — an instruction, and the most expensive one on this card. A
+  // partial refund described as a refund is how somebody gets told their money
+  // is on the way back when half of it is not.
+  if (charges.some(c => chargeState(c) === 'partial')) {
     lines.push(
-      `${partial.length} more has been partially refunded (${given} returned so far) — do not describe those as refunded.`,
+      'Some of that was refunded in part, not in full — do not describe a partial refund as a refund.',
     );
   }
 
@@ -121,7 +161,10 @@ export const stripeSource: ContextSource = {
 
     const [subscriptions, charges] = await Promise.all([
       listSubscriptions(customer.id),
-      listCharges(customer.id, 20),
+      // Uncapped, so the paragraph below is the whole record rather than a
+      // window onto it. `listCharges` stops at fifty, which on this desk is
+      // years of a monthly subscription.
+      listCharges(customer.id),
     ]);
 
     // After the charges rather than beside them: a dispute is found by

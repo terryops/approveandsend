@@ -534,7 +534,13 @@ export function netPaid(charges: StripeCharge[]): Map<string, number> {
   const totals = new Map<string, number>();
   for (const charge of charges) {
     if (chargeState(charge) === 'failed') continue;
-    const net = charge.amount - (charge.amount_refunded ?? 0);
+    // `refunded` first, the way `chargeState` reads it. A charge flagged as
+    // fully refunded with no `amount_refunded` alongside it counted here as
+    // money kept — the two functions trusting different fields about the same
+    // charge, which is the kind of disagreement that shows up as a total on a
+    // screen rather than as an error anywhere.
+    const back = charge.refunded ? charge.amount : (charge.amount_refunded ?? 0);
+    const net = charge.amount - back;
     totals.set(charge.currency, (totals.get(charge.currency) ?? 0) + net);
   }
   // A currency that nets to nothing is still a fact — everything was refunded,

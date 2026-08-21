@@ -50,6 +50,13 @@ describe('chargeState', () => {
 });
 
 describe('netPaid', () => {
+  it('trusts the refunded flag the way chargeState does', () => {
+    // A full refund that arrives without `amount_refunded` beside it is still
+    // a full refund, and counting it as money kept overstates a total on a
+    // screen about somebody's money.
+    expect([...netPaid([charge({ refunded: true })])]).toEqual([['usd', 0]]);
+  });
+
   it('subtracts what went back rather than counting what came in', () => {
     const totals = netPaid([charge(), charge({ id: 'ch_2', amount_refunded: 4_000 })]);
 
