@@ -394,6 +394,19 @@ function buildWhere(filter: ListTasksFilter): { sql: string; params: unknown[] }
       params.push(...slugs);
     }
 
+    // The rest of the thread, which the columns above do not hold. A task's
+    // `body` is one message — the latest, once a thread has been consolidated
+    // — so the mail somebody remembers is routinely a reply that no column on
+    // this row contains. Without this, a search for a phrase from the first
+    // letter of a long thread returns nothing, which reads as "we never got
+    // that mail" rather than as "the search only looks at the last one".
+    clauses.push(
+      `EXISTS (SELECT 1 FROM task_messages m
+                WHERE m.task_id = tasks.id
+                  AND (m.subject LIKE ? ESCAPE '\\' OR m.body LIKE ? ESCAPE '\\'))`,
+    );
+    params.push(pattern, pattern);
+
     where.push(`(${clauses.join(' OR ')})`);
   }
 

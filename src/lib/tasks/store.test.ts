@@ -8,6 +8,7 @@ import {
   listTasks,
   updateTask,
 } from './store';
+import { addMessage } from './messages';
 import { deskedAt } from './types';
 
 let db: Db;
@@ -223,6 +224,44 @@ describe('listTasks by free text', () => {
     // No tokeniser would split this into words, so whole-word matching would
     // mean Chinese is unsearchable.
     expect(listTasks({ search: '删除' }, db).map(t => t.messageId)).toEqual(['a']);
+  });
+
+  it('reaches into the rest of the thread, not just the message on the row', () => {
+    // A consolidated thread keeps only the latest message in `body`, so the
+    // words somebody remembers are usually in a reply the row does not hold.
+    // This is the search finding the mail people actually go looking for: the
+    // one where the customer first explained what they wanted.
+    const { task } = createTask(
+      {
+        messageId: 'a',
+        subject: '關於台語字幕的支援情況',
+        fromAddress: 'david@example.com',
+        body: '謝謝團隊對台語字幕的重視',
+        receivedAt: '2026-07-31T00:00:00.000Z',
+      },
+      db,
+    );
+    addMessage(
+      task.id,
+      {
+        direction: 'inbound',
+        messageId: 'a-first',
+        fromAddress: 'david@example.com',
+        subject: '想許願一個功能',
+        body: '想把音檔轉化成音波視覺化影片',
+        receivedAt: '2026-07-20T00:00:00.000Z',
+      },
+      db,
+    );
+    mail({ id: 'b', subject: 'Nothing to do with any of that' });
+
+    expect(listTasks({ search: '音波' }, db).map(t => t.messageId)).toEqual(['a']);
+    // Both words in the thread but neither on the row, and still one match.
+    expect(listTasks({ search: '許願 音波' }, db).map(t => t.messageId)).toEqual(['a']);
+    // The counts are built from the same WHERE, so they have to agree.
+    expect(countTasksByStatus({ search: '音波' }, db)).toEqual({ pending: 1 });
+    // And a word in nobody's thread still finds nobody.
+    expect(listTasks({ search: '波形' }, db)).toHaveLength(0);
   });
 
   it('ignores case, and does not care which column each word landed in', () => {
