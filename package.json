@@ -1,6 +1,6 @@
 {
   "name": "approveandsend",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "AI drafts your customer support replies, a human approves them, and every correction teaches it.",
   "license": "MIT",
