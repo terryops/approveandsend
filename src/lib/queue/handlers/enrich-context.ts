@@ -5,6 +5,8 @@ import type { RedraftMode } from '../../drafting/draft';
 import { getTask } from '../../tasks/store';
 import type { TaskOrigin } from '../../tasks/types';
 import { enqueue, type EnqueueResult } from '../store';
+import { recordEvent } from '../../tasks/events';
+import { t } from '../../i18n';
 import { PermanentJobError, type JobHandler } from '../types';
 import { enqueueCompose } from './compose-message';
 import { enqueueDraftReply } from './draft-reply';
@@ -175,16 +177,39 @@ export const enrichContextHandler: JobHandler = async (payload, context) => {
   }
 
   const then: ContextThen = value.then === 'compose' ? 'compose' : 'draft';
-  const write = () =>
-    then === 'compose'
-      ? enqueueCompose(taskId, { db: context.db })
-      : enqueueDraftReply(taskId, {
-          db: context.db,
-          critic: value.critic !== false,
-          ...(value.mode === 'revise' || value.mode === 'rewrite'
-            ? { mode: value.mode as RedraftMode }
-            : {}),
-        });
+
+  /**
+   * Hand off to whichever writer this chain was started for.
+   *
+   * The result is read rather than discarded. One draft in flight per task is
+   * the right rule, but it made the second Redraft on a task already drafting
+   * disappear: the enqueue was deduped onto the running job, this function
+   * threw the answer away, and the reviewer was shown the *first* request's
+   * reply as though it were the answer to their second. Now the drop is
+   * recorded where it happened, on the task's own timeline, so a reply that
+   * ignored the note has a reason next to it instead of looking like the model
+   * refusing to listen.
+   */
+  const write = () => {
+    if (then === 'compose') return enqueueCompose(taskId, { db: context.db });
+    const queued = enqueueDraftReply(taskId, {
+      db: context.db,
+      critic: value.critic !== false,
+      ...(value.mode === 'revise' || value.mode === 'rewrite'
+        ? { mode: value.mode as RedraftMode }
+        : {}),
+    });
+    // `updated` means the waiting job took this request's note and mode, which
+    // is the same thing as having been queued. Only an in-flight holder drops
+    // it.
+    if (queued.deduped && !queued.updated) {
+      recordEvent(taskId, 'redraft_dropped', {
+        detail: t('task.redraftDropped'),
+        db: context.db,
+      });
+    }
+    return queued;
+  };
 
   let result;
   try {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useFormStatus } from 'react-dom';
 
 /**
  * The two halves of the redraft panel: the note, and what to do with it.
@@ -15,6 +16,14 @@ import { useState } from 'react';
  * of the reviewer's time to be handed back what it already had. Rewrite has no
  * such problem, which is why only one of the two is gated.
  *
+ * Both are also gated on the post itself. A redraft is a model call and the
+ * screen does not change until the server answers, so a reviewer who has just
+ * pressed one has a live-looking button and no evidence anything happened —
+ * and presses it again. The second press was worse than wasted: one draft is
+ * allowed in flight per task, so the queue folded it onto the running job and
+ * the reply that came back was the answer to the *first* note. The button now
+ * says it is working, and stops taking presses while it is.
+ *
  * The gate is an affordance, not a rule. Without JavaScript both buttons post,
  * and the server honours a revise with an empty note rather than quietly
  * promoting it to a rewrite: a reviewer who has hand-edited three sentences and
@@ -28,6 +37,7 @@ export function RedraftButtons({
   placeholder,
   reviseLabel,
   rewriteLabel,
+  workingLabel,
   needNote,
   backLabel,
   backHref,
@@ -37,12 +47,15 @@ export function RedraftButtons({
   placeholder: string;
   reviseLabel: string;
   rewriteLabel: string;
+  workingLabel: string;
   needNote: string;
   backLabel: string;
   backHref: string;
 }) {
   const [note, setNote] = useState(defaultNote);
-  const canRevise = note.trim() !== '';
+  // Form-scoped: true while either button in this panel is posting.
+  const { pending } = useFormStatus();
+  const canRevise = note.trim() !== '' && !pending;
 
   return (
     <>
@@ -65,19 +78,20 @@ export function RedraftButtons({
           value="revise"
           disabled={!canRevise}
           // Said rather than left to be worked out. A greyed-out primary button
-          // with no explanation is indistinguishable from a broken one.
-          title={canRevise ? undefined : needNote}
+          // with no explanation is indistinguishable from a broken one. While
+          // posting the reason is the spinner beside it, not this.
+          title={canRevise || pending ? undefined : needNote}
         >
-          {reviseLabel}
+          {pending ? workingLabel : reviseLabel}
         </button>
-        <button type="submit" name="mode" value="rewrite">
+        <button type="submit" name="mode" value="rewrite" disabled={pending}>
           {rewriteLabel}
         </button>
         <a className="button-link" href={backHref}>
           {backLabel}
         </a>
       </div>
-      {!canRevise && <p className="meta">{needNote}</p>}
+      {!canRevise && !pending && <p className="meta">{needNote}</p>}
     </>
   );
 }

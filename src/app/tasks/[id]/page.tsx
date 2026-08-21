@@ -1038,6 +1038,7 @@ export default async function TaskPage({
               placeholder={t('task.redraftAsk.placeholder')}
               reviseLabel={t('task.reviseAsk.go')}
               rewriteLabel={t('task.redraftAsk.go')}
+              workingLabel={t('task.redraftAsk.working')}
               needNote={t('task.reviseAsk.needNote')}
               backLabel={t('task.confirm.back')}
               backHref={`/tasks/${task.id}`}

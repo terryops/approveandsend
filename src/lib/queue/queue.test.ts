@@ -105,6 +105,41 @@ describe('enqueue', () => {
     expect(second.job.id).not.toBe(first.job.id);
   });
 
+  it('lets the later request rewrite a job that has not started', () => {
+    const first = enqueue('demo', { dedupeKey: 'task-1', payload: { note: 'shorter' } }, db);
+    const second = enqueue(
+      'demo',
+      { dedupeKey: 'task-1', payload: { note: 'actually, warmer' } },
+      db,
+    );
+
+    expect(second.deduped).toBe(true);
+    expect(second.updated).toBe(true);
+    expect(second.job.id).toBe(first.job.id);
+    // The point of the whole thing: the job that runs carries the newer note,
+    // not the one it was created with.
+    expect(second.job.payload).toEqual({ note: 'actually, warmer' });
+    expect(listJobs({}, db)).toHaveLength(1);
+  });
+
+  it('leaves a job that is already running alone, and says so', () => {
+    const first = enqueue('demo', { dedupeKey: 'task-1', payload: { note: 'shorter' } }, db);
+    claimNext({}, db);
+
+    const second = enqueue(
+      'demo',
+      { dedupeKey: 'task-1', payload: { note: 'actually, warmer' } },
+      db,
+    );
+
+    // Its payload is in a prompt already. Rewriting it under the handler would
+    // be worse than dropping it, so the caller is told which happened.
+    expect(second.deduped).toBe(true);
+    expect(second.updated).toBeFalsy();
+    expect(second.job.payload).toEqual({ note: 'shorter' });
+    expect(second.job.id).toBe(first.job.id);
+  });
+
   it('does not dedupe jobs without a key', () => {
     enqueue('demo', {}, db);
     enqueue('demo', {}, db);

@@ -90,6 +90,17 @@ export interface EnqueueResult {
   job: Job;
   /** True when an unfinished job already held this dedupe key. */
   deduped: boolean;
+  /**
+   * True when the deduped request rewrote the waiting job's payload.
+   *
+   * A reviewer who presses Redraft twice is not asking for the same thing
+   * twice: the second press carries a fresh note and possibly the other
+   * button. While the holder is still `pending` nothing has read its payload
+   * yet, so the later request replaces it and the caller can say the request
+   * landed. Once the holder is `processing` its payload is already in a
+   * prompt, and this stays false — see `deduped` on how that is reported.
+   */
+  updated?: boolean;
 }
 
 export function enqueue(type: string, options: EnqueueOptions = {}, db: Db = getDb()): EnqueueResult {
@@ -137,7 +148,30 @@ export function enqueue(type: string, options: EnqueueOptions = {}, db: Db = get
           .get(options.dedupeKey) as JobRow | undefined)
       : undefined;
 
-    if (existing) return { job: mapJob(existing), deduped: true };
+    if (existing) {
+      // Nothing has read a pending job's payload, so the newer request wins.
+      // Without this a second Redraft while the first still sat in the queue
+      // ran the first one's note and mode, and the reviewer was told it
+      // worked.
+      if (existing.status === 'pending') {
+        const rewritten = db
+          .prepare(
+            `UPDATE jobs SET payload = ?, priority = ?, run_after = ?
+              WHERE id = ? AND status = 'pending'
+              RETURNING *`,
+          )
+          .get(
+            JSON.stringify(options.payload ?? {}),
+            options.priority ?? 5,
+            runAfter,
+            existing.id,
+          ) as JobRow | undefined;
+        // Absent means it was claimed between the two statements. That is the
+        // `processing` case arriving a moment late, and it is reported as one.
+        if (rewritten) return { job: mapJob(rewritten), deduped: true, updated: true };
+      }
+      return { job: mapJob(existing), deduped: true };
+    }
     throw error;
   }
 }

@@ -36,6 +36,11 @@ export const TASK_ACTIONS = [
   'sent',
   'failed',
   'superseded',
+  // A redraft that was asked for and never ran, because one was already in
+  // flight for this task. On the timeline rather than swallowed: without it
+  // the reviewer sees their note followed by a reply that ignored it, and the
+  // only available conclusion is that the model would not listen.
+  'redraft_dropped',
 ] as const;
 
 export type TaskAction = (typeof TASK_ACTIONS)[number];
