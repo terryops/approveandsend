@@ -18,6 +18,7 @@ import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
 import { TaskPoller } from '../../task-poller';
 import { LandOnDraft, WatchTask } from '../../working';
+import { AskForReading } from './reading';
 import { AttachTile } from './attach-tile';
 import { FileTile, sizeKb } from './file-tile';
 import { MarkOpened } from './opened';
@@ -609,8 +610,11 @@ export default async function TaskPage({
   // `outgoingStored` and not `outgoing`: an empty row is the model having
   // already answered "nothing to do", and asking it again every time the panel
   // opens is the bill this whole distinction exists to stop.
-  const reading =
+  const wantsReading =
     Boolean(language) && !outgoingStored && body.trim() !== '' && repliesNeedRendering();
+  // And whether this render is the one that asks for it. Not the first one: see
+  // `AskForReading`, which is what turns this on, one navigation later.
+  const reading = wantsReading && query.reading === '1';
   // And the cards, which are in whatever language their source was written in
   // — English, for the built-in ones and for most config files. Rendered into
   // the interface language instead of the review language, because a card is
@@ -829,13 +833,19 @@ export default async function TaskPage({
                      pressing Preview did nothing visible for as long as the
                      translator took. Streamed in, the letter and the reply are
                      on screen at once and the reading lands under them. */
-                  reading && (
+                  wantsReading &&
+                  (reading ? (
                     <Suspense
                       fallback={<p className="meta">{t('task.translationComing', { language })}</p>}
                     >
                       <DraftReading taskId={task.id} text={body} language={language} />
                     </Suspense>
-                  )
+                  ) : (
+                    <>
+                      <p className="meta">{t('task.translationComing', { language })}</p>
+                      <AskForReading />
+                    </>
+                  ))
                 )}
               </div>
             </div>
