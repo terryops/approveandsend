@@ -56,6 +56,21 @@ already covered too.
 
 ## Getting it running
 
+```bash
+docker run -d --name approveandsend -p 127.0.0.1:3000:3000 \
+  -v "$PWD/data:/app/data" \
+  -e SESSION_SECRET="$(openssl rand -hex 32)" \
+  ghcr.io/terryops/approveandsend
+```
+
+Then open <http://localhost:3000>, and a setup wizard asks for the rest: your
+mailbox, which model you want writing, and who you are. Both `amd64` and
+`arm64` are published, so this is the same one line on a server and on a Pi.
+
+For the version that also does the scheduling — nothing here syncs on its own —
+use [docker-compose.yml](docker-compose.yml) and see
+[docs/deploying.md](docs/deploying.md).
+
 Everything technical lives in **[MANUAL.md](MANUAL.md)** — installing it,
 connecting your mailbox, choosing a model, and every setting there is.
 

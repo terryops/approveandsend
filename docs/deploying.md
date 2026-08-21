@@ -8,8 +8,17 @@ stays running. Everything below follows from that.
 ```bash
 cp .env.example .env
 cp aas.config.example.json aas.config.json
-docker compose up -d --build
+docker compose up -d
 ```
+
+No `--build`: compose names the published image, so this is a download rather
+than a compile on whichever machine you are installing on. Add `build: .` back
+to the compose file if you are changing the code and want your changes in the
+container.
+
+The image carries both `linux/amd64` and `linux/arm64`, built on their own
+machines rather than emulated, so a Pi or an Ampere box gets the same thing an
+x86 server does.
 
 Two containers. `app` listens on `127.0.0.1:3000` and keeps its database at
 `./data/aas.db` on the host — back up that directory and you have backed up
