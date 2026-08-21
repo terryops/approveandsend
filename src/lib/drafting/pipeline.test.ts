@@ -604,6 +604,72 @@ describe('the reviewer steering a redraft', () => {
     expect(isQueued(alternativesKey(task.id), db)).toBe(false);
   });
 
+  it('keeps the rejected approach and adds the rewrite beside it', async () => {
+    const { task } = createTask(INCOMING, db);
+    replaceAlternatives(
+      task.id,
+      [
+        { strategy: 'answer it now', body: 'The reply the reviewer just rejected.' },
+        { strategy: 'refund now', body: 'Refunded in full.' },
+      ],
+      db,
+    );
+    updateTask(task.id, { draft: 'The reply the reviewer just rejected.' }, db);
+    // The other button. Rewrite was asked for a different approach, so folding
+    // it over the one it came from deletes the approach that is being compared
+    // against — and on a second press there is nothing left to go back to.
+    enqueueDraftReply(task.id, { critic: false, mode: 'rewrite', db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+    queued.push(GOOD_DRAFT);
+    await worker.runOnce();
+
+    const options = listAlternatives(task.id, db);
+    expect(options.map(option => option.label)).toEqual(['A', 'B', 'C']);
+    // A is untouched: it is the approach that was rejected, and the reviewer
+    // may well want it back.
+    expect(options[0]!.body).toBe('The reply the reviewer just rejected.');
+    expect(options[1]!.body).toBe('Refunded in full.');
+    expect(options[2]!.body).toBe('We have escalated this and will update you shortly.');
+    // And it says when, because a second rewrite lands beside this one under
+    // the same name and the strip is where they are told apart.
+    expect(options[2]!.strategy).toMatch(/ · \d{2}:\d{2}$/);
+  });
+
+  it('amends in place when the reviewer asked for a revision rather than a rewrite', async () => {
+    const { task } = createTask(INCOMING, db);
+    replaceAlternatives(
+      task.id,
+      [
+        { strategy: 'answer it now', body: 'The reply the reviewer just rejected.' },
+        { strategy: 'refund now', body: 'Refunded in full.' },
+      ],
+      db,
+    );
+    updateTask(task.id, { draft: 'The reply the reviewer just rejected.' }, db);
+    enqueueDraftReply(task.id, { critic: false, mode: 'revise', db });
+
+    const worker = createWorker({
+      handlers: { [DRAFT_REPLY]: draftReplyHandler },
+      db,
+      backoff: () => 0,
+    });
+    queued.push(GOOD_DRAFT);
+    await worker.runOnce();
+
+    const options = listAlternatives(task.id, db);
+    // Still two: "make this one shorter" is not a request for a third tab.
+    expect(options.map(option => [option.label, option.body])).toEqual([
+      ['A', 'We have escalated this and will update you shortly.'],
+      ['B', 'Refunded in full.'],
+    ]);
+    expect(options[0]!.strategy).toBe('answer it now');
+  });
+
   it('adds the redraft as a further option when the reviewer had edited by hand', async () => {
     const { task } = createTask(INCOMING, db);
     replaceAlternatives(

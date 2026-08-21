@@ -11,6 +11,7 @@ import { newlines } from '../../text';
 import { recordEvent } from '../../tasks/events';
 import { listMessages } from '../../tasks/messages';
 import { gradeRisk } from '../../tasks/risk';
+import { split } from '../../time';
 import { recordDraft } from '../../tasks/versions';
 import { getTask, updateTask } from '../../tasks/store';
 import { enqueue, type EnqueueResult } from '../store';
@@ -64,10 +65,29 @@ export function enqueueDraftReply(
   );
 }
 
+/**
+ * `你要求重写的版本 · 15:28`.
+ *
+ * Two rewrites on one task are two tabs with the same name, and the strip is
+ * the only place they are told apart: which of these is the answer to the note
+ * just written, and which is the one from lunchtime. The clock in the desk's
+ * zone is the shortest thing that answers it — a full date would be more
+ * correct and would not fit, and two rewrites are usually minutes apart.
+ */
+function redraftLabel(): string {
+  const now = split(new Date().toISOString());
+  return now ? `${t('task.optionRedrafted')} · ${now.time}` : t('task.optionRedrafted');
+}
+
 export const draftReplyHandler: JobHandler = async (payload, context) => {
   const value = (payload ?? {}) as Record<string, unknown>;
   const taskId = typeof value.taskId === 'string' ? value.taskId.trim() : '';
   if (!taskId) throw new PermanentJobError('Payload is missing taskId');
+
+  // Only the two it knows. A payload from an older build, or a first draft,
+  // leaves this undefined and the drafter infers it from the note as before.
+  const mode: RedraftMode | undefined =
+    value.mode === 'revise' || value.mode === 'rewrite' ? (value.mode as RedraftMode) : undefined;
 
   const task = getTask(taskId, context.db);
   if (!task) throw new PermanentJobError(`Task ${taskId} no longer exists`);
@@ -94,12 +114,7 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
   try {
     const result = await draftReply(task, {
       critic: value.critic !== false,
-      // Only the two it knows. A payload from an older build, or from a caller
-      // that had no reviewer to ask, leaves this undefined and the drafter
-      // infers it from the note the way it always did.
-      ...(value.mode === 'revise' || value.mode === 'rewrite'
-        ? { mode: value.mode as RedraftMode }
-        : {}),
+      ...(mode ? { mode } : {}),
       db: context.db,
     });
 
@@ -184,12 +199,23 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
     // in the box. No match means the reviewer had edited by hand, and then the
     // rewrite is a genuine further approach rather than a correction to one on
     // the strip.
+    //
+    // Which of the two buttons was pressed decides that, because the buttons
+    // mean different things to the strip. Revise amends the reply on the
+    // table, so the option it came from is the thing that changed. Rewrite was
+    // asked for a *different approach* — folding that back over its own source
+    // deleted the approach the reviewer had just rejected, so the strip lost
+    // an option on every press after the first and there was nothing left to
+    // compare against. A rewrite is a new option.
     if (previous) {
-      const mine = listAlternatives(taskId, context.db).find(
-        option => newlines(option.body).trim() === previous,
-      );
+      const mine =
+        mode === 'rewrite'
+          ? undefined
+          : listAlternatives(taskId, context.db).find(
+              option => newlines(option.body).trim() === previous,
+            );
       if (mine) updateAlternativeBody(mine.id, result.draft, context.db);
-      else addAlternative(taskId, { strategy: t('task.optionRedrafted'), body: result.draft }, context.db);
+      else addAlternative(taskId, { strategy: redraftLabel(), body: result.draft }, context.db);
     }
 
     // The other ways this could have been answered, generated now rather than
