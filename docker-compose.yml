@@ -7,8 +7,13 @@
 
 services:
   app:
-    build: .
-    image: approveandsend
+    # The published image, so `up -d` is a download rather than a build. Pin a
+    # version here — `:0.1.0` — if you would rather choose when you upgrade.
+    image: ghcr.io/terryops/approveandsend:latest
+    # Uncomment to build from this checkout instead, which is what you want if
+    # you are changing the code. It replaces the image above rather than
+    # supplementing it.
+    # build: .
     restart: unless-stopped
     # Loopback only. Put a reverse proxy with a certificate in front before
     # this is reachable from anywhere else — it will be holding your mail.

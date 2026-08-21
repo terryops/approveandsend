@@ -65,13 +65,19 @@ RUN apt-get update \
 # thing it owns: a compromised process should not be able to rewrite the app.
 RUN mkdir -p /app/data && chown node:node /app/data
 
+COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
+
 COPY --from=builder --chown=root:root /app/.next/standalone ./
 COPY --from=builder --chown=root:root /app/.next/static ./.next/static
 # No `public/` COPY: there is no public directory, and the App Router serves
 # the icons from src/app. Add one back here if you add one to the project —
 # standalone output does not include it.
 
-USER node
+# No `USER node` here, deliberately. The entrypoint starts as root, hands
+# /app/data to uid 1000 when a bind mount has taken it away, and drops to
+# `node` before the app runs — which it cannot do if it has already dropped.
+# Pass `--user node` to skip that repair and start unprivileged outright.
 EXPOSE 3000
 VOLUME /app/data
 
@@ -80,4 +86,5 @@ VOLUME /app/data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:3000/api/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
