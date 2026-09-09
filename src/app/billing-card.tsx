@@ -4,7 +4,9 @@ import { Suspense } from 'react';
 import { analyseDisputes } from '@/lib/billing/disputes';
 import { DASHBOARD, day, money, netPaid, planOf, stripeConfigured } from '@/lib/billing/stripe';
 import { customerSummary } from '@/lib/billing/summary';
-import { t } from '@/lib/i18n';
+import { t, type MessageKey } from '@/lib/i18n';
+
+import { CancelSubscription } from './cancel-subscription';
 
 /**
  * Who this address is to Stripe, on the screens where that changes the answer.
@@ -162,7 +164,32 @@ async function Customer({ email }: { email: string }) {
         {plan && (
           <div>
             <dt>{t('billing.card.plan')}</dt>
-            <dd>{plan}</dd>
+            <dd>
+              {plan}
+              {subscriptions[0] && (
+                <>
+                  {' · '}
+                  {subscriptions[0].status === 'active' && !subscriptions[0].cancel_at_period_end ? (
+                    <CancelSubscription
+                      subscriptionId={subscriptions[0].id}
+                      labels={{
+                        cancel: t('billing.cancel'),
+                        canceled: t('billing.canceled'),
+                        title: t('billing.cancelConfirm.title'),
+                        body: t('billing.cancelConfirm.body'),
+                        confirm: t('billing.cancelConfirm.confirm'),
+                        canceling: t('billing.cancelConfirm.canceling'),
+                        back: t('billing.cancelConfirm.back'),
+                      }}
+                    />
+                  ) : subscriptions[0].cancel_at_period_end ? (
+                    <span className="muted">{t('billing.cancelsPeriodEnd', { date: day(subscriptions[0].current_period_end) })}</span>
+                  ) : (
+                    <span className="muted">{t(`billing.status.${subscriptions[0].status}` as MessageKey)}</span>
+                  )}
+                </>
+              )}
+            </dd>
           </div>
         )}
         {net.size > 0 && (

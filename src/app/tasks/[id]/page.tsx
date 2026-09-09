@@ -13,6 +13,8 @@ import { REPLY_FORMATS, previewHtml, type ReplyFormat } from '@/lib/mail/render'
 import { MAX_UPLOAD_BYTES } from '@/lib/mail/uploads';
 
 import { BillingCard } from '../../billing-card';
+import { CancelSubscription } from '../../cancel-subscription';
+import { day } from '@/lib/billing/stripe';
 import { DismissOnEscape } from '../../dismiss-on-escape';
 import { Scrim } from '../../scrim';
 import { Pressable } from '../../pending';
@@ -1459,7 +1461,9 @@ export default async function TaskPage({
               )}
             </div>
             <dl className="facts">
-              {card.fields.map((field, i) => (
+              {card.fields.map((field, i) => {
+                const meta = field.metadata as { subscriptionId?: string; canCancel?: boolean; cancelAtPeriodEnd?: boolean; periodEnd?: number } | undefined;
+                return (
                 <div key={i}>
                   <dt>{field.label}</dt>
                   <dd>
@@ -1470,9 +1474,30 @@ export default async function TaskPage({
                     ) : (
                       field.value
                     )}
+                    {meta?.subscriptionId && (
+                      <>
+                        {' · '}
+                        {meta.canCancel ? (
+                          <CancelSubscription
+                            subscriptionId={meta.subscriptionId}
+                            labels={{
+                              cancel: t('billing.cancel'),
+                              canceled: t('billing.canceled'),
+                              title: t('billing.cancelConfirm.title'),
+                              body: t('billing.cancelConfirm.body'),
+                              confirm: t('billing.cancelConfirm.confirm'),
+                              canceling: t('billing.cancelConfirm.canceling'),
+                              back: t('billing.cancelConfirm.back'),
+                            }}
+                          />
+                        ) : meta.cancelAtPeriodEnd && meta.periodEnd ? (
+                          <span className="muted">{t('billing.cancelsPeriodEnd', { date: day(meta.periodEnd) })}</span>
+                        ) : null}
+                      </>
+                    )}
                   </dd>
                 </div>
-              ))}
+              )})}
             </dl>
             {/* `card-note`, not `meta`: this is what the draft was written
                 from, and it spent long enough looking like the caption under a

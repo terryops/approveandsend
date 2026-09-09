@@ -30,6 +30,8 @@ export interface ContextField {
   value: string;
   /** Links the value out to the system of record, for the reviewer. */
   href?: string;
+  /** Opaque metadata for UI-layer actions. Not shown, not in prompt. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface ContextBlock {
@@ -144,11 +146,13 @@ export function coerceBlock(value: unknown): ContextBlock | null {
         const field = entry as Record<string, unknown> | null;
         if (!field || typeof field.label !== 'string') return [];
         const href = safeHref(field.href);
+        const metadata = field.metadata && typeof field.metadata === 'object' ? field.metadata as Record<string, unknown> : undefined;
         return [
           {
             label: field.label.trim(),
             value: field.value == null ? '' : String(field.value).trim(),
             ...(href ? { href } : {}),
+            ...(metadata ? { metadata } : {}),
           },
         ];
       })

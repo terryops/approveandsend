@@ -190,6 +190,14 @@ export const stripeSource: ContextSource = {
       {
         label: 'Subscription',
         value: active ? `${planOf(active)} · ${active.status}` : 'none active',
+        ...(active ? {
+          metadata: {
+            subscriptionId: active.id,
+            canCancel: active.status === 'active' && !active.cancel_at_period_end,
+            cancelAtPeriodEnd: active.cancel_at_period_end,
+            periodEnd: active.current_period_end,
+          },
+        } : {}),
       },
     ];
 

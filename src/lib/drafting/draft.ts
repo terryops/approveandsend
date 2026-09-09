@@ -44,8 +44,6 @@ const MAX_BODY_CHARS = 12_000;
 export interface DraftResult {
   analysis: Analysis;
   draft: string;
-  /** The subject the drafter chose, or undefined to keep the customer's. */
-  subject?: string;
   /** Rules that went into the prompt, already counted against their telemetry. */
   appliedRuleIds: string[];
   /** Rules the character budget pushed out, so the caller can log it. */
@@ -386,7 +384,6 @@ JSON only, no prose around it:
   "keyPoints": ["what they actually said, in ${operatorLanguage()}"],
   "cause": "system_bug | known_limitation | ux_issue | user_error | not_a_problem",
   "suggestedActions": ["what a human may need to do outside this reply, if anything, in ${operatorLanguage()}"],
-  "subject": "the subject line to answer under, in their language — say what the reply contains, e.g. 'Your refund has been issued'. Leave it empty to keep theirs.",
   "draft": "the reply itself, ready to send"
 }`;
 }
@@ -409,7 +406,7 @@ function parseDraft(
   workspace: WorkspaceConfig,
   /** What the rules were routed by. Outranks anything the drafter says. */
   routedTopic: string | undefined,
-): { analysis: Analysis; draft: string; subject?: string } | null {
+): { analysis: Analysis; draft: string } | null {
   const parsed = extractJson<Record<string, unknown>>(raw);
   if (!parsed) return null;
 
@@ -423,15 +420,12 @@ function parseDraft(
   // own answer is only consulted where there was no classification to make.
   const scope = routedTopic ?? (workspace.topics.length === 0 ? freeSlug(parsed.scope) : undefined);
 
-  // Capped rather than validated. A subject is free text in someone's
-  // language and there is nothing here to check it against, but a model that
-  // has decided to summarise the whole reply into it should not be able to
-  // put four hundred characters in a mail header.
-  const subject = typeof parsed.subject === 'string' ? parsed.subject.trim().slice(0, 160) : '';
-
+  // A subject is not read off the model at all. A reply belongs under the
+  // line the customer already wrote, prefixed with "Re: " — a fresh subject on
+  // an answer is how a recipient decides they are talking to a machine, and it
+  // is what breaks the conversation apart in their client.
   return {
     draft,
-    ...(subject ? { subject } : {}),
     analysis: {
       intent: typeof parsed.intent === 'string' ? parsed.intent.trim() : '',
       language: typeof parsed.language === 'string' ? parsed.language.trim().toLowerCase() : '',
@@ -582,7 +576,6 @@ export async function draftReply(task: Task, options: DraftOptions = {}): Promis
   const result: DraftResult = {
     analysis: parsed.analysis,
     draft: signed,
-    ...(parsed.subject ? { subject: parsed.subject } : {}),
     appliedRuleIds: appliedIds,
     droppedRuleIds: droppedIds,
   };

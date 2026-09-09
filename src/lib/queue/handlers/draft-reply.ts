@@ -135,10 +135,10 @@ export const draftReplyHandler: JobHandler = async (payload, context) => {
         status: 'awaiting_review',
         analysis: result.analysis,
         draft: result.draft,
-        // Only when it wrote one. A redraft that comes back with nothing to
-        // say about the subject must not wipe the line a reviewer has already
-        // edited by hand.
-        ...(result.subject ? { replySubject: result.subject } : {}),
+        // No subject is written here. A reply goes out under "Re: " and the
+        // customer's own line — see `outgoingSubject` — and the only line that
+        // can override it is one a reviewer typed by hand, which a redraft
+        // must not wipe.
         risk,
         // Null when no critic pass ran, and that includes the pass that errored
         // on a redraft. Carrying the previous draft's verdict over would put

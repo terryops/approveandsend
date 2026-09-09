@@ -90,11 +90,13 @@ export function replySubject(subject: string): string {
  *
  * A composed mail starts the conversation, so there is nothing to be "Re:"
  * about — and a subject nobody has ever seen prefixed like that is how a
- * recipient decides the sender is a bot. Otherwise a subject somebody chose
- * for this reply wins over the customer's own, which on a support desk is
- * usually a typo and a description of the problem rather than the answer.
+ * recipient decides the sender is a bot. A reply is the other way round: it
+ * goes out under "Re: " and the customer's own line, because that is the
+ * conversation they are already reading, and a freshly invented subject reads
+ * as a machine announcing itself. Nothing generated writes this line; only a
+ * reviewer who typed one by hand overrides it.
  *
- * No "Re:" is glued to a chosen subject. It is not a reply to itself, and the
+ * No "Re:" is glued to a typed subject. It is not a reply to itself, and the
  * threading headers are what actually keep the conversation together.
  */
 export function outgoingSubject(task: Task, chosen?: string): string {
