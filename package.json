@@ -22,7 +22,7 @@
     "imapflow": "^1.6.5",
     "mailparser": "^3.9.14",
     "next": "^16.1.6",
-    "nodemailer": "^9.0.4",
+    "nodemailer": "^9.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
